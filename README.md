@@ -1,31 +1,46 @@
 # Chuck Data
 
-[![Python Tests and Linting](https://github.com/amperity/clamp-internal/actions/workflows/python-tests.yml/badge.svg)](https://github.com/amperity/clamp-internal/actions/workflows/python-tests.yml)
+[![Python Tests and Linting](https://github.com/amperity/chuck-data/actions/workflows/python-tests.yml/badge.svg)](https://github.com/amperity/chuck-data/actions/workflows/python-tests.yml)
 
-A command-line and text-based user interface for managing Databricks resources including Unity Catalog, SQL warehouses, models, and volumes.
+A text-based user interface (TUI) for managing Databricks resources including Unity Catalog, SQL warehouses, models, and volumes. Chuck Data provides an interactive shell environment for data engineering tasks with AI-powered assistance.
 
 ## Features
 
-- Interactive CLI for managing Databricks resources
+- Interactive TUI for managing Databricks resources
+- AI-powered data engineering assistance
 - Authentication with Databricks using personal access tokens
 - List and select available LLM models from Databricks Model Serving
 - Browse Unity Catalog resources (catalogs, schemas, tables)
 - Manage SQL warehouses
 - Profile database tables with automated PII detection (via LLMs)
 - Support for Amperity operations
+- Command-based interface with both modern commands and slash commands
 
 ## Installation
 
-`pip install chuck-data`
+```bash
+pip install chuck-data
+```
 
 ## Usage
 
+Chuck Data provides an interactive text-based user interface. Run the application using:
 
-`chuck-data` can be run from the command line or as a Python module.
+```bash
+chuck-data [options]
+```
+
+### Command Line Options
+
+- `--version` - Show program version and exit
+- `--no-color` - Disable color output
+- `--help` - Show help message and exit
+
+The application will launch an interactive TUI where you can use various commands to manage your Databricks resources.
 
 ## Available Commands
 
-Chuck Data supports a command-based interface with both modern commands and slash commands. Commands can be used in either the modern CLI or legacy TUI interface.
+Chuck Data supports a command-based interface with slash commands that can be used within the interactive TUI. Type `/help` within the application to see all available commands.
 
 ### Authentication & Workspace
 - `/login`, `/amperity-login` - Log in to Amperity
