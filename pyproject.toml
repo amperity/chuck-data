@@ -1,7 +1,19 @@
 [project]
 name = "chuck-data"
 version = "0.1.0"
-description = "Add your description here"
+description = "Command line AI for customer data"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    { name = "John Rush", email = "john.rush@amperity.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -26,8 +38,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/amperity/clamp-internal"
-Source = "https://github.com/amperity/clamp-internal"
+Homepage = "https://github.com/amperity/chuck-data"
+Repository = "https://github.com/amperity/chuck-data"
 
 [tool.black]
 line-length = 88

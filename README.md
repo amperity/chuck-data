@@ -16,33 +16,12 @@ A command-line and text-based user interface for managing Databricks resources i
 
 ## Installation
 
-### Prerequisites
-
- - Python 3.10 or higher
-- [uv](https://github.com/astral-sh/uv) - Python package installer and resolver
-
-Install the project with development dependencies:
-
-```bash
-uv pip install -e .[dev]
-```
+`pip install chuck-data`
 
 ## Usage
 
-### Launching Chuck Data
 
-The project is set up to make it easy to use uv to run the application:
-
-```bash
-uv run chuck.py
-```
-
-## Configuration
-
-Chuck Data requires configuration for accessing your Databricks workspace:
-
-1. Set the `DATABRICKS_TOKEN` environment variable with your personal access token, or 
-2. Run the application and use the credentials commands to set up access
+`chuck-data` can be run from the command line or as a Python module.
 
 ## Available Commands
 
@@ -50,7 +29,7 @@ Chuck Data supports a command-based interface with both modern commands and slas
 
 ### Authentication & Workspace
 - `/login`, `/amperity-login` - Log in to Amperity
- - `/databricks-login`, `/set-token` - Set Databricks API token
+- `/databricks-login`, `/set-token` - Set Databricks API token
 - `/logout` - Log out from Amperity or other authentication services
 - `/workspace` - Select a workspace configuration
 
@@ -102,8 +81,14 @@ Chuck Data supports a command-based interface with both modern commands and slas
 
 ### Requirements
 
- - Python 3.10 or higher
-- Development tools installed via `uv pip install -e .[dev]`
+- Python 3.10 or higher
+- [uv](https://github.com/astral-sh/uv) - Python package installer and resolver
+
+Install the project with development dependencies:
+
+```bash
+uv pip install -e .[dev]
+```
 
 ### Testing
 
@@ -121,8 +106,6 @@ uv run black --check --diff src tests
 uv run pyright
 ```
 
-Ruff is configured to exclude the notebook `assets/stitch_notebook_template.ipynb`.
-
 For test coverage:
 
 ```bash
@@ -133,11 +116,8 @@ uv run -m pytest --cov=src
 
 This project uses GitHub Actions for continuous integration:
 
- - Automated testing on Python 3.10
+- Automated testing on Python 3.10
 - Code linting with flake8
 - Format checking with Black
-- (Test coverage reporting planned for future)
 
 The CI workflow runs on every push to `main` and on pull requests. You can also trigger it manually from the Actions tab in GitHub.
-## Integration Tests
-See [docs/integration_tests.md](docs/integration_tests.md) for instructions on running integration tests against Databricks.
