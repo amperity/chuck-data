@@ -289,3 +289,43 @@ class TestListWarehouses(unittest.TestCase):
         # Ensure they're proper boolean values, not strings
         self.assertIsInstance(serverless_true["enable_serverless_compute"], bool)
         self.assertIsInstance(serverless_false["enable_serverless_compute"], bool)
+
+    def test_display_parameter_false(self):
+        """Test that display=False parameter works correctly."""
+        # Add test warehouse
+        self.client_stub.add_warehouse(
+            warehouse_id="warehouse-test",
+            name="Test Warehouse",
+            size="SMALL",
+            state="RUNNING",
+        )
+
+        # Call function with display=False
+        result = handle_command(self.client_stub, display=False)
+
+        # Verify results
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.data["warehouses"]), 1)
+        # Should still include current_warehouse_id for highlighting
+        self.assertIn("current_warehouse_id", result.data)
+
+    def test_display_parameter_false_default(self):
+        """Test that display parameter defaults to False."""
+        # Add test warehouse
+        self.client_stub.add_warehouse(
+            warehouse_id="warehouse-test",
+            name="Test Warehouse",
+            size="SMALL",
+            state="RUNNING",
+        )
+
+        # Call function without display parameter
+        result = handle_command(self.client_stub)
+
+        # Verify results
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.data["warehouses"]), 1)
+        # Should include current_warehouse_id for highlighting
+        self.assertIn("current_warehouse_id", result.data)
+        # Should default to display=False
+        self.assertEqual(result.data["display"], False)

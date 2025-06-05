@@ -17,7 +17,8 @@ def handle_command(
 
     Args:
         client: DatabricksAPIClient instance for API calls
-        **kwargs: No additional parameters required
+        **kwargs:
+            - display: bool, whether to display the table (default: True)
 
     Returns:
         CommandResult with list of warehouses if successful
@@ -28,13 +29,28 @@ def handle_command(
             message="No Databricks client available. Please set up your workspace first.",
         )
 
+    # Check if display should be suppressed (default to False for agent calls)
+    display = kwargs.get("display", False)
+
+    # Get current warehouse ID for highlighting
+    from src.config import get_warehouse_id
+
+    current_warehouse_id = get_warehouse_id()
+
     try:
         # Fetch the list of warehouses
         warehouses = client.list_warehouses()
 
         if not warehouses:
             return CommandResult(
-                True, message="No SQL warehouses found in this workspace."
+                True,
+                message="No SQL warehouses found in this workspace.",
+                data={
+                    "warehouses": [],
+                    "total_count": 0,
+                    "display": display,
+                    "current_warehouse_id": current_warehouse_id,
+                },
             )
 
         # Format the warehouse information for display
@@ -59,6 +75,8 @@ def handle_command(
             data={
                 "warehouses": formatted_warehouses,
                 "total_count": len(formatted_warehouses),
+                "display": display,  # Pass through to display
+                "current_warehouse_id": current_warehouse_id,
             },
             message=f"Found {len(formatted_warehouses)} SQL warehouse(s).",
         )
@@ -71,14 +89,21 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="list-warehouses",
-    description="Lists all SQL warehouses in the current Databricks workspace.",
+    description="Lists all SQL warehouses in the current Databricks workspace. By default returns data without showing table. Use display=true when user asks to see warehouses.",
     handler=handle_command,
-    parameters={},  # No parameters needed
+    parameters={
+        "display": {
+            "type": "boolean",
+            "description": "Whether to display the warehouse table to the user (default: false). Set to true when user asks to see warehouses.",
+        }
+    },
     required_params=[],
     tui_aliases=["/list-warehouses", "/warehouses"],
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full warehouse list in tables
-    usage_hint="Usage: /list-warehouses",
+    agent_display="conditional",  # Use conditional display based on display parameter
+    display_condition=lambda result: result.get("display", False),  # Show full table only when display=True explicitly set
+    condensed_action="Listing warehouses",  # Friendly name for condensed display
+    usage_hint="Usage: /list-warehouses [--display true|false]",
 )

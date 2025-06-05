@@ -431,6 +431,9 @@ class ChuckTUI:
             result = self.service.execute_command(
                 cmd, *args, tool_output_callback=self.display_tool_output
             )
+        elif cmd in ["/warehouses", "/list-warehouses"]:
+            # For TUI warehouse commands, always show the full table
+            result = self.service.execute_command(cmd, *args, display=True)
         else:
             result = self.service.execute_command(cmd, *args)
 
@@ -558,13 +561,22 @@ class ChuckTUI:
         """Display tool output immediately during agent execution."""
         try:
             # Get command definition to check display type
-
             command_def = get_command(tool_name)
 
             # Use the command's agent_display setting, defaulting to "condensed"
             display_type = "condensed"
             if command_def:
-                display_type = getattr(command_def, "agent_display", "condensed")
+                agent_display = getattr(command_def, "agent_display", "condensed")
+                
+                if agent_display == "conditional":
+                    # Use display_condition function to determine display type
+                    display_condition = getattr(command_def, "display_condition", None)
+                    if display_condition and isinstance(tool_result, dict):
+                        display_type = "full" if display_condition(tool_result) else "condensed"
+                    else:
+                        display_type = "condensed"  # Fallback if no condition function
+                else:
+                    display_type = agent_display
 
             # Route based on display type
             if display_type == "condensed":
@@ -693,6 +705,10 @@ class ChuckTUI:
                 metrics.append(f"{tool_result['schema_name']}")
             elif tool_name == "set_catalog" and "catalog_name" in tool_result:
                 metrics.append(f"{tool_result['catalog_name']}")
+
+            # Step-based progress reporting (used by warehouse selection, etc.)
+            if "step" in tool_result:
+                metrics.append(tool_result["step"])
 
             # Generic message fallback
             if not metrics and "message" in tool_result:
@@ -1113,6 +1129,9 @@ class ChuckTUI:
         from src.ui.table_formatter import display_table
         from src.exceptions import PaginationCancelled
 
+        # This method is only called when we actually want to display the table
+        # The conditional display logic handles the display/no-display decision
+
         warehouses = data.get("warehouses", [])
         current_warehouse_id = data.get("current_warehouse_id")
 
@@ -1192,8 +1211,8 @@ class ChuckTUI:
                 f"\nCurrent SQL warehouse ID: [{SUCCESS_STYLE}]{current_warehouse_id}[/{SUCCESS_STYLE}]"
             )
 
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after warehouse display is complete
+        # Always raise PaginationCancelled when we actually display the table
+        # (we already returned early if display=false)
         raise PaginationCancelled()
 
     def _display_volumes(self, data: Dict[str, Any]) -> None:

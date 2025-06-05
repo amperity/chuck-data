@@ -119,6 +119,11 @@ def execute_tool(
         logging.debug(
             f"Executing agent tool '{tool_name}' with handler: {command_def.handler.__name__}"
         )
+
+        # Add the output callback to tool_args so command handlers can access it
+        if output_callback:
+            tool_args["tool_output_callback"] = output_callback
+
         result_obj: CommandResult = command_def.handler(effective_client, **tool_args)
 
         if not isinstance(result_obj, CommandResult):

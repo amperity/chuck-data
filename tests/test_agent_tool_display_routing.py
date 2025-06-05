@@ -243,15 +243,28 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
             f"Expected list commands changed. Found: {found_commands}, Expected: {expected_list_commands}",
         )
 
-        # Verify each has agent_display="full"
+        # Verify each has agent_display="full" (except list-warehouses which uses conditional display)
         for cmd_name in list_commands:
             with self.subTest(command=cmd_name):
                 cmd_def = get_command(cmd_name)
-                self.assertEqual(
-                    cmd_def.agent_display,
-                    "full",
-                    f"Command {cmd_name} must have agent_display='full' for table display",
-                )
+                if cmd_name == "list-warehouses":
+                    # list-warehouses uses conditional display with display parameter
+                    self.assertEqual(
+                        cmd_def.agent_display,
+                        "conditional",
+                        f"Command {cmd_name} should use conditional display with display parameter control",
+                    )
+                    # Verify it has a display_condition function
+                    self.assertIsNotNone(
+                        cmd_def.display_condition,
+                        f"Command {cmd_name} with conditional display must have display_condition function",
+                    )
+                else:
+                    self.assertEqual(
+                        cmd_def.agent_display,
+                        "full",
+                        f"Command {cmd_name} must have agent_display='full' for table display",
+                    )
 
     def test_end_to_end_agent_tool_execution_with_table_display(self):
         """

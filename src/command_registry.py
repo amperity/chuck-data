@@ -5,7 +5,7 @@ This module provides a central registry for all commands that can be executed
 by both the user interface and LLM agent tools, reducing code duplication.
 """
 
-from typing import Dict, Any, Callable, List, Optional
+from typing import Dict, Any, Callable, List, Optional, Union
 from dataclasses import dataclass, field
 
 
@@ -27,7 +27,8 @@ class CommandDefinition:
         output_formatter: Optional custom output formatter function
         usage_hint: Optional[str] = None (for better TUI error messages)
         supports_interactive_input: bool = False (to make interactive mode explicit)
-        agent_display: str = "condensed" (how to display when called by agent: "condensed" or "full")
+        agent_display: str = "condensed" (how to display when called by agent: "condensed", "full", or "conditional")
+        display_condition: Optional[Callable] = None (function that takes result dict and returns True for full display, False for condensed)
         condensed_action: Optional[str] = None (friendly action name for condensed display, e.g. "Setting catalog")
     """
 
@@ -46,8 +47,9 @@ class CommandDefinition:
     usage_hint: Optional[str] = None  # For better TUI error messages
     supports_interactive_input: bool = False  # To make interactive mode explicit
     agent_display: str = (
-        "condensed"  # How to display when called by agent: "condensed" or "full"
+        "condensed"  # How to display when called by agent: "condensed", "full", or "conditional"
     )
+    display_condition: Optional[Callable[[Dict[str, Any]], bool]] = None  # Function to determine display type for conditional
     condensed_action: Optional[str] = None  # Friendly action name for condensed display
 
 

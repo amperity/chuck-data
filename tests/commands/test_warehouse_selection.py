@@ -32,14 +32,17 @@ class TestWarehouseSelection(unittest.TestCase):
         self.patcher.stop()
         self.temp_dir.cleanup()
 
-    def test_missing_warehouse_id(self):
-        """Test handling when warehouse_id is not provided."""
+    def test_missing_warehouse_parameter(self):
+        """Test handling when warehouse parameter is not provided."""
         result = handle_command(self.client_stub)
         self.assertFalse(result.success)
-        self.assertIn("warehouse_id parameter is required", result.message)
+        self.assertIn(
+            "warehouse parameter is required",
+            result.message,
+        )
 
-    def test_successful_warehouse_selection(self):
-        """Test successful warehouse selection."""
+    def test_successful_warehouse_selection_by_id(self):
+        """Test successful warehouse selection by ID."""
         # Set up warehouse in stub
         self.client_stub.add_warehouse(
             name="Test Warehouse", state="RUNNING", size="2X-Small"
@@ -47,8 +50,8 @@ class TestWarehouseSelection(unittest.TestCase):
         # The warehouse_id should be "warehouse_0" based on the stub implementation
         warehouse_id = "warehouse_0"
 
-        # Call function
-        result = handle_command(self.client_stub, warehouse_id=warehouse_id)
+        # Call function with warehouse ID
+        result = handle_command(self.client_stub, warehouse=warehouse_id)
 
         # Verify results
         self.assertTrue(result.success)
@@ -66,37 +69,34 @@ class TestWarehouseSelection(unittest.TestCase):
 
     def test_warehouse_selection_with_verification_failure(self):
         """Test warehouse selection when verification fails."""
-        # Don't add warehouse to stub - will cause verification failure
+        # Add a warehouse to stub but call with different ID - will cause verification failure
+        self.client_stub.add_warehouse(
+            name="Production Warehouse", state="RUNNING", size="2X-Small"
+        )
 
-        # Call function
-        result = handle_command(self.client_stub, warehouse_id="nonexistent_warehouse")
+        # Call function with non-existent warehouse ID that won't match by name
+        result = handle_command(
+            self.client_stub, warehouse="xyz-completely-different-name"
+        )
 
-        # Verify results - should still succeed but with warning
-        self.assertTrue(result.success)
+        # Verify results - should now fail when warehouse is not found
+        self.assertFalse(result.success)
         self.assertIn(
-            "Warning: Could not verify warehouse 'nonexistent_warehouse'",
+            "No warehouse found matching 'xyz-completely-different-name'",
             result.message,
         )
-        self.assertEqual(result.data["warehouse_id"], "nonexistent_warehouse")
-
-        # Verify config was still updated
-        self.assertEqual(get_warehouse_id(), "nonexistent_warehouse")
 
     def test_warehouse_selection_no_client(self):
         """Test warehouse selection with no client available."""
         # Call function with no client
-        result = handle_command(None, warehouse_id="abc123")
+        result = handle_command(None, warehouse="abc123")
 
-        # Verify results
-        self.assertTrue(result.success)
+        # Verify results - should now fail when no client is available
+        self.assertFalse(result.success)
         self.assertIn(
-            "Warning: No API client available to verify warehouse 'abc123'",
+            "No API client available to verify warehouse",
             result.message,
         )
-        self.assertEqual(result.data["warehouse_id"], "abc123")
-
-        # Verify config was updated
-        self.assertEqual(get_warehouse_id(), "abc123")
 
     def test_warehouse_selection_exception(self):
         """Test warehouse selection with unexpected exception."""
@@ -106,11 +106,48 @@ class TestWarehouseSelection(unittest.TestCase):
             def get_warehouse(self, warehouse_id):
                 raise Exception("Failed to set warehouse")
 
+            def list_warehouses(self, **kwargs):
+                raise Exception("Failed to list warehouses")
+
         failing_stub = FailingStub()
 
         # Call function
-        result = handle_command(failing_stub, warehouse_id="abc123")
+        result = handle_command(failing_stub, warehouse="abc123")
 
-        # Should still succeed with warning since it catches the exception
+        # Should fail when both get_warehouse and list_warehouses fail
+        self.assertFalse(result.success)
+        self.assertIn("Failed to list warehouses", result.message)
+
+    def test_warehouse_selection_by_name(self):
+        """Test warehouse selection by name parameter."""
+        # Set up warehouse in stub
+        self.client_stub.add_warehouse(
+            name="Test Warehouse", state="RUNNING", size="2X-Small"
+        )
+
+        # Call function with warehouse name
+        result = handle_command(self.client_stub, warehouse="Test Warehouse")
+
+        # Verify results
         self.assertTrue(result.success)
-        self.assertIn("Warning: Could not verify warehouse", result.message)
+        self.assertIn(
+            "Active SQL warehouse is now set to 'Test Warehouse'", result.message
+        )
+        self.assertEqual(result.data["warehouse_name"], "Test Warehouse")
+
+    def test_warehouse_selection_fuzzy_matching(self):
+        """Test warehouse selection with fuzzy name matching."""
+        # Set up warehouse in stub
+        self.client_stub.add_warehouse(
+            name="Starter Warehouse", state="RUNNING", size="2X-Small"
+        )
+
+        # Call function with partial name match
+        result = handle_command(self.client_stub, warehouse="Starter")
+
+        # Verify results
+        self.assertTrue(result.success)
+        self.assertIn(
+            "Active SQL warehouse is now set to 'Starter Warehouse'", result.message
+        )
+        self.assertEqual(result.data["warehouse_name"], "Starter Warehouse")

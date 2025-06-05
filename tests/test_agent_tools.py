@@ -133,8 +133,10 @@ class TestAgentTools(unittest.TestCase):
             output_callback=self.mock_callback,
         )
 
-        # Verify the handler was called with correct arguments
-        mock_handler.assert_called_once_with(self.mock_client, param1="test")
+        # Verify the handler was called with correct arguments (including tool_output_callback)
+        mock_handler.assert_called_once_with(
+            self.mock_client, param1="test", tool_output_callback=self.mock_callback
+        )
         # Verify the callback was called with tool name and data
         self.mock_callback.assert_called_once_with(
             "test_tool", {"result": "callback_test"}
@@ -178,8 +180,10 @@ class TestAgentTools(unittest.TestCase):
             output_callback=self.mock_callback,
         )
 
-        # Verify the handler was called with correct arguments
-        mock_handler.assert_called_once_with(self.mock_client, param1="test")
+        # Verify the handler was called with correct arguments (including tool_output_callback)
+        mock_handler.assert_called_once_with(
+            self.mock_client, param1="test", tool_output_callback=self.mock_callback
+        )
         # Verify the callback was called (and failed)
         self.mock_callback.assert_called_once_with(
             "test_tool", {"result": "callback_exception_test"}

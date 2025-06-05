@@ -26,7 +26,9 @@ IMPORTANT WORKFLOWS:
    - Navigate to the right catalog/schema, then use setup_stitch
 
 4. SQL WAREHOUSES: To work with SQL warehouses:
-   - list_warehouses -> set_warehouse
+   - If user asks "what warehouses do I have?" or wants to see warehouses: use list_warehouses with display=true (shows full table)
+   - If user asks to "use X warehouse" or "switch to X warehouse": use select_warehouse with warehouse parameter (accepts ID or name, has built-in fuzzy matching)
+   - If you need warehouse info for internal processing: use list_warehouses (defaults to no table display)
 
 Some of the tools you can use require the user to select a catalog and/or schema first. If the user hasn't selected one YOU MUST ask them if they want help selecting a catalog and schema. DO NO OTHER ACTION
 
