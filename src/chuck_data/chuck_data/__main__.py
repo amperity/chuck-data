@@ -6,7 +6,7 @@ import os
 import argparse
 
 # Add the src directory to Python path so we can import the TUI modules
-src_path = os.path.join(os.path.dirname(__file__), '..')
+src_path = os.path.join(os.path.dirname(__file__), "..")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
