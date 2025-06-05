@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Entry point for chuck-data when run as a module."""
 
-import sys
 import os
 import argparse
 

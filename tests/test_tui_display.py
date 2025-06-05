@@ -209,3 +209,219 @@ class TestTUIDisplay(unittest.TestCase):
         self.assertIn(
             "https://very-long-workspace-url-that-exceeds-the-displa…", output
         )
+
+    def test_table_display_field_mapping(self):
+        """Test that table display columns match actual data fields from API responses."""
+        # This test would have caught the created_at/updated_at field mapping issue
+
+        # Mock realistic table data structure (matching actual API response)
+        table_data = {
+            "tables": [
+                {
+                    "name": "ecommerce_profiles",
+                    "table_type": "MANAGED",
+                    "created_at": 1748473407547,  # Unix timestamp in milliseconds
+                    "updated_at": 1748473408383,  # Unix timestamp in milliseconds
+                    "row_count": 4387229,  # Large row count for formatting test
+                    "columns": [
+                        {"name": "system_id", "type_text": "string"},
+                        {"name": "last_updated", "type_text": "timestamp"},
+                    ],
+                },
+                {
+                    "name": "loyalty_member",
+                    "table_type": "MANAGED",
+                    "created_at": 1748473412513,
+                    "updated_at": 1748473413145,
+                    "row_count": 919746,  # Medium row count for formatting test
+                    "columns": [{"name": "customer_id", "type_text": "string"}],
+                },
+            ],
+            "catalog_name": "john_test",
+            "schema_name": "bronze",
+            "total_count": 2,
+        }
+
+        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+            # _display_tables raises PaginationCancelled by design
+            from src.exceptions import PaginationCancelled
+
+            with self.assertRaises(PaginationCancelled):
+                self.tui._display_tables(table_data)
+
+            # Verify display_table was called
+            mock_display_table.assert_called_once()
+            kwargs = mock_display_table.call_args.kwargs
+
+            # Verify column names match data fields
+            columns = kwargs["columns"]
+            data = kwargs["data"]
+
+            # This test would have caught the field name mismatch
+            for column in columns:
+                if column in ["name", "table_type"]:  # These should always exist
+                    continue
+                # Verify that display columns exist in the actual data
+                self.assertTrue(
+                    any(column in row for row in data),
+                    f"Display column '{column}' not found in any data row. Available keys: {list(data[0].keys()) if data else 'No data'}",
+                )
+
+            # Verify expected columns are present (including new row_count)
+            expected_columns = [
+                "name",
+                "table_type",
+                "column_count",
+                "row_count",
+                "created_at",
+                "updated_at",
+            ]
+            self.assertEqual(columns, expected_columns)
+
+            # Verify data was processed correctly
+            self.assertEqual(len(data), 2)
+            self.assertEqual(data[0]["name"], "ecommerce_profiles")
+            self.assertEqual(data[0]["table_type"], "MANAGED")
+
+            # Verify timestamp fields are present and formatted
+            self.assertIn("created_at", data[0])
+            self.assertIn("updated_at", data[0])
+
+            # Verify row count fields are present and formatted
+            self.assertIn("row_count", data[0])
+            self.assertIn("row_count", data[1])
+
+            # Verify row count formatting (4387229 -> 4.4M, 919746 -> 919.7K)
+            self.assertEqual(data[0]["row_count"], "4.4M")  # 4387229 formatted
+            self.assertEqual(data[1]["row_count"], "919.7K")  # 919746 formatted
+
+    def test_table_timestamp_formatting(self):
+        """Test that Unix timestamps are properly converted to readable dates."""
+
+        table_data = {
+            "tables": [
+                {
+                    "name": "test_table",
+                    "table_type": "MANAGED",
+                    "created_at": 1748473407547,  # Unix timestamp in milliseconds
+                    "updated_at": 1748473408383,
+                    "columns": [],
+                }
+            ],
+            "catalog_name": "test_catalog",
+            "schema_name": "test_schema",
+            "total_count": 1,
+        }
+
+        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+            # _display_tables raises PaginationCancelled by design
+            from src.exceptions import PaginationCancelled
+
+            with self.assertRaises(PaginationCancelled):
+                self.tui._display_tables(table_data)
+
+            kwargs = mock_display_table.call_args.kwargs
+            data = kwargs["data"]
+
+            # Verify timestamps were converted to readable format (YYYY-MM-DD)
+            created_date = data[0]["created_at"]
+            updated_date = data[0]["updated_at"]
+
+            # Should be formatted as YYYY-MM-DD
+            self.assertRegex(
+                created_date,
+                r"^\d{4}-\d{2}-\d{2}$",
+                f"created_at should be formatted as YYYY-MM-DD, got: {created_date}",
+            )
+            self.assertRegex(
+                updated_date,
+                r"^\d{4}-\d{2}-\d{2}$",
+                f"updated_at should be formatted as YYYY-MM-DD, got: {updated_date}",
+            )
+
+            # Verify the actual date conversion (1748473407547 ms = 2025-05-28)
+            self.assertEqual(created_date, "2025-05-28")
+            self.assertEqual(updated_date, "2025-05-28")
+
+    def test_table_display_with_missing_timestamps(self):
+        """Test table display handles missing timestamp fields gracefully."""
+
+        table_data = {
+            "tables": [
+                {
+                    "name": "table_no_timestamps",
+                    "table_type": "VIEW",
+                    # No created_at or updated_at fields
+                    "columns": [],
+                }
+            ],
+            "catalog_name": "test_catalog",
+            "schema_name": "test_schema",
+            "total_count": 1,
+        }
+
+        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+            # _display_tables raises PaginationCancelled by design, not an error
+            from src.exceptions import PaginationCancelled
+
+            with self.assertRaises(PaginationCancelled):
+                self.tui._display_tables(table_data)
+
+            kwargs = mock_display_table.call_args.kwargs
+            data = kwargs["data"]
+
+            # Verify the table was processed even without timestamps
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["name"], "table_no_timestamps")
+
+            # Timestamp fields should be None or empty
+            self.assertIsNone(data[0].get("created_at"))
+            self.assertIsNone(data[0].get("updated_at"))
+
+    def test_row_count_formatting(self):
+        """Test that row counts are properly formatted with K/M/B suffixes."""
+
+        test_cases = [
+            {"row_count": 123, "expected": "123"},  # Small numbers stay as-is
+            {"row_count": 1234, "expected": "1.2K"},  # Thousands
+            {"row_count": 50000, "expected": "50.0K"},  # Tens of thousands
+            {"row_count": 1234567, "expected": "1.2M"},  # Millions
+            {"row_count": 4387229, "expected": "4.4M"},  # Real example from API
+            {"row_count": 1234567890, "expected": "1.2B"},  # Billions
+            {"row_count": "-", "expected": "-"},  # Dash for unknown values
+        ]
+
+        for i, case in enumerate(test_cases):
+            with self.subTest(case=case):
+                table_data = {
+                    "tables": [
+                        {
+                            "name": f"test_table_{i}",
+                            "table_type": "MANAGED",
+                            "row_count": case["row_count"],
+                            "columns": [],
+                        }
+                    ],
+                    "catalog_name": "test_catalog",
+                    "schema_name": "test_schema",
+                    "total_count": 1,
+                }
+
+                with patch(
+                    "src.ui.table_formatter.display_table"
+                ) as mock_display_table:
+                    from src.exceptions import PaginationCancelled
+
+                    with self.assertRaises(PaginationCancelled):
+                        self.tui._display_tables(table_data)
+
+                    kwargs = mock_display_table.call_args.kwargs
+                    data = kwargs["data"]
+
+                    # Verify row count was formatted correctly
+                    actual_row_count = data[0]["row_count"]
+                    self.assertEqual(
+                        actual_row_count,
+                        case["expected"],
+                        f"Row count {case['row_count']} should format to {case['expected']}, got {actual_row_count}",
+                    )

@@ -88,9 +88,12 @@ def handle_command(
                 "data_source_format": table.get("data_source_format", ""),
                 "comment": table.get("comment", ""),
                 "created_at": table.get("created_at"),
+                "updated_at": table.get("updated_at"),
                 "created_by": table.get("created_by", ""),
                 "owner": table.get("owner", ""),
-                "row_count": table.get("properties", {}).get("row_count", "Unknown"),
+                "row_count": table.get("properties", {}).get(
+                    "spark.sql.statistics.numRows", "-"
+                ),
                 "size_bytes": table.get("properties", {}).get("size_bytes", "Unknown"),
             }
 

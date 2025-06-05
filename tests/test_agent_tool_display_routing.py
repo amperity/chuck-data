@@ -168,7 +168,6 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
         This test specifically prevents the regression where agent tool names with hyphens
         (like 'list-schemas') weren't being mapped to the correct display methods.
         """
-        from unittest.mock import MagicMock
 
         # Test cases: agent tool name -> expected display method call
         command_mappings = [
@@ -307,7 +306,7 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
 
                 with patch("src.agent.tool_executor.jsonschema.validate"):
                     with self.assertRaises(PaginationCancelled):
-                        result = execute_tool(
+                        execute_tool(
                             mock_client,
                             "list-schemas",
                             {"catalog_name": "test_catalog"},

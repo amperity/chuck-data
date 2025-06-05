@@ -56,7 +56,7 @@ line-length = 88
 
 [tool.ruff]
 line-length = 88
-exclude = ["assets/stitch_notebook_template.ipynb"]
+exclude = ["**/assets/stitch_notebook_template.ipynb", "*.ipynb"]
 
 [tool.pyright]
 typeCheckingMode = "basic"

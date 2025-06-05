@@ -828,16 +828,42 @@ class ChuckTUI:
                 table["column_count"] = 0
 
             # Format timestamps if present
-            for ts_field in ["created", "updated"]:
+            for ts_field in ["created_at", "updated_at"]:
                 if ts_field in table and table[ts_field]:
                     try:
                         # Convert timestamp to more readable format if needed
-                        # This assumes timestamps are either strings or integers
+                        # Handle Unix timestamps (integers) and ISO strings
                         timestamp = table[ts_field]
-                        if isinstance(timestamp, str) and len(timestamp) > 10:
+                        if isinstance(timestamp, int):
+                            # Convert Unix timestamp (milliseconds) to readable date
+                            from datetime import datetime
+
+                            date_obj = datetime.fromtimestamp(timestamp / 1000)
+                            table[ts_field] = date_obj.strftime("%Y-%m-%d")
+                        elif isinstance(timestamp, str) and len(timestamp) > 10:
                             table[ts_field] = timestamp.split("T")[0]
                     except Exception:
                         pass  # Keep the original format if conversion fails
+
+            # Format row count if present
+            if "row_count" in table and table["row_count"] not in ["-", "Unknown"]:
+                try:
+                    row_count = table["row_count"]
+                    if isinstance(row_count, str) and row_count.isdigit():
+                        row_count = int(row_count)
+
+                    if isinstance(row_count, int):
+                        # Format large numbers with appropriate suffixes
+                        if row_count >= 1_000_000_000:
+                            table["row_count"] = f"{row_count / 1_000_000_000:.1f}B"
+                        elif row_count >= 1_000_000:
+                            table["row_count"] = f"{row_count / 1_000_000:.1f}M"
+                        elif row_count >= 1_000:
+                            table["row_count"] = f"{row_count / 1_000:.1f}K"
+                        else:
+                            table["row_count"] = str(row_count)
+                except Exception:
+                    pass  # Keep the original format if conversion fails
 
         # Define column styling functions
         def table_type_style(type_val):
@@ -863,8 +889,15 @@ class ChuckTUI:
         display_table(
             console=self.console,
             data=tables,
-            columns=["name", "table_type", "column_count", "created", "updated"],
-            headers=["Table Name", "Type", "# Cols", "Created", "Last Updated"],
+            columns=[
+                "name",
+                "table_type",
+                "column_count",
+                "row_count",
+                "created_at",
+                "updated_at",
+            ],
+            headers=["Table Name", "Type", "# Cols", "Rows", "Created", "Last Updated"],
             title=title,
             style_map=style_map,
             title_style=TABLE_TITLE_STYLE,

@@ -11,11 +11,10 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 # Import version from this package
-from .version import __version__
-
+from .version import __version__  # noqa: E402
 # Import the TUI components
-from logger import setup_logging
-from ui.tui import ChuckTUI
+from logger import setup_logging  # noqa: E402
+from ui.tui import ChuckTUI  # noqa: E402
 
 
 def setup_arg_parser() -> argparse.ArgumentParser:
