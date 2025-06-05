@@ -47,6 +47,9 @@ def handle_command(
                 "state": warehouse.get("state"),
                 "creator_name": warehouse.get("creator_name"),
                 "auto_stop_mins": warehouse.get("auto_stop_mins", "N/A"),
+                "enable_serverless_compute": warehouse.get(
+                    "enable_serverless_compute", False
+                ),
             }
             formatted_warehouses.append(formatted_warehouse)
 

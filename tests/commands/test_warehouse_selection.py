@@ -42,7 +42,7 @@ class TestWarehouseSelection(unittest.TestCase):
         """Test successful warehouse selection."""
         # Set up warehouse in stub
         self.client_stub.add_warehouse(
-            "Test Warehouse", state="RUNNING", size="2X-Small"
+            name="Test Warehouse", state="RUNNING", size="2X-Small"
         )
         # The warehouse_id should be "warehouse_0" based on the stub implementation
         warehouse_id = "warehouse_0"

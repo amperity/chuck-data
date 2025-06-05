@@ -1130,7 +1130,10 @@ class ChuckTUI:
             processed = {
                 "name": warehouse.get("name", ""),
                 "id": warehouse.get("id", ""),
-                "size": warehouse.get("cluster_size", ""),  # API uses cluster_size
+                "size": warehouse.get("size", ""),  # Use 'size' field from API
+                "serverless": (
+                    "Yes" if warehouse.get("enable_serverless_compute", False) else "No"
+                ),
                 "state": warehouse.get("state", ""),
             }
             processed_warehouses.append(processed)
@@ -1170,8 +1173,8 @@ class ChuckTUI:
         display_table(
             console=self.console,
             data=processed_warehouses,
-            columns=["name", "id", "size", "state"],
-            headers=["Name", "ID", "Size", "State"],
+            columns=["name", "id", "size", "serverless", "state"],
+            headers=["Name", "ID", "Size", "Serverless", "State"],
             title="Available SQL Warehouses",
             style_map=style_map,
             title_style=TABLE_TITLE_STYLE,

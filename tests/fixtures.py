@@ -273,7 +273,7 @@ class DatabricksClientStub:
 
     # Warehouse operations
     def list_warehouses(self, **kwargs):
-        return {"warehouses": self.warehouses}
+        return self.warehouses
 
     def get_warehouse(self, warehouse_id):
         warehouse = next((w for w in self.warehouses if w["id"] == warehouse_id), None)
@@ -448,13 +448,30 @@ class DatabricksClientStub:
         self.models.append(model)
         return model
 
-    def add_warehouse(self, name, state="RUNNING", size="2X-Small", **kwargs):
+    def add_warehouse(
+        self,
+        warehouse_id=None,
+        name="Test Warehouse",
+        state="RUNNING",
+        size="SMALL",
+        enable_serverless_compute=False,
+        creator_name="test.user@example.com",
+        auto_stop_mins=60,
+        **kwargs,
+    ):
+        if warehouse_id is None:
+            warehouse_id = f"warehouse_{len(self.warehouses)}"
+
         warehouse = {
-            "id": f"warehouse_{len(self.warehouses)}",
+            "id": warehouse_id,
             "name": name,
             "state": state,
-            "cluster_size": size,
-            "jdbc_url": f"jdbc:databricks://test.cloud.databricks.com:443/default;transportMode=http;ssl=1;httpPath=/sql/1.0/warehouses/{len(self.warehouses)}",
+            "size": size,  # Use size instead of cluster_size for the main field
+            "cluster_size": size,  # Keep cluster_size for backward compatibility
+            "enable_serverless_compute": enable_serverless_compute,
+            "creator_name": creator_name,
+            "auto_stop_mins": auto_stop_mins,
+            "jdbc_url": f"jdbc:databricks://test.cloud.databricks.com:443/default;transportMode=http;ssl=1;httpPath=/sql/1.0/warehouses/{warehouse_id}",
             **kwargs,
         }
         self.warehouses.append(warehouse)
