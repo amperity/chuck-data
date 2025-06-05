@@ -12,6 +12,7 @@ if src_path not in sys.path:
 
 # Import version from this package
 from .version import __version__  # noqa: E402
+
 # Import the TUI components
 from logger import setup_logging  # noqa: E402
 from ui.tui import ChuckTUI  # noqa: E402
