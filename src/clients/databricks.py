@@ -363,9 +363,7 @@ class DatabricksAPIClient:
             params["include_browse"] = "true"
         if include_manifest_capabilities:
             params["include_manifest_capabilities"] = "true"
-        result = self.get_with_params("/api/2.1/unity-catalog/tables", params)
-        logging.critical(result)
-        return result
+        return self.get_with_params("/api/2.1/unity-catalog/tables", params)
 
     def get_table(
         self,
