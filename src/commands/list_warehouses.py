@@ -50,6 +50,7 @@ def handle_command(
                 "enable_serverless_compute": warehouse.get(
                     "enable_serverless_compute", False
                 ),
+                "warehouse_type": warehouse.get("warehouse_type"),
             }
             formatted_warehouses.append(formatted_warehouse)
 

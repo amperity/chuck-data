@@ -32,6 +32,7 @@ class TestListWarehouses(unittest.TestCase):
             size="XLARGE",
             state="STOPPED",
             enable_serverless_compute=True,
+            warehouse_type="PRO",
             creator_name="test.user@example.com",
             auto_stop_mins=10,
         )
@@ -41,6 +42,7 @@ class TestListWarehouses(unittest.TestCase):
             size="SMALL",
             state="RUNNING",
             enable_serverless_compute=False,
+            warehouse_type="CLASSIC",
             creator_name="another.user@example.com",
             auto_stop_mins=60,
         )
@@ -50,6 +52,7 @@ class TestListWarehouses(unittest.TestCase):
             size="XXSMALL",
             state="STARTING",
             enable_serverless_compute=True,
+            warehouse_type="PRO",
             creator_name="third.user@example.com",
             auto_stop_mins=15,
         )
@@ -78,6 +81,7 @@ class TestListWarehouses(unittest.TestCase):
         self.assertEqual(serverless_warehouse["size"], "XLARGE")
         self.assertEqual(serverless_warehouse["state"], "STOPPED")
         self.assertEqual(serverless_warehouse["enable_serverless_compute"], True)
+        self.assertEqual(serverless_warehouse["warehouse_type"], "PRO")
         self.assertEqual(serverless_warehouse["creator_name"], "test.user@example.com")
         self.assertEqual(serverless_warehouse["auto_stop_mins"], 10)
 
@@ -88,6 +92,7 @@ class TestListWarehouses(unittest.TestCase):
         self.assertEqual(regular_warehouse["size"], "SMALL")
         self.assertEqual(regular_warehouse["state"], "RUNNING")
         self.assertEqual(regular_warehouse["enable_serverless_compute"], False)
+        self.assertEqual(regular_warehouse["warehouse_type"], "CLASSIC")
         self.assertEqual(regular_warehouse["creator_name"], "another.user@example.com")
         self.assertEqual(regular_warehouse["auto_stop_mins"], 60)
 

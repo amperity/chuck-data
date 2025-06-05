@@ -455,6 +455,7 @@ class DatabricksClientStub:
         state="RUNNING",
         size="SMALL",
         enable_serverless_compute=False,
+        warehouse_type="PRO",
         creator_name="test.user@example.com",
         auto_stop_mins=60,
         **kwargs,
@@ -469,6 +470,7 @@ class DatabricksClientStub:
             "size": size,  # Use size instead of cluster_size for the main field
             "cluster_size": size,  # Keep cluster_size for backward compatibility
             "enable_serverless_compute": enable_serverless_compute,
+            "warehouse_type": warehouse_type,
             "creator_name": creator_name,
             "auto_stop_mins": auto_stop_mins,
             "jdbc_url": f"jdbc:databricks://test.cloud.databricks.com:443/default;transportMode=http;ssl=1;httpPath=/sql/1.0/warehouses/{warehouse_id}",

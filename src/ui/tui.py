@@ -1126,15 +1126,20 @@ class ChuckTUI:
         # Process warehouse data for display
         processed_warehouses = []
         for warehouse in warehouses:
+            # Determine warehouse type: show 'serverless' if serverless is enabled, otherwise show warehouse_type
+            warehouse_type = (
+                "serverless"
+                if warehouse.get("enable_serverless_compute", False)
+                else warehouse.get("warehouse_type", "").lower()
+            )
+
             # Create a processed warehouse with formatted fields
             processed = {
                 "name": warehouse.get("name", ""),
                 "id": warehouse.get("id", ""),
-                "size": warehouse.get("size", ""),  # Use 'size' field from API
-                "serverless": (
-                    "Yes" if warehouse.get("enable_serverless_compute", False) else "No"
-                ),
-                "state": warehouse.get("state", ""),
+                "size": warehouse.get("size", "").lower(),  # Lowercase size field
+                "type": warehouse_type,
+                "state": warehouse.get("state", "").lower(),  # Lowercase state field
             }
             processed_warehouses.append(processed)
 
@@ -1152,11 +1157,11 @@ class ChuckTUI:
 
         # Define styling function for state
         def state_style(state):
-            if state == "RUNNING":
+            if state == "running":
                 return "green"
-            elif state == "STOPPED":
+            elif state == "stopped":
                 return "red"
-            elif state in ["STARTING", "STOPPING", "DELETING", "RESIZING"]:
+            elif state in ["starting", "stopping", "deleting", "resizing"]:
                 return "yellow"
             return "dim"
 
@@ -1173,8 +1178,8 @@ class ChuckTUI:
         display_table(
             console=self.console,
             data=processed_warehouses,
-            columns=["name", "id", "size", "serverless", "state"],
-            headers=["Name", "ID", "Size", "Serverless", "State"],
+            columns=["name", "id", "size", "type", "state"],
+            headers=["Name", "ID", "Size", "Type", "State"],
             title="Available SQL Warehouses",
             style_map=style_map,
             title_style=TABLE_TITLE_STYLE,

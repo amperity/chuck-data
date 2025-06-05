@@ -425,9 +425,10 @@ class TestTUIDisplay(unittest.TestCase):
                         case["expected"],
                         f"Row count {case['row_count']} should format to {case['expected']}, got {actual_row_count}",
                     )
+
     def test_display_warehouses_basic(self):
         """Test basic warehouse display functionality."""
-        # Create test warehouse data (without pre-computed serverless field)
+        # Create test warehouse data with type field logic
         warehouse_data = {
             "warehouses": [
                 {
@@ -436,6 +437,7 @@ class TestTUIDisplay(unittest.TestCase):
                     "size": "XLARGE",
                     "state": "STOPPED",
                     "enable_serverless_compute": True,
+                    "warehouse_type": "PRO",
                 },
                 {
                     "id": "warehouse-456",
@@ -443,6 +445,7 @@ class TestTUIDisplay(unittest.TestCase):
                     "size": "SMALL",
                     "state": "RUNNING",
                     "enable_serverless_compute": False,
+                    "warehouse_type": "PRO",
                 },
             ],
             "current_warehouse_id": "warehouse-123",
@@ -460,14 +463,24 @@ class TestTUIDisplay(unittest.TestCase):
 
             self.assertEqual(call_args["title"], "Available SQL Warehouses")
             self.assertEqual(
-                call_args["columns"], ["name", "id", "size", "serverless", "state"]
+                call_args["columns"], ["name", "id", "size", "type", "state"]
             )
 
-            # Verify serverless conversion: True -> "Yes", False -> "No"
+            # Verify type field logic: serverless when enable_serverless_compute=true, otherwise warehouse_type
             data = call_args["data"]
             self.assertEqual(len(data), 2)
-            self.assertEqual(data[0]["serverless"], "Yes")
-            self.assertEqual(data[1]["serverless"], "No")
+            self.assertEqual(
+                data[0]["type"], "serverless"
+            )  # enable_serverless_compute=True
+            self.assertEqual(
+                data[1]["type"], "pro"
+            )  # enable_serverless_compute=False, so show warehouse_type
+
+            # Verify size and state values are lowercased
+            self.assertEqual(data[0]["size"], "xlarge")  # Original: "XLARGE"
+            self.assertEqual(data[0]["state"], "stopped")  # Original: "STOPPED"
+            self.assertEqual(data[1]["size"], "small")  # Original: "SMALL"
+            self.assertEqual(data[1]["state"], "running")  # Original: "RUNNING"
 
     def test_display_warehouses_styling(self):
         """Test warehouse display styling functions."""
@@ -479,6 +492,7 @@ class TestTUIDisplay(unittest.TestCase):
                     "size": "SMALL",
                     "state": "RUNNING",
                     "enable_serverless_compute": True,
+                    "warehouse_type": "PRO",
                 },
                 {
                     "id": "warehouse-inactive",
@@ -486,6 +500,7 @@ class TestTUIDisplay(unittest.TestCase):
                     "size": "SMALL",
                     "state": "STOPPED",
                     "enable_serverless_compute": False,
+                    "warehouse_type": "PRO",
                 },
             ],
             "current_warehouse_id": "warehouse-active",
@@ -506,9 +521,9 @@ class TestTUIDisplay(unittest.TestCase):
 
             # Test state styling
             state_styler = style_map["state"]
-            self.assertEqual(state_styler("RUNNING"), "green")
-            self.assertEqual(state_styler("STOPPED"), "red")
-            self.assertEqual(state_styler("STARTING"), "yellow")
+            self.assertEqual(state_styler("running"), "green")
+            self.assertEqual(state_styler("stopped"), "red")
+            self.assertEqual(state_styler("starting"), "yellow")
 
     def test_display_warehouses_empty_list(self):
         """Test warehouse display with empty warehouse list."""
@@ -525,30 +540,40 @@ class TestTUIDisplay(unittest.TestCase):
         ]
         self.assertTrue(any("No SQL warehouses found" in msg for msg in print_calls))
 
-    def test_display_warehouses_serverless_conversion(self):
-        """Test that serverless boolean values are correctly converted to Yes/No."""
+    def test_display_warehouses_type_conversion(self):
+        """Test that warehouse type logic works correctly."""
         warehouse_data = {
             "warehouses": [
                 {
                     "id": "1",
-                    "name": "True",
+                    "name": "Serverless Warehouse",
                     "size": "SMALL",
                     "state": "STOPPED",
                     "enable_serverless_compute": True,
+                    "warehouse_type": "PRO",
                 },
                 {
                     "id": "2",
-                    "name": "False",
+                    "name": "Pro Warehouse",
                     "size": "SMALL",
                     "state": "STOPPED",
                     "enable_serverless_compute": False,
+                    "warehouse_type": "PRO",
                 },
                 {
                     "id": "3",
-                    "name": "Missing",
+                    "name": "Classic Warehouse",
                     "size": "SMALL",
                     "state": "STOPPED",
-                },  # Missing field
+                    "enable_serverless_compute": False,
+                    "warehouse_type": "CLASSIC",
+                },
+                {
+                    "id": "4",
+                    "name": "Missing Fields",
+                    "size": "SMALL",
+                    "state": "STOPPED",
+                },  # Missing both fields
             ],
         }
 
@@ -560,10 +585,19 @@ class TestTUIDisplay(unittest.TestCase):
 
             data = mock_display_table.call_args.kwargs["data"]
 
-            # Check serverless field conversion: True -> "Yes", False/Missing -> "No"
-            self.assertEqual(data[0]["serverless"], "Yes")  # True
-            self.assertEqual(data[1]["serverless"], "No")  # False
-            self.assertEqual(data[2]["serverless"], "No")  # Missing (defaults to False)
+            # Check type field logic
+            self.assertEqual(
+                data[0]["type"], "serverless"
+            )  # enable_serverless_compute=True
+            self.assertEqual(
+                data[1]["type"], "pro"
+            )  # enable_serverless_compute=False, warehouse_type="PRO"
+            self.assertEqual(
+                data[2]["type"], "classic"
+            )  # enable_serverless_compute=False, warehouse_type="CLASSIC"
+            self.assertEqual(
+                data[3]["type"], ""
+            )  # Missing both fields (warehouse_type defaults to empty string)
 
     def test_display_warehouses_current_warehouse_message(self):
         """Test that current warehouse message is displayed when set."""
@@ -575,6 +609,7 @@ class TestTUIDisplay(unittest.TestCase):
                     "size": "SMALL",
                     "state": "RUNNING",
                     "enable_serverless_compute": False,
+                    "warehouse_type": "PRO",
                 }
             ],
             "current_warehouse_id": "wh-123",
