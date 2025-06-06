@@ -64,6 +64,8 @@ class TestListCatalogs(unittest.TestCase):
         self.assertEqual(len(result.data["catalogs"]), 2)
         self.assertEqual(result.data["total_count"], 2)
         self.assertIn("Found 2 catalog(s).", result.message)
+        self.assertFalse(result.data.get("display", True))  # Should default to False
+        self.assertIn("current_catalog", result.data)
 
         # Verify catalog data
         catalog_names = [c["name"] for c in result.data["catalogs"]]
@@ -108,7 +110,10 @@ class TestListCatalogs(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result.success)
-        self.assertIn("No catalogs found.", result.message)
+        self.assertIn("No catalogs found in this workspace.", result.message)
+        self.assertEqual(result.data["total_count"], 0)
+        self.assertFalse(result.data.get("display", True))
+        self.assertIn("current_catalog", result.data)
 
     def test_list_catalogs_exception(self):
         """Test list_catalogs with unexpected exception."""
@@ -129,3 +134,25 @@ class TestListCatalogs(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Failed to list catalogs", result.message)
         self.assertEqual(str(result.error), "API error")
+
+    def test_list_catalogs_with_display_true(self):
+        """Test list catalogs with display=true shows table."""
+        # Set up test data
+        self.client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
+
+        result = handle_command(self.client_stub, display=True)
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data.get("display"))
+        self.assertEqual(len(result.data.get("catalogs", [])), 1)
+
+    def test_list_catalogs_with_display_false(self):
+        """Test list catalogs with display=false returns data without display."""
+        # Set up test data
+        self.client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
+
+        result = handle_command(self.client_stub, display=False)
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.data.get("display"))
+        self.assertEqual(len(result.data.get("catalogs", [])), 1)

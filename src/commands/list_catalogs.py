@@ -19,6 +19,7 @@ def handle_command(
     Args:
         client: DatabricksAPIClient instance for API calls
         **kwargs: Command parameters
+            - display: bool, whether to display the table (default: False)
             - include_browse: Whether to include catalogs with selective metadata access (optional)
             - max_results: Maximum number of catalogs to return (optional)
             - page_token: Opaque pagination token to go to next page (optional)
@@ -31,6 +32,14 @@ def handle_command(
             False,
             message="No Databricks client available. Please set up your workspace first.",
         )
+
+    # Check if display should be shown (default to False for agent calls)
+    display = kwargs.get("display", False)
+
+    # Get current catalog for highlighting
+    from src.config import get_active_catalog
+
+    current_catalog = get_active_catalog()
 
     # Extract parameters
     include_browse = kwargs.get("include_browse", False)
@@ -50,7 +59,16 @@ def handle_command(
         next_page_token = result.get("next_page_token")
 
         if not catalogs:
-            return CommandResult(True, message="No catalogs found.")
+            return CommandResult(
+                True,
+                message="No catalogs found in this workspace.",
+                data={
+                    "catalogs": [],
+                    "total_count": 0,
+                    "display": display,
+                    "current_catalog": current_catalog,
+                },
+            )
 
         # Format catalog information for display
         formatted_catalogs = []
@@ -72,6 +90,8 @@ def handle_command(
                 "catalogs": formatted_catalogs,
                 "total_count": len(formatted_catalogs),
                 "next_page_token": next_page_token,
+                "display": display,  # Pass through to display logic
+                "current_catalog": current_catalog,
             },
             message=f"Found {len(formatted_catalogs)} catalog(s)."
             + (
@@ -89,9 +109,13 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="list-catalogs",
-    description="List catalogs in Unity Catalog. Only useful for listing catalogs, not schemas, not tables nor anything else.",
+    description="Lists all catalogs in the current workspace. By default returns data without showing table. Use display=true when user asks to see catalogs.",
     handler=handle_command,
     parameters={
+        "display": {
+            "type": "boolean",
+            "description": "Whether to display the catalog table to the user (default: false). Set to true when user asks to see catalogs.",
+        },
         "include_browse": {
             "type": "boolean",
             "description": "Whether to include catalogs with selective metadata access.",
@@ -107,10 +131,14 @@ DEFINITION = CommandDefinition(
         },
     },
     required_params=[],
-    tui_aliases=["/catalogs"],
+    tui_aliases=["/list-catalogs", "/catalogs"],
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full catalog list to agents
-    usage_hint="Usage: /list-catalogs [--include_browse true|false] [--max_results <number>] [--page_token <token>]",
+    agent_display="conditional",  # Use conditional display based on display parameter
+    display_condition=lambda result: result.get(
+        "display", False
+    ),  # Show full table only when display=True
+    condensed_action="Listing catalogs",  # Friendly name for condensed display
+    usage_hint="Usage: /list-catalogs [--display true|false] [--include_browse true|false] [--max_results <number>] [--page_token <token>]",
 )

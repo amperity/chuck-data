@@ -33,10 +33,10 @@ class TestCatalogSelection(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_missing_catalog_name(self):
-        """Test handling when catalog_name is not provided."""
+        """Test handling when catalog parameter is not provided."""
         result = handle_command(self.client_stub)
         self.assertFalse(result.success)
-        self.assertIn("catalog_name parameter is required", result.message)
+        self.assertIn("catalog parameter is required", result.message)
 
     def test_successful_catalog_selection(self):
         """Test successful catalog selection."""
@@ -44,35 +44,32 @@ class TestCatalogSelection(unittest.TestCase):
         self.client_stub.add_catalog("test_catalog", catalog_type="MANAGED")
 
         # Call function
-        result = handle_command(self.client_stub, catalog_name="test_catalog")
+        result = handle_command(self.client_stub, catalog="test_catalog")
 
         # Verify results
         self.assertTrue(result.success)
         self.assertIn("Active catalog is now set to 'test_catalog'", result.message)
-        self.assertIn("Type: managed", result.message)
+        self.assertIn("Type: MANAGED", result.message)
         self.assertEqual(result.data["catalog_name"], "test_catalog")
-        self.assertEqual(result.data["catalog_type"], "managed")
+        self.assertEqual(result.data["catalog_type"], "MANAGED")
 
         # Verify config was updated
         self.assertEqual(get_active_catalog(), "test_catalog")
 
     def test_catalog_selection_with_verification_failure(self):
         """Test catalog selection when verification fails."""
-        # Don't add catalog to stub - will cause verification failure
+        # Add some catalogs but not the one we're looking for (make sure names are very different)
+        self.client_stub.add_catalog("xyz", catalog_type="MANAGED")
 
-        # Call function with nonexistent catalog
-        result = handle_command(self.client_stub, catalog_name="nonexistent_catalog")
+        # Call function with nonexistent catalog that won't fuzzy match
+        result = handle_command(self.client_stub, catalog="completely_different_name")
 
-        # Verify results - should still succeed but with warning
-        self.assertTrue(result.success)
+        # Verify results - should fail since catalog doesn't exist and no fuzzy match
+        self.assertFalse(result.success)
         self.assertIn(
-            "Warning: Could not verify catalog 'nonexistent_catalog'", result.message
+            "No catalog found matching 'completely_different_name'", result.message
         )
-        self.assertEqual(result.data["catalog_name"], "nonexistent_catalog")
-        self.assertEqual(result.data["catalog_type"], "Unknown")
-
-        # Verify config was still updated
-        self.assertEqual(get_active_catalog(), "nonexistent_catalog")
+        self.assertIn("Available catalogs: xyz", result.message)
 
     def test_catalog_selection_exception(self):
         """Test catalog selection with unexpected exception."""
@@ -100,10 +97,28 @@ class TestCatalogSelection(unittest.TestCase):
 
         with patch("src.config._config_manager", config_manager):
             # This should trigger the exception in the catalog verification
-            result = handle_command(failing_stub, catalog_name="test_catalog")
+            result = handle_command(failing_stub, catalog="test_catalog")
 
-            # Should still succeed with warning since it catches the exception
-            self.assertTrue(result.success)
-            self.assertIn("Warning: Could not verify catalog", result.message)
+            # Should fail since get_catalog fails and no catalogs in list
+            self.assertFalse(result.success)
+            self.assertIn("No catalogs found in workspace", result.message)
 
         temp_dir.cleanup()
+
+    def test_select_catalog_by_name(self):
+        """Test catalog selection by name."""
+        self.client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
+
+        result = handle_command(self.client_stub, catalog="Test Catalog")
+
+        self.assertTrue(result.success)
+        self.assertIn("Active catalog is now set to 'Test Catalog'", result.message)
+
+    def test_select_catalog_fuzzy_matching(self):
+        """Test catalog selection with fuzzy matching."""
+        self.client_stub.add_catalog("Test Catalog Long Name", catalog_type="MANAGED")
+
+        result = handle_command(self.client_stub, catalog="Test")
+
+        self.assertTrue(result.success)
+        self.assertIn("Test Catalog Long Name", result.message)

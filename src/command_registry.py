@@ -5,7 +5,7 @@ This module provides a central registry for all commands that can be executed
 by both the user interface and LLM agent tools, reducing code duplication.
 """
 
-from typing import Dict, Any, Callable, List, Optional, Union
+from typing import Dict, Any, Callable, List, Optional
 from dataclasses import dataclass, field
 
 

@@ -170,22 +170,43 @@ class OutputFormatter:
             console.print(f"[{WARNING}]No catalogs found.[/{WARNING}]")
             return
 
-        # Define a style map for conditional formatting
-        def style_name(row):
-            if row.get("name") == current_catalog:
-                return f"[{SUCCESS_STYLE}]{row.get('name')}[/{SUCCESS_STYLE}]"
-            return row.get("name")
+        # Transform data for display
+        display_data = []
+        for catalog in catalogs:
+            display_data.append(
+                {
+                    "name": catalog.get("name", ""),
+                    "type": catalog.get("type", ""),
+                    "comment": catalog.get("comment", ""),
+                    "owner": catalog.get("owner", ""),
+                }
+            )
+
+        # Define styling functions
+        def name_style(value):
+            if value == current_catalog:
+                return "bold green"
+            return None
+
+        def type_style(value):
+            if value.lower() == "managed":
+                return "green"
+            elif value.lower() == "external":
+                return "blue"
+            else:
+                return "yellow"
 
         style_map = {
-            "name": style_name,
+            "name": name_style,
+            "type": type_style,
         }
 
         # Display the catalogs table
         display_table(
             console=console,
-            data=catalogs,
-            columns=["name", "type", "comment"],
-            headers=["Name", "Type", "Comment"],
+            data=display_data,
+            columns=["name", "type", "comment", "owner"],
+            headers=["Name", "Type", "Comment", "Owner"],
             title="Available Catalogs",
             style_map=style_map,
             title_style=TABLE_TITLE_STYLE,
@@ -195,7 +216,7 @@ class OutputFormatter:
         # Display current catalog if set
         if current_catalog:
             console.print(
-                f"\nCurrent catalog: [{SUCCESS_STYLE}]{current_catalog}[/{SUCCESS_STYLE}]"
+                f"\nCurrent catalog: [bold green]{current_catalog}[/bold green]"
             )
 
     @staticmethod
