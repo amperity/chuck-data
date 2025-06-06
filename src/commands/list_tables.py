@@ -183,7 +183,9 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     agent_display="conditional",  # Use conditional display based on display parameter
-    display_condition=lambda result: result.get("display", False),  # Show full table only when display=True
+    display_condition=lambda result: result.get(
+        "display", False
+    ),  # Show full table only when display=True
     condensed_action="Listing tables",  # Friendly name for condensed display
     usage_hint="Usage: /list-tables [--catalog_name <catalog>] [--schema_name <schema>] [--display true|false]\n(Uses active catalog/schema if not specified)",
 )

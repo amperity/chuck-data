@@ -138,7 +138,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
                 "warehouse_id": warehouse_id_to_set,
                 "warehouse_name": warehouse_display_name,
                 "state": warehouse_state,
-                "step": f"Warehouse set (ID: {warehouse_id_to_set})",  # Include step in final result
+                "step": f"Warehouse set - ID: {warehouse_id_to_set}",  # Include step in final result
             },
         )
 
@@ -163,6 +163,6 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     agent_display="condensed",  # Use condensed display to avoid pagination issues
-    condensed_action="Setting warehouse",
+    condensed_action="Setting warehouse:",
     usage_hint="Usage: /select-warehouse --warehouse <id_or_name>",
 )

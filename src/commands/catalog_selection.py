@@ -139,7 +139,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
                 "catalog_name": catalog_name_to_set,
                 "catalog_type": catalog_type,
                 "owner": catalog_owner,
-                "step": f"Catalog set (Name: {catalog_name_to_set})",
+                "step": f"Catalog set - Name: {catalog_name_to_set}",
             },
         )
 
@@ -164,6 +164,6 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     agent_display="condensed",
-    condensed_action="Setting catalog",
+    condensed_action="Setting catalog:",
     usage_hint="Usage: /select-catalog <catalog_name>",
 )

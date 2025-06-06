@@ -144,7 +144,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
                 "schema_name": schema_name_to_set,
                 "catalog_name": catalog_name,
                 "owner": owner,
-                "step": f"Schema set (Name: {schema_name_to_set})",
+                "step": f"Schema set - Name: {schema_name_to_set}",
             },
         )
 
@@ -169,6 +169,6 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     agent_display="condensed",
-    condensed_action="Setting schema",
+    condensed_action="Setting schema:",
     usage_hint="Usage: /select-schema <schema_name>",
 )

@@ -174,10 +174,10 @@ class TestListTables(unittest.TestCase):
         self.client_stub.add_table("test_catalog", "test_schema", "test_table")
 
         result = handle_command(
-            self.client_stub, 
-            catalog_name="test_catalog", 
+            self.client_stub,
+            catalog_name="test_catalog",
             schema_name="test_schema",
-            display=True
+            display=True,
         )
 
         self.assertTrue(result.success)
@@ -192,13 +192,12 @@ class TestListTables(unittest.TestCase):
         self.client_stub.add_table("test_catalog", "test_schema", "test_table")
 
         result = handle_command(
-            self.client_stub, 
-            catalog_name="test_catalog", 
+            self.client_stub,
+            catalog_name="test_catalog",
             schema_name="test_schema",
-            display=False
+            display=False,
         )
 
         self.assertTrue(result.success)
         self.assertFalse(result.data.get("display"))
         self.assertEqual(len(result.data.get("tables", [])), 1)
-

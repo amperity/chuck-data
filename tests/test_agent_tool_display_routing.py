@@ -102,7 +102,11 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
                 self.assertIsNotNone(cmd_def, f"Command {case['tool_name']} not found")
 
                 # Verify agent_display setting based on command type
-                if case["tool_name"] in ["list-catalogs", "list-schemas", "list-tables"]:
+                if case["tool_name"] in [
+                    "list-catalogs",
+                    "list-schemas",
+                    "list-tables",
+                ]:
                     # list-catalogs, list-schemas, and list-tables use conditional display
                     self.assertEqual(
                         cmd_def.agent_display,
@@ -266,7 +270,12 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
         for cmd_name in list_commands:
             with self.subTest(command=cmd_name):
                 cmd_def = get_command(cmd_name)
-                if cmd_name in ["list-warehouses", "list-catalogs", "list-schemas", "list-tables"]:
+                if cmd_name in [
+                    "list-warehouses",
+                    "list-catalogs",
+                    "list-schemas",
+                    "list-tables",
+                ]:
                     # list-warehouses, list-catalogs, list-schemas, and list-tables use conditional display with display parameter
                     self.assertEqual(
                         cmd_def.agent_display,

@@ -706,9 +706,15 @@ class ChuckTUI:
             if "step" in tool_result:
                 metrics.append(tool_result["step"])
             # Schema/Catalog selection specific info - keep it simple (fallback if no step)
-            elif tool_name in ["set_schema", "select-schema"] and "schema_name" in tool_result:
+            elif (
+                tool_name in ["set_schema", "select-schema"]
+                and "schema_name" in tool_result
+            ):
                 metrics.append(f"Schema set (Name: {tool_result['schema_name']})")
-            elif tool_name in ["set_catalog", "select-catalog"] and "catalog_name" in tool_result:
+            elif (
+                tool_name in ["set_catalog", "select-catalog"]
+                and "catalog_name" in tool_result
+            ):
                 metrics.append(f"Catalog set (Name: {tool_result['catalog_name']})")
 
             # Generic message fallback
