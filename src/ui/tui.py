@@ -702,15 +702,14 @@ class ChuckTUI:
                 if "name" in workspace:
                     metrics.append(f"workspace: {workspace['name']}")
 
-            # Schema/Catalog selection specific info - keep it simple
-            if tool_name == "set_schema" and "schema_name" in tool_result:
-                metrics.append(f"{tool_result['schema_name']}")
-            elif tool_name == "set_catalog" and "catalog_name" in tool_result:
-                metrics.append(f"{tool_result['catalog_name']}")
-
             # Step-based progress reporting (used by warehouse selection, etc.)
             if "step" in tool_result:
                 metrics.append(tool_result["step"])
+            # Schema/Catalog selection specific info - keep it simple (fallback if no step)
+            elif tool_name in ["set_schema", "select-schema"] and "schema_name" in tool_result:
+                metrics.append(f"Schema set (Name: {tool_result['schema_name']})")
+            elif tool_name in ["set_catalog", "select-catalog"] and "catalog_name" in tool_result:
+                metrics.append(f"Catalog set (Name: {tool_result['catalog_name']})")
 
             # Generic message fallback
             if not metrics and "message" in tool_result:

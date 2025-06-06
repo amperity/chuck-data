@@ -33,17 +33,17 @@ class TestSchemaSelection(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_missing_schema_name(self):
-        """Test handling when schema_name is not provided."""
+        """Test handling when schema parameter is not provided."""
         result = handle_command(self.client_stub)
         self.assertFalse(result.success)
-        self.assertIn("schema_name parameter is required", result.message)
+        self.assertIn("schema parameter is required", result.message)
 
     def test_no_active_catalog(self):
         """Test handling when no active catalog is selected."""
         # Don't set any active catalog in config
 
         # Call function
-        result = handle_command(self.client_stub, schema_name="test_schema")
+        result = handle_command(self.client_stub, schema="test_schema")
 
         # Verify results
         self.assertFalse(result.success)
@@ -57,7 +57,7 @@ class TestSchemaSelection(unittest.TestCase):
         self.client_stub.add_schema("test_catalog", "test_schema")
 
         # Call function
-        result = handle_command(self.client_stub, schema_name="test_schema")
+        result = handle_command(self.client_stub, schema="test_schema")
 
         # Verify results
         self.assertTrue(result.success)
@@ -70,42 +70,43 @@ class TestSchemaSelection(unittest.TestCase):
         self.assertEqual(get_active_schema(), "test_schema")
 
     def test_schema_selection_with_verification_failure(self):
-        """Test schema selection when verification fails."""
+        """Test schema selection when no matching schema exists."""
         # Set up active catalog but don't add the schema to stub
         set_active_catalog("test_catalog")
         self.client_stub.add_catalog("test_catalog")
-        # Don't add the schema - this will cause verification to fail
+        self.client_stub.add_schema("test_catalog", "completely_different_schema_name")
 
-        # Call function
-        result = handle_command(self.client_stub, schema_name="nonexistent_schema")
+        # Call function with non-existent schema that won't match via fuzzy matching
+        result = handle_command(self.client_stub, schema="xyz_nonexistent_abc")
 
-        # Verify results - should still succeed but with warning
-        self.assertTrue(result.success)
-        self.assertIn(
-            "Warning: Could not verify schema 'nonexistent_schema'", result.message
-        )
-        self.assertEqual(result.data["schema_name"], "nonexistent_schema")
-        self.assertEqual(result.data["catalog_name"], "test_catalog")
-
-        # Verify config was still updated
-        self.assertEqual(get_active_schema(), "nonexistent_schema")
+        # Verify results - should fail cleanly
+        self.assertFalse(result.success)
+        self.assertIn("No schema found matching 'xyz_nonexistent_abc'", result.message)
+        self.assertIn("Available schemas:", result.message)
 
     def test_schema_selection_exception(self):
-        """Test schema selection with unexpected exception."""
+        """Test schema selection with list_schemas exception."""
         # Set up active catalog
         set_active_catalog("test_catalog")
 
-        # Create a stub that raises an exception during schema verification
+        # Create a stub that raises an exception during list_schemas
         class FailingStub(DatabricksClientStub):
-            def get_schema(self, catalog_name, schema_name):
-                raise Exception("Failed to set schema")
+            def list_schemas(
+                self,
+                catalog_name,
+                include_browse=False,
+                max_results=None,
+                page_token=None,
+                **kwargs,
+            ):
+                raise Exception("Failed to list schemas")
 
         failing_stub = FailingStub()
         failing_stub.add_catalog("test_catalog")
 
         # Call function
-        result = handle_command(failing_stub, schema_name="test_schema")
+        result = handle_command(failing_stub, schema="test_schema")
 
-        # Should still succeed with warning since it catches the exception
-        self.assertTrue(result.success)
-        self.assertIn("Warning: Could not verify schema", result.message)
+        # Should fail due to the exception
+        self.assertFalse(result.success)
+        self.assertIn("Failed to list schemas", result.message)

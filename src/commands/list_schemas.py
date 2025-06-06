@@ -6,7 +6,7 @@ from typing import Optional, Any
 from src.clients.databricks import DatabricksAPIClient
 from src.commands.base import CommandResult
 from src.catalogs import list_schemas as get_schemas_list
-from src.config import get_active_catalog
+from src.config import get_active_catalog, get_active_schema
 from src.command_registry import CommandDefinition
 import logging
 
@@ -15,11 +15,12 @@ def handle_command(
     client: Optional[DatabricksAPIClient], **kwargs: Any
 ) -> CommandResult:
     """
-    List schemas in a Unity Catalog catalog.
+    Lists all schemas in the current catalog.
 
     Args:
         client: DatabricksAPIClient instance for API calls
-        **kwargs: Command parameters
+        **kwargs:
+            - display: bool, whether to display the table (default: False)
             - catalog_name: Name of the catalog to list schemas from (optional, uses active catalog if not provided)
             - include_browse: Whether to include schemas with selective metadata access (optional)
             - max_results: Maximum number of schemas to return (optional)
@@ -35,10 +36,14 @@ def handle_command(
         )
 
     # Extract parameters
+    display = kwargs.get("display", False)
     catalog_name = kwargs.get("catalog_name")
     include_browse = kwargs.get("include_browse", False)
     max_results = kwargs.get("max_results")
     page_token = kwargs.get("page_token")
+
+    # Get current schema for highlighting
+    current_schema = get_active_schema()
 
     # If catalog_name not provided, try to use active catalog
     if not catalog_name:
@@ -64,7 +69,15 @@ def handle_command(
 
         if not schemas:
             return CommandResult(
-                True, message=f"No schemas found in catalog '{catalog_name}'."
+                True,
+                message=f"No schemas found in catalog '{catalog_name}'.",
+                data={
+                    "schemas": [],
+                    "total_count": 0,
+                    "display": display,
+                    "current_schema": current_schema,
+                    "catalog_name": catalog_name,
+                },
             )
 
         # Format schema information for display
@@ -86,6 +99,8 @@ def handle_command(
             data={
                 "schemas": formatted_schemas,
                 "total_count": len(formatted_schemas),
+                "display": display,  # Pass through to display logic
+                "current_schema": current_schema,
                 "catalog_name": catalog_name,
                 "next_page_token": next_page_token,
             },
@@ -105,9 +120,13 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="list-schemas",
-    description="List schemas in a Unity Catalog catalog.",
+    description="Lists all schemas in the current catalog. By default returns data without showing table. Use display=true when user asks to see schemas.",
     handler=handle_command,
     parameters={
+        "display": {
+            "type": "boolean",
+            "description": "Whether to display the schema table to the user (default: false). Set to true when user asks to see schemas.",
+        },
         "catalog_name": {
             "type": "string",
             "description": "Name of the catalog to list schemas from (uses active catalog if not provided).",
@@ -127,10 +146,14 @@ DEFINITION = CommandDefinition(
         },
     },
     required_params=[],
-    tui_aliases=["/schemas"],
+    tui_aliases=["/list-schemas", "/schemas"],
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full schema list to agents
-    usage_hint="Usage: /list-schemas [--catalog_name <catalog>] [--include_browse true|false] [--max_results <number>]",
+    agent_display="conditional",  # Use conditional display based on display parameter
+    display_condition=lambda result: result.get(
+        "display", False
+    ),  # Show full table only when display=True
+    condensed_action="Listing schemas",  # Friendly name for condensed display
+    usage_hint="Usage: /list-schemas [--display true|false] [--catalog_name <catalog>]",
 )

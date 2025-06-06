@@ -29,7 +29,12 @@ IMPORTANT WORKFLOWS:
    - If the catalog and schema are already selected - have the user select them first. Stitch requires a catalog and schema to be selected.
    - If user asks about setting up Stitch: use setup_stitch
 
-4. SQL WAREHOUSES: To work with SQL warehouses:
+4. SCHEMAS: To work with schemas:
+   - If user asks "what schemas do I have?" or wants to see schemas: use list_schemas with display=true (shows full table)
+   - If user asks to "use X schema" or "switch to X schema": use select_schema with schema parameter (accepts name, has built-in fuzzy matching). DO NOT call list_schemas first - select_schema has built-in fuzzy matching and will find the schema.
+   - If you need schema info for internal processing: use list_schemas (defaults to no table display)
+
+5. SQL WAREHOUSES: To work with SQL warehouses:
    - If user asks "what warehouses do I have?" or wants to see warehouses: use list_warehouses with display=true (shows full table)
    - If user asks to "use X warehouse" or "switch to X warehouse": use select_warehouse with warehouse parameter (accepts ID or name, has built-in fuzzy matching). DO NOT call list_warehouses first - select_catalog has built-in fuzzy matching and will find the catalog.
    - If you need warehouse info for internal processing: use list_warehouses (defaults to no table display)
