@@ -103,7 +103,9 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     agent_display="conditional",  # Use conditional display based on display parameter
-    display_condition=lambda result: result.get("display", False),  # Show full table only when display=True explicitly set
+    display_condition=lambda result: result.get(
+        "display", False
+    ),  # Show full table only when display=True explicitly set
     condensed_action="Listing warehouses",  # Friendly name for condensed display
     usage_hint="Usage: /list-warehouses [--display true|false]",
 )

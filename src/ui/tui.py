@@ -567,12 +567,14 @@ class ChuckTUI:
             display_type = "condensed"
             if command_def:
                 agent_display = getattr(command_def, "agent_display", "condensed")
-                
+
                 if agent_display == "conditional":
                     # Use display_condition function to determine display type
                     display_condition = getattr(command_def, "display_condition", None)
                     if display_condition and isinstance(tool_result, dict):
-                        display_type = "full" if display_condition(tool_result) else "condensed"
+                        display_type = (
+                            "full" if display_condition(tool_result) else "condensed"
+                        )
                     else:
                         display_type = "condensed"  # Fallback if no condition function
                 else:

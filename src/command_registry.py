@@ -49,7 +49,9 @@ class CommandDefinition:
     agent_display: str = (
         "condensed"  # How to display when called by agent: "condensed", "full", or "conditional"
     )
-    display_condition: Optional[Callable[[Dict[str, Any]], bool]] = None  # Function to determine display type for conditional
+    display_condition: Optional[Callable[[Dict[str, Any]], bool]] = (
+        None  # Function to determine display type for conditional
+    )
     condensed_action: Optional[str] = None  # Friendly action name for condensed display
 
 
