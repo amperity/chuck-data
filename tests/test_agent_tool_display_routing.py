@@ -102,8 +102,8 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
                 self.assertIsNotNone(cmd_def, f"Command {case['tool_name']} not found")
 
                 # Verify agent_display setting based on command type
-                if case["tool_name"] == "list-catalogs":
-                    # list-catalogs uses conditional display
+                if case["tool_name"] in ["list-catalogs", "list-schemas", "list-tables"]:
+                    # list-catalogs, list-schemas, and list-tables use conditional display
                     self.assertEqual(
                         cmd_def.agent_display,
                         "conditional",
@@ -262,12 +262,12 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
             f"Expected list commands changed. Found: {found_commands}, Expected: {expected_list_commands}",
         )
 
-        # Verify each has agent_display="full" (except list-warehouses and list-catalogs which use conditional display)
+        # Verify each has agent_display="full" (except list-warehouses, list-catalogs, list-schemas, and list-tables which use conditional display)
         for cmd_name in list_commands:
             with self.subTest(command=cmd_name):
                 cmd_def = get_command(cmd_name)
-                if cmd_name in ["list-warehouses", "list-catalogs"]:
-                    # list-warehouses and list-catalogs use conditional display with display parameter
+                if cmd_name in ["list-warehouses", "list-catalogs", "list-schemas", "list-tables"]:
+                    # list-warehouses, list-catalogs, list-schemas, and list-tables use conditional display with display parameter
                     self.assertEqual(
                         cmd_def.agent_display,
                         "conditional",
@@ -328,6 +328,7 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
                         ],
                         "catalog_name": "test_catalog",
                         "total_count": 2,
+                        "display": True,  # This triggers the display
                     },
                     message="Found 2 schemas",
                 )
@@ -341,7 +342,7 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
                         execute_tool(
                             mock_client,
                             "list-schemas",
-                            {"catalog_name": "test_catalog"},
+                            {"catalog_name": "test_catalog", "display": True},
                             output_callback=output_callback,
                         )
 

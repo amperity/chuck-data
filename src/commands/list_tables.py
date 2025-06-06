@@ -24,6 +24,7 @@ def handle_command(
             - include_delta_metadata: Whether delta metadata should be included (optional)
             - omit_columns: Whether to omit columns from the response (optional)
             - include_browse: Whether to include tables with selective metadata access (optional)
+            - display: bool, whether to display the table (default: False)
 
     Returns:
         CommandResult with list of tables if successful
@@ -33,6 +34,9 @@ def handle_command(
             False,
             message="No Databricks client available. Please set up your workspace first.",
         )
+
+    # Check if display should be shown (default to False for agent calls)
+    display = kwargs.get("display", False)
 
     # Extract parameters
     catalog_name = kwargs.get("catalog_name")
@@ -75,6 +79,13 @@ def handle_command(
             return CommandResult(
                 True,
                 message=f"No tables found in schema '{catalog_name}.{schema_name}'.",
+                data={
+                    "tables": [],
+                    "total_count": 0,
+                    "catalog_name": catalog_name,
+                    "schema_name": schema_name,
+                    "display": display,
+                },
             )
 
         # Format table information for display
@@ -124,6 +135,7 @@ def handle_command(
                 "total_count": len(formatted_tables),
                 "catalog_name": catalog_name,
                 "schema_name": schema_name,
+                "display": display,
             },
             message=f"Found {len(formatted_tables)} table(s) in '{catalog_name}.{schema_name}'.",
         )
@@ -134,7 +146,7 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="list-tables",
-    description="List tables in a Unity Catalog schema.",
+    description="List tables in a Unity Catalog schema. By default returns data without showing table. Use display=true when user asks to see tables.",
     handler=handle_command,
     parameters={
         "catalog_name": {
@@ -160,12 +172,18 @@ DEFINITION = CommandDefinition(
             "description": "Whether to include tables with selective metadata access.",
             "default": False,
         },
+        "display": {
+            "type": "boolean",
+            "description": "Whether to display the table list to the user (default: false). Set to true when user asks to see tables.",
+        },
     },
     required_params=[],  # Not required anymore as we'll try to get them from active config
-    tui_aliases=["/tables"],
+    tui_aliases=["/list-tables", "/tables"],
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full table list to agents
-    usage_hint="Usage: /list-tables [--catalog_name <catalog>] [--schema_name <schema>] [--omit_columns true|false]\n(Uses active catalog/schema if not specified)",
+    agent_display="conditional",  # Use conditional display based on display parameter
+    display_condition=lambda result: result.get("display", False),  # Show full table only when display=True
+    condensed_action="Listing tables",  # Friendly name for condensed display
+    usage_hint="Usage: /list-tables [--catalog_name <catalog>] [--schema_name <schema>] [--display true|false]\n(Uses active catalog/schema if not specified)",
 )

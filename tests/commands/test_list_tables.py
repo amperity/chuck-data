@@ -165,3 +165,40 @@ class TestListTables(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Failed to list tables", result.message)
         self.assertEqual(str(result.error), "API error")
+
+    def test_list_tables_with_display_true(self):
+        """Test list tables with display=true shows table."""
+        # Set up test data
+        self.client_stub.add_catalog("test_catalog")
+        self.client_stub.add_schema("test_catalog", "test_schema")
+        self.client_stub.add_table("test_catalog", "test_schema", "test_table")
+
+        result = handle_command(
+            self.client_stub, 
+            catalog_name="test_catalog", 
+            schema_name="test_schema",
+            display=True
+        )
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data.get("display"))
+        self.assertEqual(len(result.data.get("tables", [])), 1)
+
+    def test_list_tables_with_display_false(self):
+        """Test list tables with display=false returns data without display."""
+        # Set up test data
+        self.client_stub.add_catalog("test_catalog")
+        self.client_stub.add_schema("test_catalog", "test_schema")
+        self.client_stub.add_table("test_catalog", "test_schema", "test_table")
+
+        result = handle_command(
+            self.client_stub, 
+            catalog_name="test_catalog", 
+            schema_name="test_schema",
+            display=False
+        )
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.data.get("display"))
+        self.assertEqual(len(result.data.get("tables", [])), 1)
+
