@@ -36,4 +36,4 @@ jobs:
 
     - name: Check formatting with Black
       run: |
-        black --check --diff src tests
+        black --check --diff chuck_data tests
