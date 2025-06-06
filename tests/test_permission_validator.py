@@ -34,8 +34,12 @@ class TestPermissionValidator(unittest.TestCase):
                 "chuck_data.databricks.permission_validator.check_sql_warehouse"
             ) as mock_warehouse,
             patch("chuck_data.databricks.permission_validator.check_jobs") as mock_jobs,
-            patch("chuck_data.databricks.permission_validator.check_models") as mock_models,
-            patch("chuck_data.databricks.permission_validator.check_volumes") as mock_volumes,
+            patch(
+                "chuck_data.databricks.permission_validator.check_models"
+            ) as mock_models,
+            patch(
+                "chuck_data.databricks.permission_validator.check_volumes"
+            ) as mock_volumes,
         ):
 
             # Set return values for mock functions

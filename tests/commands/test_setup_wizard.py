@@ -205,7 +205,9 @@ class TestStepHandlers:
         amperity_stub = AmperityClientStub()
 
         with (
-            patch("chuck_data.commands.wizard.steps.get_amperity_token", return_value=None),
+            patch(
+                "chuck_data.commands.wizard.steps.get_amperity_token", return_value=None
+            ),
             patch(
                 "chuck_data.commands.wizard.steps.AmperityAPIClient",
                 return_value=amperity_stub,
@@ -270,7 +272,9 @@ class TestStepHandlers:
         state = WizardState(models=models)
 
         # Only mock external config setting
-        with patch("chuck_data.commands.wizard.steps.set_active_model", return_value=True):
+        with patch(
+            "chuck_data.commands.wizard.steps.set_active_model", return_value=True
+        ):
             # Test valid index (uses real validation)
             result = step.handle_input("1", state)
             assert result.success
@@ -295,7 +299,8 @@ class TestStepHandlers:
 
         # Only mock external config setting
         with patch(
-            "chuck_data.commands.wizard.steps.set_usage_tracking_consent", return_value=True
+            "chuck_data.commands.wizard.steps.set_usage_tracking_consent",
+            return_value=True,
         ):
             # Test valid input (uses real validation)
             result = step.handle_input("yes", state)
@@ -323,7 +328,8 @@ class TestStepHandlers:
 
         # Test valid response
         with patch(
-            "chuck_data.commands.wizard.steps.set_usage_tracking_consent", return_value=True
+            "chuck_data.commands.wizard.steps.set_usage_tracking_consent",
+            return_value=True,
         ):
             result = step.handle_input("yes", state)
             assert result.success
@@ -775,7 +781,9 @@ class TestSecurityFixes:
             assert context_data.get("current_step") == "token_input"
 
             # Mock a validation failure that should go back to workspace URL
-            with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
+            with patch(
+                "chuck_data.clients.databricks.DatabricksAPIClient"
+            ) as mock_client:
                 mock_db_client = MagicMock()
                 mock_db_client.validate_token.return_value = False
                 mock_client.return_value = mock_db_client
@@ -1140,7 +1148,9 @@ class TestTUISecurityIntegration:
             assert result.success
 
             # Mock API error when validating token
-            with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
+            with patch(
+                "chuck_data.clients.databricks.DatabricksAPIClient"
+            ) as mock_client:
                 mock_client.side_effect = Exception(
                     "Connection error: Failed to resolve 'workspace123.cloud.databricks.com'"
                 )

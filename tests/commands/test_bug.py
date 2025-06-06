@@ -143,7 +143,8 @@ class TestBugCommand:
             config_manager = ConfigManager(temp_path)
 
             with mock.patch(
-                "chuck_data.commands.bug.get_config_manager", return_value=config_manager
+                "chuck_data.commands.bug.get_config_manager",
+                return_value=config_manager,
             ):
                 sanitized = _get_sanitized_config()
 
@@ -176,7 +177,8 @@ class TestBugCommand:
             config_manager = ConfigManager(temp_path)
 
             with mock.patch(
-                "chuck_data.commands.bug.get_config_manager", return_value=config_manager
+                "chuck_data.commands.bug.get_config_manager",
+                return_value=config_manager,
             ):
                 sanitized = _get_sanitized_config()
 

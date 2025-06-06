@@ -28,7 +28,8 @@ class TestDatabricksAuth(unittest.TestCase):
 
     @patch("os.getenv", return_value="mock_env_token")
     @patch(
-        "chuck_data.databricks_auth.get_token_from_config", return_value="mock_config_token"
+        "chuck_data.databricks_auth.get_token_from_config",
+        return_value="mock_config_token",
     )
     def test_get_databricks_token_from_config(self, mock_config_token, mock_getenv):
         """
@@ -57,7 +58,9 @@ class TestDatabricksAuth(unittest.TestCase):
         mock_getenv.assert_called_once_with("DATABRICKS_TOKEN")
 
     @patch("chuck_data.clients.databricks.DatabricksAPIClient.validate_token")
-    @patch("chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace")
+    @patch(
+        "chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace"
+    )
     def test_validate_databricks_token_success(self, mock_workspace_url, mock_validate):
         """
         Test successful validation of a Databricks token.
@@ -87,7 +90,9 @@ class TestDatabricksAuth(unittest.TestCase):
             self.assertEqual(workspace_url, "test-workspace")
 
     @patch("chuck_data.clients.databricks.DatabricksAPIClient.validate_token")
-    @patch("chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace")
+    @patch(
+        "chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace"
+    )
     @patch("logging.error")
     def test_validate_databricks_token_failure(
         self, mock_log, mock_workspace_url, mock_validate
@@ -105,7 +110,9 @@ class TestDatabricksAuth(unittest.TestCase):
         mock_validate.assert_called_once()
 
     @patch("chuck_data.clients.databricks.DatabricksAPIClient.validate_token")
-    @patch("chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace")
+    @patch(
+        "chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace"
+    )
     @patch("logging.error")
     def test_validate_databricks_token_connection_error(
         self, mock_log, mock_workspace_url, mock_validate
