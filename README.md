@@ -30,6 +30,12 @@ Chuck Data provides an interactive text-based user interface. Run the applicatio
 chuck-data [options]
 ```
 
+Or run directly with Python:
+
+```bash
+python -m chuck_data [options]
+```
+
 ### Command Line Options
 
 - `--version` - Show program version and exit
@@ -99,6 +105,22 @@ Chuck Data supports a command-based interface with slash commands that can be us
 - Python 3.10 or higher
 - [uv](https://github.com/astral-sh/uv) - Python package installer and resolver
 
+### Project Structure
+
+```
+chuck_data/             # Main package
+├── __init__.py
+├── __main__.py         # CLI entry point
+├── commands/           # Command implementations
+├── ui/                 # User interface components
+├── agent/              # AI agent functionality
+├── clients/            # External service clients
+├── databricks/         # Databricks utilities
+└── ...                 # Other modules
+```
+
+### Installation
+
 Install the project with development dependencies:
 
 ```bash
@@ -117,14 +139,14 @@ Run linters and static analysis:
 
 ```bash
 uv run ruff .
-uv run black --check --diff src tests
+uv run black --check --diff chuck_data tests
 uv run pyright
 ```
 
 For test coverage:
 
 ```bash
-uv run -m pytest --cov=src
+uv run -m pytest --cov=chuck_data
 ```
 
 ### CI/CD
