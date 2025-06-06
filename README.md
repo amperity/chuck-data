@@ -1,3 +1,5 @@
+![chuck-banner](https://github.com/user-attachments/assets/abcd9545-e0aa-47a9-bf7f-041fe0c0bc0e)
+
 # Chuck Data
 
 [![Python Tests and Linting](https://github.com/amperity/chuck-data/actions/workflows/python-tests.yml/badge.svg)](https://github.com/amperity/chuck-data/actions/workflows/python-tests.yml)
