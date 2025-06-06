@@ -20,7 +20,9 @@ from chuck_data.command_registry import (
 from chuck_data.commands.base import (
     CommandResult,
 )  # For type hinting and checking handler result
-from chuck_data.clients.databricks import DatabricksAPIClient  # For type hinting api_client
+from chuck_data.clients.databricks import (
+    DatabricksAPIClient,
+)  # For type hinting api_client
 from typing import Dict, Any, Optional, List
 
 

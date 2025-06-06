@@ -1,7 +1,7 @@
 """Tests for the url_utils module."""
 
 import unittest
-from src.databricks.url_utils import (
+from chuck_data.databricks.url_utils import (
     normalize_workspace_url,
     detect_cloud_provider,
     get_full_workspace_url,

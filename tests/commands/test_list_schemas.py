@@ -7,9 +7,9 @@ import os
 import tempfile
 from unittest.mock import patch
 
-from src.commands.list_schemas import handle_command as list_schemas_handler
-from src.commands.schema_selection import handle_command as select_schema_handler
-from src.config import ConfigManager, get_active_schema, set_active_catalog
+from chuck_data.commands.list_schemas import handle_command as list_schemas_handler
+from chuck_data.commands.schema_selection import handle_command as select_schema_handler
+from chuck_data.config import ConfigManager, get_active_schema, set_active_catalog
 from tests.fixtures import DatabricksClientStub
 
 
@@ -24,7 +24,7 @@ class TestSchemaCommands(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
 
     def tearDown(self):

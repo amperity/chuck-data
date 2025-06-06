@@ -4,11 +4,11 @@ from unittest.mock import patch
 
 import requests
 
-from src.clients.amperity import AmperityAPIClient
+from chuck_data.clients.amperity import AmperityAPIClient
 
 
-@patch("src.clients.amperity.time.sleep")
-@patch("src.clients.amperity.requests.get")
+@patch("chuck_data.clients.amperity.time.sleep")
+@patch("chuck_data.clients.amperity.requests.get")
 def test_poll_auth_state_stops_on_4xx(mock_get, mock_sleep):
     """Ensure polling stops when the API returns a 4xx response."""
 

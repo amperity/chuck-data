@@ -9,8 +9,8 @@ import os
 import tempfile
 from unittest.mock import patch
 
-from src.commands.catalog_selection import handle_command
-from src.config import ConfigManager, get_active_catalog
+from chuck_data.commands.catalog_selection import handle_command
+from chuck_data.config import ConfigManager, get_active_catalog
 from tests.fixtures import DatabricksClientStub
 
 
@@ -25,7 +25,7 @@ class TestCatalogSelection(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
 
     def tearDown(self):
@@ -80,7 +80,7 @@ class TestCatalogSelection(unittest.TestCase):
 
         # Try to use an invalid config path that will cause an exception
         invalid_config_manager = ConfigManager("/invalid/path/config.json")
-        with patch("src.config._config_manager", invalid_config_manager):
+        with patch("chuck_data.config._config_manager", invalid_config_manager):
             result = handle_command(self.client_stub, catalog_name="test_catalog")
 
         # This might succeed despite the invalid path, so let's test a different exception scenario
@@ -95,7 +95,7 @@ class TestCatalogSelection(unittest.TestCase):
         config_path = os.path.join(temp_dir.name, "test_config.json")
         config_manager = ConfigManager(config_path)
 
-        with patch("src.config._config_manager", config_manager):
+        with patch("chuck_data.config._config_manager", config_manager):
             # This should trigger the exception in the catalog verification
             result = handle_command(failing_stub, catalog="test_catalog")
 

@@ -7,7 +7,7 @@ This module contains tests for the scan_pii command handler.
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.commands.scan_pii import handle_command
+from chuck_data.commands.scan_pii import handle_command
 from tests.fixtures import LLMClientStub
 
 
@@ -24,8 +24,8 @@ class TestScanPII(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Client is required", result.message)
 
-    @patch("src.commands.scan_pii.get_active_catalog")
-    @patch("src.commands.scan_pii.get_active_schema")
+    @patch("chuck_data.commands.scan_pii.get_active_catalog")
+    @patch("chuck_data.commands.scan_pii.get_active_schema")
     def test_missing_context(self, mock_get_active_schema, mock_get_active_catalog):
         """Test handling when catalog or schema is missing."""
         # Setup mocks
@@ -39,8 +39,8 @@ class TestScanPII(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Catalog and schema must be specified", result.message)
 
-    @patch("src.commands.scan_pii.LLMClient")
-    @patch("src.commands.scan_pii._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.scan_pii.LLMClient")
+    @patch("chuck_data.commands.scan_pii._helper_scan_schema_for_pii_logic")
     def test_successful_scan(self, mock_helper_scan, mock_llm_client):
         """Test successful schema scan for PII."""
         # Setup mocks
@@ -79,10 +79,10 @@ class TestScanPII(unittest.TestCase):
             self.client, llm_client_stub, "test_catalog", "test_schema"
         )
 
-    @patch("src.commands.scan_pii.get_active_catalog")
-    @patch("src.commands.scan_pii.get_active_schema")
-    @patch("src.commands.scan_pii.LLMClient")
-    @patch("src.commands.scan_pii._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.scan_pii.get_active_catalog")
+    @patch("chuck_data.commands.scan_pii.get_active_schema")
+    @patch("chuck_data.commands.scan_pii.LLMClient")
+    @patch("chuck_data.commands.scan_pii._helper_scan_schema_for_pii_logic")
     def test_scan_with_active_context(
         self,
         mock_helper_scan,
@@ -114,8 +114,8 @@ class TestScanPII(unittest.TestCase):
             self.client, llm_client_stub, "active_catalog", "active_schema"
         )
 
-    @patch("src.commands.scan_pii.LLMClient")
-    @patch("src.commands.scan_pii._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.scan_pii.LLMClient")
+    @patch("chuck_data.commands.scan_pii._helper_scan_schema_for_pii_logic")
     def test_scan_with_helper_error(self, mock_helper_scan, mock_llm_client):
         """Test handling when helper returns an error."""
         # Setup mocks
@@ -133,7 +133,7 @@ class TestScanPII(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.message, "Failed to list tables")
 
-    @patch("src.commands.scan_pii.LLMClient")
+    @patch("chuck_data.commands.scan_pii.LLMClient")
     def test_scan_with_exception(self, mock_llm_client):
         """Test handling when an exception occurs."""
         # Setup mocks

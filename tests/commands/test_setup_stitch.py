@@ -7,7 +7,7 @@ This module contains tests for the setup_stitch command handler.
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.commands.setup_stitch import handle_command
+from chuck_data.commands.setup_stitch import handle_command
 from tests.fixtures import LLMClientStub
 
 
@@ -24,8 +24,8 @@ class TestSetupStitch(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Client is required", result.message)
 
-    @patch("src.commands.setup_stitch.get_active_catalog")
-    @patch("src.commands.setup_stitch.get_active_schema")
+    @patch("chuck_data.commands.setup_stitch.get_active_catalog")
+    @patch("chuck_data.commands.setup_stitch.get_active_schema")
     def test_missing_context(self, mock_get_active_schema, mock_get_active_catalog):
         """Test handling when catalog or schema is missing."""
         # Setup mocks
@@ -39,10 +39,10 @@ class TestSetupStitch(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Target catalog and schema must be specified", result.message)
 
-    @patch("src.commands.setup_stitch._helper_launch_stitch_job")
-    @patch("src.commands.setup_stitch.LLMClient")
-    @patch("src.commands.setup_stitch._helper_setup_stitch_logic")
-    @patch("src.commands.setup_stitch.get_metrics_collector")
+    @patch("chuck_data.commands.setup_stitch._helper_launch_stitch_job")
+    @patch("chuck_data.commands.setup_stitch.LLMClient")
+    @patch("chuck_data.commands.setup_stitch._helper_setup_stitch_logic")
+    @patch("chuck_data.commands.setup_stitch.get_metrics_collector")
     def test_successful_setup(
         self,
         mock_get_metrics_collector,
@@ -116,11 +116,11 @@ class TestSetupStitch(unittest.TestCase):
             },
         )
 
-    @patch("src.commands.setup_stitch._helper_launch_stitch_job")
-    @patch("src.commands.setup_stitch.get_active_catalog")
-    @patch("src.commands.setup_stitch.get_active_schema")
-    @patch("src.commands.setup_stitch.LLMClient")
-    @patch("src.commands.setup_stitch._helper_setup_stitch_logic")
+    @patch("chuck_data.commands.setup_stitch._helper_launch_stitch_job")
+    @patch("chuck_data.commands.setup_stitch.get_active_catalog")
+    @patch("chuck_data.commands.setup_stitch.get_active_schema")
+    @patch("chuck_data.commands.setup_stitch.LLMClient")
+    @patch("chuck_data.commands.setup_stitch._helper_setup_stitch_logic")
     def test_setup_with_active_context(
         self,
         mock_helper_setup,
@@ -164,9 +164,9 @@ class TestSetupStitch(unittest.TestCase):
             {"target_catalog": "active_catalog", "target_schema": "active_schema"},
         )
 
-    @patch("src.commands.setup_stitch.LLMClient")
-    @patch("src.commands.setup_stitch._helper_setup_stitch_logic")
-    @patch("src.commands.setup_stitch.get_metrics_collector")
+    @patch("chuck_data.commands.setup_stitch.LLMClient")
+    @patch("chuck_data.commands.setup_stitch._helper_setup_stitch_logic")
+    @patch("chuck_data.commands.setup_stitch.get_metrics_collector")
     def test_setup_with_helper_error(
         self, mock_get_metrics_collector, mock_helper_setup, mock_llm_client
     ):
@@ -209,7 +209,7 @@ class TestSetupStitch(unittest.TestCase):
             },
         )
 
-    @patch("src.commands.setup_stitch.LLMClient")
+    @patch("chuck_data.commands.setup_stitch.LLMClient")
     def test_setup_with_exception(self, mock_llm_client):
         """Test handling when an exception occurs."""
         # Setup mocks

@@ -4,7 +4,7 @@ Tests for the warehouses module.
 
 import unittest
 from unittest.mock import MagicMock
-from src.warehouses import list_warehouses, get_warehouse, create_warehouse
+from chuck_data.warehouses import list_warehouses, get_warehouse, create_warehouse
 
 
 class TestWarehouses(unittest.TestCase):

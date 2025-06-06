@@ -4,7 +4,7 @@ Tests for the utils module.
 
 import unittest
 from unittest.mock import patch, MagicMock
-from src.utils import build_query_params, execute_sql_statement
+from chuck_data.utils import build_query_params, execute_sql_statement
 
 
 class TestUtils(unittest.TestCase):
@@ -44,7 +44,7 @@ class TestUtils(unittest.TestCase):
         self.assertIn("param3=value3", result)
         self.assertEqual(len(result.split("&")), 3)
 
-    @patch("src.utils.time.sleep")  # Mock sleep to speed up test
+    @patch("chuck_data.utils.time.sleep")  # Mock sleep to speed up test
     def test_execute_sql_statement_success(self, mock_sleep):
         """Test successful SQL statement execution."""
         # Create mock client
@@ -69,7 +69,7 @@ class TestUtils(unittest.TestCase):
         # Verify result
         self.assertEqual(result, {"data": [["row1"], ["row2"]]})
 
-    @patch("src.utils.time.sleep")  # Mock sleep to speed up test
+    @patch("chuck_data.utils.time.sleep")  # Mock sleep to speed up test
     def test_execute_sql_statement_with_catalog(self, mock_sleep):
         """Test SQL statement execution with catalog parameter."""
         # Create mock client
@@ -91,7 +91,7 @@ class TestUtils(unittest.TestCase):
         post_args = mock_client.post.call_args[0][1]
         self.assertEqual(post_args.get("catalog"), "test-catalog")
 
-    @patch("src.utils.time.sleep")  # Mock sleep to speed up test
+    @patch("chuck_data.utils.time.sleep")  # Mock sleep to speed up test
     def test_execute_sql_statement_with_custom_timeout(self, mock_sleep):
         """Test SQL statement execution with custom timeout."""
         # Create mock client
@@ -117,7 +117,7 @@ class TestUtils(unittest.TestCase):
         post_args = mock_client.post.call_args[0][1]
         self.assertEqual(post_args.get("wait_timeout"), custom_timeout)
 
-    @patch("src.utils.time.sleep")  # Mock sleep to speed up test
+    @patch("chuck_data.utils.time.sleep")  # Mock sleep to speed up test
     def test_execute_sql_statement_polling(self, mock_sleep):
         """Test SQL statement execution with polling."""
         # Create mock client
@@ -143,7 +143,7 @@ class TestUtils(unittest.TestCase):
         mock_sleep.assert_called_with(1)
         self.assertEqual(mock_sleep.call_count, 2)
 
-    @patch("src.utils.time.sleep")  # Mock sleep to speed up test
+    @patch("chuck_data.utils.time.sleep")  # Mock sleep to speed up test
     def test_execute_sql_statement_failed(self, mock_sleep):
         """Test SQL statement execution that fails."""
         # Create mock client
@@ -162,7 +162,7 @@ class TestUtils(unittest.TestCase):
         # Verify error message
         self.assertIn("SQL statement failed: SQL syntax error", str(context.exception))
 
-    @patch("src.utils.time.sleep")  # Mock sleep to speed up test
+    @patch("chuck_data.utils.time.sleep")  # Mock sleep to speed up test
     def test_execute_sql_statement_error_without_message(self, mock_sleep):
         """Test SQL statement execution that fails without specific message."""
         # Create mock client

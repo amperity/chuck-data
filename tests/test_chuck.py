@@ -7,14 +7,14 @@ from unittest.mock import patch, MagicMock
 class TestChuckTUI(unittest.TestCase):
     """Test cases for the Chuck TUI."""
 
-    @patch("chuck.ChuckTUI")
-    @patch("chuck.setup_logging")
+    @patch("chuck_data.__main__.ChuckTUI")
+    @patch("chuck_data.__main__.setup_logging")
     def test_main_runs_tui(self, mock_setup_logging, mock_chuck_tui):
         """Test that the main function calls ChuckTUI.run()."""
         mock_instance = MagicMock()
         mock_chuck_tui.return_value = mock_instance
 
-        from chuck import main
+        from chuck_data.__main__ import main
 
         main([])
 
@@ -24,8 +24,8 @@ class TestChuckTUI(unittest.TestCase):
     def test_version_flag(self):
         """Running with --version should exit after printing version."""
         import io
-        from chuck import main
-        from src.version import __version__
+        from chuck_data.__main__ import main
+        from chuck_data.version import __version__
 
         with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
             with self.assertRaises(SystemExit) as cm:

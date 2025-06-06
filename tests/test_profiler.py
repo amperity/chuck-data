@@ -4,7 +4,7 @@ Tests for the profiler module.
 
 import unittest
 from unittest.mock import patch, MagicMock
-from src.profiler import (
+from chuck_data.profiler import (
     list_tables,
     query_llm,
     generate_manifest,
@@ -21,7 +21,7 @@ class TestProfiler(unittest.TestCase):
         self.client = MagicMock()
         self.warehouse_id = "warehouse-123"
 
-    @patch("src.profiler.time.sleep")
+    @patch("chuck_data.profiler.time.sleep")
     def test_list_tables(self, mock_sleep):
         """Test listing tables."""
         # Set up mock responses
@@ -60,7 +60,7 @@ class TestProfiler(unittest.TestCase):
         self.client.post.assert_called_once()
         self.client.get.assert_called_once()
 
-    @patch("src.profiler.time.sleep")
+    @patch("chuck_data.profiler.time.sleep")
     def test_list_tables_polling(self, mock_sleep):
         """Test polling behavior when listing tables."""
         # Set up mock responses
@@ -87,7 +87,7 @@ class TestProfiler(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["table_name"], "table1")
 
-    @patch("src.profiler.time.sleep")
+    @patch("chuck_data.profiler.time.sleep")
     def test_list_tables_failed_query(self, mock_sleep):
         """Test list tables with failed SQL query."""
         # Set up mock responses
@@ -121,8 +121,8 @@ class TestProfiler(unittest.TestCase):
         self.assertEqual(result["pii_tags"], pii_tags)
         self.assertTrue("profiling_timestamp" in result)
 
-    @patch("src.profiler.time.sleep")
-    @patch("src.profiler.base64.b64encode")
+    @patch("chuck_data.profiler.time.sleep")
+    @patch("chuck_data.profiler.base64.b64encode")
     def test_store_manifest(self, mock_b64encode, mock_sleep):
         """Test storing a manifest."""
         # Set up mock responses
@@ -145,12 +145,12 @@ class TestProfiler(unittest.TestCase):
         # Verify the manifest path was passed correctly
         self.assertEqual(self.client.post.call_args[0][1]["path"], manifest_path)
 
-    @patch("src.profiler.store_manifest")
-    @patch("src.profiler.generate_manifest")
-    @patch("src.profiler.query_llm")
-    @patch("src.profiler.get_sample_data")
-    @patch("src.profiler.get_table_schema")
-    @patch("src.profiler.list_tables")
+    @patch("chuck_data.profiler.store_manifest")
+    @patch("chuck_data.profiler.generate_manifest")
+    @patch("chuck_data.profiler.query_llm")
+    @patch("chuck_data.profiler.get_sample_data")
+    @patch("chuck_data.profiler.get_table_schema")
+    @patch("chuck_data.profiler.list_tables")
     def test_profile_table_success(
         self,
         mock_list_tables,

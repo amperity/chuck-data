@@ -4,9 +4,9 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-from src.commands.tag_pii import handle_command, apply_semantic_tags
-from src.commands.base import CommandResult
-from src.config import (
+from chuck_data.commands.tag_pii import handle_command, apply_semantic_tags
+from chuck_data.commands.base import CommandResult
+from chuck_data.config import (
     ConfigManager,
     set_warehouse_id,
     set_active_catalog,
@@ -26,7 +26,7 @@ class TestTagPiiCommand:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
 
     def teardown_method(self):

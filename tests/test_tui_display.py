@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from rich.console import Console
-from src.ui.tui import ChuckTUI
+from chuck_data.ui.tui import ChuckTUI
 
 
 class TestTUIDisplay(unittest.TestCase):
@@ -63,7 +63,7 @@ class TestTUIDisplay(unittest.TestCase):
         }
 
         # Patch display_table and _display_permissions to verify calls
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             with patch.object(
                 self.tui, "_display_permissions"
             ) as mock_display_permissions:
@@ -92,7 +92,7 @@ class TestTUIDisplay(unittest.TestCase):
             "connection_status": "Invalid token - authentication failed",
         }
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             self.tui._display_status(status_data)
 
             mock_display_table.assert_called_once()
@@ -117,7 +117,7 @@ class TestTUIDisplay(unittest.TestCase):
             "connection_status": "Not connected - no valid Databricks token found",
         }
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             self.tui._display_status(status_data)
 
             mock_display_table.assert_called_once()
@@ -160,7 +160,7 @@ class TestTUIDisplay(unittest.TestCase):
             },
         }
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             self.tui._display_permissions(permissions_data)
 
             mock_display_table.assert_called_once()
@@ -242,9 +242,9 @@ class TestTUIDisplay(unittest.TestCase):
             "total_count": 2,
         }
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             # _display_tables raises PaginationCancelled by design
-            from src.exceptions import PaginationCancelled
+            from chuck_data.exceptions import PaginationCancelled
 
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_tables(table_data)
@@ -313,9 +313,9 @@ class TestTUIDisplay(unittest.TestCase):
             "total_count": 1,
         }
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             # _display_tables raises PaginationCancelled by design
-            from src.exceptions import PaginationCancelled
+            from chuck_data.exceptions import PaginationCancelled
 
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_tables(table_data)
@@ -360,9 +360,9 @@ class TestTUIDisplay(unittest.TestCase):
             "total_count": 1,
         }
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             # _display_tables raises PaginationCancelled by design, not an error
-            from src.exceptions import PaginationCancelled
+            from chuck_data.exceptions import PaginationCancelled
 
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_tables(table_data)
@@ -408,9 +408,9 @@ class TestTUIDisplay(unittest.TestCase):
                 }
 
                 with patch(
-                    "src.ui.table_formatter.display_table"
+                    "chuck_data.ui.table_formatter.display_table"
                 ) as mock_display_table:
-                    from src.exceptions import PaginationCancelled
+                    from chuck_data.exceptions import PaginationCancelled
 
                     with self.assertRaises(PaginationCancelled):
                         self.tui._display_tables(table_data)
@@ -451,9 +451,9 @@ class TestTUIDisplay(unittest.TestCase):
             "current_warehouse_id": "warehouse-123",
         }
 
-        from src.exceptions import PaginationCancelled
+        from chuck_data.exceptions import PaginationCancelled
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_warehouses(warehouse_data)
 
@@ -506,9 +506,9 @@ class TestTUIDisplay(unittest.TestCase):
             "current_warehouse_id": "warehouse-active",
         }
 
-        from src.exceptions import PaginationCancelled
+        from chuck_data.exceptions import PaginationCancelled
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_warehouses(warehouse_data)
 
@@ -529,7 +529,7 @@ class TestTUIDisplay(unittest.TestCase):
         """Test warehouse display with empty warehouse list."""
         warehouse_data = {"warehouses": []}
 
-        from src.exceptions import PaginationCancelled
+        from chuck_data.exceptions import PaginationCancelled
 
         with self.assertRaises(PaginationCancelled):
             self.tui._display_warehouses(warehouse_data)
@@ -577,9 +577,9 @@ class TestTUIDisplay(unittest.TestCase):
             ],
         }
 
-        from src.exceptions import PaginationCancelled
+        from chuck_data.exceptions import PaginationCancelled
 
-        with patch("src.ui.table_formatter.display_table") as mock_display_table:
+        with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_warehouses(warehouse_data)
 
@@ -615,9 +615,9 @@ class TestTUIDisplay(unittest.TestCase):
             "current_warehouse_id": "wh-123",
         }
 
-        from src.exceptions import PaginationCancelled
+        from chuck_data.exceptions import PaginationCancelled
 
-        with patch("src.ui.table_formatter.display_table"):
+        with patch("chuck_data.ui.table_formatter.display_table"):
             with self.assertRaises(PaginationCancelled):
                 self.tui._display_warehouses(warehouse_data)
 

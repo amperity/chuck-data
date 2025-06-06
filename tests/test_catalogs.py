@@ -3,7 +3,7 @@ Tests for the catalogs module.
 """
 
 import unittest
-from src.catalogs import (
+from chuck_data.catalogs import (
     list_catalogs,
     get_catalog,
     list_schemas,

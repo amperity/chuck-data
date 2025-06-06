@@ -10,9 +10,9 @@ from unittest.mock import patch, MagicMock
 # installed. This prevents import errors during test collection.
 sys.modules.setdefault("openai", MagicMock())
 
-from src.agent import AgentManager  # noqa: E402
+from chuck_data.agent import AgentManager  # noqa: E402
 from tests.fixtures import LLMClientStub, MockToolCall  # noqa: E402
-from src.agent.prompts import (  # noqa: E402
+from chuck_data.agent.prompts import (  # noqa: E402
     PII_AGENT_SYSTEM_MESSAGE,
     BULK_PII_AGENT_SYSTEM_MESSAGE,
     STITCH_AGENT_SYSTEM_MESSAGE,
@@ -30,14 +30,14 @@ class TestAgentManager(unittest.TestCase):
         # Use LLMClientStub instead of MagicMock
         self.llm_client_stub = LLMClientStub()
         self.patcher = patch(
-            "src.agent.manager.LLMClient", return_value=self.llm_client_stub
+            "chuck_data.agent.manager.LLMClient", return_value=self.llm_client_stub
         )
         self.MockLLMClient = self.patcher.start()
 
         # Mock tool functions used within AgentManager
-        self.patcher_get_schemas = patch("src.agent.manager.get_tool_schemas")
+        self.patcher_get_schemas = patch("chuck_data.agent.manager.get_tool_schemas")
         self.MockGetToolSchemas = self.patcher_get_schemas.start()
-        self.patcher_execute_tool = patch("src.agent.manager.execute_tool")
+        self.patcher_execute_tool = patch("chuck_data.agent.manager.execute_tool")
         self.MockExecuteTool = self.patcher_execute_tool.start()
 
         # Create a mock callback for testing
@@ -178,7 +178,7 @@ class TestAgentManager(unittest.TestCase):
 
         self.assertEqual(result, "Error: maximum iterations reached.")
 
-    @patch("src.agent.manager.AgentManager.process_with_tools")
+    @patch("chuck_data.agent.manager.AgentManager.process_with_tools")
     def test_process_pii_detection(self, mock_process):
         """Test process_pii_detection sets up context and calls process_with_tools."""
         mock_tools = [{"schema": "tool1"}]
@@ -203,7 +203,7 @@ class TestAgentManager(unittest.TestCase):
         # Check call to process_with_tools
         mock_process.assert_called_once_with(mock_tools)
 
-    @patch("src.agent.manager.AgentManager.process_with_tools")
+    @patch("chuck_data.agent.manager.AgentManager.process_with_tools")
     def test_process_bulk_pii_scan(self, mock_process):
         """Test process_bulk_pii_scan sets up context and calls process_with_tools."""
         mock_tools = [{"schema": "tool2"}]
@@ -230,7 +230,7 @@ class TestAgentManager(unittest.TestCase):
         # Check call to process_with_tools
         mock_process.assert_called_once_with(mock_tools)
 
-    @patch("src.agent.manager.AgentManager.process_with_tools")
+    @patch("chuck_data.agent.manager.AgentManager.process_with_tools")
     def test_process_setup_stitch(self, mock_process):
         """Test process_setup_stitch sets up context and calls process_with_tools."""
         mock_tools = [{"schema": "tool3"}]
@@ -257,7 +257,7 @@ class TestAgentManager(unittest.TestCase):
         # Check call to process_with_tools
         mock_process.assert_called_once_with(mock_tools)
 
-    @patch("src.agent.manager.AgentManager.process_with_tools")
+    @patch("chuck_data.agent.manager.AgentManager.process_with_tools")
     def test_process_query(self, mock_process):
         """Test process_query adds user message and calls process_with_tools."""
         mock_tools = [{"schema": "tool4"}]

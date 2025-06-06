@@ -7,7 +7,7 @@ This module contains tests for the Stitch integration utilities.
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.commands.stitch_tools import _helper_setup_stitch_logic
+from chuck_data.commands.stitch_tools import _helper_setup_stitch_logic
 from tests.fixtures import LLMClientStub
 
 
@@ -124,7 +124,7 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Target catalog and schema are required", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
     def test_pii_scan_error(self, mock_scan_pii):
         """Test handling when PII scan returns an error."""
         # Setup mock
@@ -139,7 +139,7 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("PII Scan failed during Stitch setup", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
     def test_volume_list_error(self, mock_scan_pii):
         """Test handling when listing volumes fails."""
         # Setup mocks
@@ -155,7 +155,7 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Failed to list volumes", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
     def test_volume_create_error(self, mock_scan_pii):
         """Test handling when creating volume fails."""
         # Setup mocks
@@ -174,7 +174,7 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Failed to create volume 'chuck'", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
     def test_no_tables_with_pii(self, mock_scan_pii):
         """Test handling when no tables with PII are found."""
         # Setup mocks
@@ -202,8 +202,8 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("No tables with PII found", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-    @patch("src.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     def test_missing_amperity_token(self, mock_get_amperity_token, mock_scan_pii):
         """Test handling when Amperity token is missing."""
         # Setup mocks
@@ -223,8 +223,8 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Amperity token not found", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-    @patch("src.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     def test_amperity_init_script_error(self, mock_get_amperity_token, mock_scan_pii):
         """Test handling when fetching Amperity init script fails."""
         # Setup mocks
@@ -245,9 +245,9 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Error fetching Amperity init script", result["error"])
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-    @patch("src.commands.stitch_tools.get_amperity_token")
-    @patch("src.commands.stitch_tools._helper_upload_cluster_init_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     def test_versioned_init_script_upload_error(
         self, mock_upload_init, mock_get_amperity_token, mock_scan_pii
     ):
@@ -275,9 +275,9 @@ class TestStitchTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertEqual(result["error"], "Failed to upload versioned init script")
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-    @patch("src.commands.stitch_tools.get_amperity_token")
-    @patch("src.commands.stitch_tools._helper_upload_cluster_init_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     def test_successful_setup(
         self, mock_upload_init, mock_get_amperity_token, mock_scan_pii
     ):
@@ -331,9 +331,9 @@ class TestStitchTools(unittest.TestCase):
         self.assertEqual(len(metadata["unsupported_columns"]), 0)
         self.assertNotIn("Note: Some columns were excluded", result.get("message", ""))
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-    @patch("src.commands.stitch_tools.get_amperity_token")
-    @patch("src.commands.stitch_tools._helper_upload_cluster_init_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     def test_unsupported_types_filtered(
         self, mock_upload_init, mock_get_amperity_token, mock_scan_pii
     ):
@@ -418,8 +418,8 @@ class TestStitchTools(unittest.TestCase):
         # Verify warning message includes unsupported columns info in metadata
         self.assertIn("unsupported_columns", metadata)
 
-    @patch("src.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-    @patch("src.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     def test_all_columns_unsupported_types(
         self, mock_get_amperity_token, mock_scan_pii
     ):

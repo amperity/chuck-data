@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
 import requests
-from src.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.databricks import DatabricksAPIClient
 
 
 class TestDatabricksAPIClient(unittest.TestCase):
@@ -54,7 +54,7 @@ class TestDatabricksAPIClient(unittest.TestCase):
 
     def test_base_domain_map(self):
         """Ensure _get_base_domain uses the shared domain map."""
-        from src.databricks.url_utils import DATABRICKS_DOMAIN_MAP
+        from chuck_data.databricks.url_utils import DATABRICKS_DOMAIN_MAP
 
         for provider, domain in DATABRICKS_DOMAIN_MAP.items():
             with self.subTest(provider=provider):

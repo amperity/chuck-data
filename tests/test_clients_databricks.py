@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import requests
-from src.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.databricks import DatabricksAPIClient
 
 
 class TestDatabricksClient(unittest.TestCase):
@@ -65,7 +65,7 @@ class TestDatabricksClient(unittest.TestCase):
         self.assertEqual(gcp_client.base_domain, "gcp.databricks.com")
         self.assertEqual(gcp_client.workspace_url, "workspace")
 
-    @patch("src.clients.databricks.requests.get")
+    @patch("chuck_data.clients.databricks.requests.get")
     def test_get_success(self, mock_get):
         """Test successful GET request."""
         mock_response = MagicMock()
@@ -82,7 +82,7 @@ class TestDatabricksClient(unittest.TestCase):
             },
         )
 
-    @patch("src.clients.databricks.requests.get")
+    @patch("chuck_data.clients.databricks.requests.get")
     def test_get_http_error(self, mock_get):
         """Test GET request with HTTP error."""
         mock_response = MagicMock()
@@ -98,7 +98,7 @@ class TestDatabricksClient(unittest.TestCase):
         self.assertIn("HTTP error occurred", str(context.exception))
         self.assertIn("Not Found", str(context.exception))
 
-    @patch("src.clients.databricks.requests.get")
+    @patch("chuck_data.clients.databricks.requests.get")
     def test_get_connection_error(self, mock_get):
         """Test GET request with connection error."""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
@@ -108,7 +108,7 @@ class TestDatabricksClient(unittest.TestCase):
 
         self.assertIn("Connection error occurred", str(context.exception))
 
-    @patch("src.clients.databricks.requests.post")
+    @patch("chuck_data.clients.databricks.requests.post")
     def test_post_success(self, mock_post):
         """Test successful POST request."""
         mock_response = MagicMock()
@@ -126,7 +126,7 @@ class TestDatabricksClient(unittest.TestCase):
             json={"data": "test"},
         )
 
-    @patch("src.clients.databricks.requests.post")
+    @patch("chuck_data.clients.databricks.requests.post")
     def test_post_http_error(self, mock_post):
         """Test POST request with HTTP error."""
         mock_response = MagicMock()
@@ -142,7 +142,7 @@ class TestDatabricksClient(unittest.TestCase):
         self.assertIn("HTTP error occurred", str(context.exception))
         self.assertIn("Bad Request", str(context.exception))
 
-    @patch("src.clients.databricks.requests.post")
+    @patch("chuck_data.clients.databricks.requests.post")
     def test_post_connection_error(self, mock_post):
         """Test POST request with connection error."""
         mock_post.side_effect = requests.exceptions.ConnectionError("Connection failed")
@@ -152,7 +152,7 @@ class TestDatabricksClient(unittest.TestCase):
 
         self.assertIn("Connection error occurred", str(context.exception))
 
-    @patch("src.clients.databricks.requests.post")
+    @patch("chuck_data.clients.databricks.requests.post")
     def test_fetch_amperity_job_init_http_error(self, mock_post):
         """fetch_amperity_job_init should show helpful message on HTTP errors."""
         mock_response = MagicMock()

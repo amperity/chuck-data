@@ -7,7 +7,7 @@ This module contains tests for the add_stitch_report command handler.
 import unittest
 from unittest.mock import patch
 
-from src.commands.add_stitch_report import handle_command
+from chuck_data.commands.add_stitch_report import handle_command
 from tests.fixtures import DatabricksClientStub, MetricsCollectorStub
 
 
@@ -37,7 +37,7 @@ class TestAddStitchReport(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("must be in the format", result.message)
 
-    @patch("src.commands.add_stitch_report.get_metrics_collector")
+    @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
     def test_successful_report_creation(self, mock_get_metrics_collector):
         """Test successful stitch report notebook creation."""
         # Setup mocks
@@ -68,7 +68,7 @@ class TestAddStitchReport(unittest.TestCase):
         self.assertEqual(call["prompt"], "add-stitch-report command")
         self.assertEqual(call["additional_data"]["status"], "success")
 
-    @patch("src.commands.add_stitch_report.get_metrics_collector")
+    @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
     def test_report_creation_with_custom_name(self, mock_get_metrics_collector):
         """Test stitch report creation with custom notebook name."""
         # Setup mocks
@@ -95,7 +95,7 @@ class TestAddStitchReport(unittest.TestCase):
         args, kwargs = self.client.create_stitch_notebook_calls[0]
         self.assertEqual(args, ("catalog.schema.table", "My Custom Report"))
 
-    @patch("src.commands.add_stitch_report.get_metrics_collector")
+    @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
     def test_report_creation_with_rest_args(self, mock_get_metrics_collector):
         """Test stitch report creation with rest arguments as notebook name."""
         # Setup mocks
@@ -122,7 +122,7 @@ class TestAddStitchReport(unittest.TestCase):
         args, kwargs = self.client.create_stitch_notebook_calls[0]
         self.assertEqual(args, ("catalog.schema.table", "Multi Word Name"))
 
-    @patch("src.commands.add_stitch_report.get_metrics_collector")
+    @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
     def test_report_creation_api_error(self, mock_get_metrics_collector):
         """Test handling when API call to create notebook fails."""
         # Setup mocks

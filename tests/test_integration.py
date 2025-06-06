@@ -2,7 +2,7 @@
 
 import unittest
 from unittest.mock import patch
-from src.config import (
+from chuck_data.config import (
     set_active_model,
     get_active_model,
     ConfigManager,
@@ -24,7 +24,7 @@ class TestChuckIntegration(unittest.TestCase):
 
         # Replace the global config manager with our test instance
         self.config_manager_patcher = patch(
-            "src.config._config_manager", self.config_manager
+            "chuck_data.config._config_manager", self.config_manager
         )
         self.mock_config_manager = self.config_manager_patcher.start()
 
@@ -66,7 +66,7 @@ class TestChuckIntegration(unittest.TestCase):
     def test_catalog_config_operations(self):
         """Test catalog config operations."""
         # Test writing and reading catalog config
-        from src.config import set_active_catalog, get_active_catalog
+        from chuck_data.config import set_active_catalog, get_active_catalog
 
         test_catalog = "test-catalog"
         set_active_catalog(test_catalog)
@@ -83,7 +83,7 @@ class TestChuckIntegration(unittest.TestCase):
     def test_schema_config_operations(self):
         """Test schema config operations."""
         # Test writing and reading schema config
-        from src.config import set_active_schema, get_active_schema
+        from chuck_data.config import set_active_schema, get_active_schema
 
         test_schema = "test-schema"
         set_active_schema(test_schema)

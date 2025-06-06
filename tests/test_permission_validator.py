@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch, MagicMock, call
 
-from src.databricks.permission_validator import (
+from chuck_data.databricks.permission_validator import (
     validate_all_permissions,
     check_basic_connectivity,
     check_unity_catalog,
@@ -25,17 +25,17 @@ class TestPermissionValidator(unittest.TestCase):
         """Test that validate_all_permissions calls all check functions."""
         with (
             patch(
-                "src.databricks.permission_validator.check_basic_connectivity"
+                "chuck_data.databricks.permission_validator.check_basic_connectivity"
             ) as mock_basic,
             patch(
-                "src.databricks.permission_validator.check_unity_catalog"
+                "chuck_data.databricks.permission_validator.check_unity_catalog"
             ) as mock_catalog,
             patch(
-                "src.databricks.permission_validator.check_sql_warehouse"
+                "chuck_data.databricks.permission_validator.check_sql_warehouse"
             ) as mock_warehouse,
-            patch("src.databricks.permission_validator.check_jobs") as mock_jobs,
-            patch("src.databricks.permission_validator.check_models") as mock_models,
-            patch("src.databricks.permission_validator.check_volumes") as mock_volumes,
+            patch("chuck_data.databricks.permission_validator.check_jobs") as mock_jobs,
+            patch("chuck_data.databricks.permission_validator.check_models") as mock_models,
+            patch("chuck_data.databricks.permission_validator.check_volumes") as mock_volumes,
         ):
 
             # Set return values for mock functions

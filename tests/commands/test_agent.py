@@ -32,8 +32,8 @@ class MockAgentManagerClass:
 
 
 # Directly apply the mock to avoid importing the actual class
-with patch("src.agent.manager.AgentManager", MockAgentManagerClass):
-    from src.commands.agent import handle_command
+with patch("chuck_data.agent.manager.AgentManager", MockAgentManagerClass):
+    from chuck_data.commands.agent import handle_command
 
 
 class TestAgentCommand(unittest.TestCase):
@@ -45,10 +45,10 @@ class TestAgentCommand(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Please provide a query", result.message)
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
-    @patch("src.commands.agent.get_metrics_collector")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
+    @patch("chuck_data.commands.agent.get_metrics_collector")
     def test_general_query_mode(
         self, mock_get_metrics_collector, mock_set_history, mock_get_history
     ):
@@ -90,10 +90,10 @@ class TestAgentCommand(unittest.TestCase):
             {"event_context": "agent_interaction", "agent_mode": "general"},
         )
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
-    @patch("src.commands.agent.get_metrics_collector")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
+    @patch("chuck_data.commands.agent.get_metrics_collector")
     def test_pii_detection_mode(
         self, mock_get_metrics_collector, mock_set_history, mock_get_history
     ):
@@ -134,9 +134,9 @@ class TestAgentCommand(unittest.TestCase):
             {"event_context": "agent_interaction", "agent_mode": "pii"},
         )
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
     def test_bulk_pii_scan_mode(self, mock_set_history, mock_get_history):
         """Test processing a bulk PII scan."""
         mock_client = MagicMock()
@@ -157,9 +157,9 @@ class TestAgentCommand(unittest.TestCase):
         )
         mock_set_history.assert_called_once()
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
     def test_stitch_setup_mode(self, mock_set_history, mock_get_history):
         """Test processing a stitch setup request."""
         mock_client = MagicMock()
@@ -180,7 +180,7 @@ class TestAgentCommand(unittest.TestCase):
         )
         mock_set_history.assert_called_once()
 
-    @patch("src.agent.AgentManager", side_effect=Exception("Agent error"))
+    @patch("chuck_data.agent.AgentManager", side_effect=Exception("Agent error"))
     def test_agent_exception(self, mock_agent_manager):
         """Test agent with unexpected exception."""
         # Call function
@@ -191,9 +191,9 @@ class TestAgentCommand(unittest.TestCase):
         self.assertIn("Failed to process query", result.message)
         self.assertEqual(str(result.error), "Agent error")
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
     def test_query_from_rest_parameter(self, mock_set_history, mock_get_history):
         """Test processing a query from the rest parameter."""
         mock_client = MagicMock()
@@ -208,9 +208,9 @@ class TestAgentCommand(unittest.TestCase):
         )
         mock_set_history.assert_called_once()
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
     def test_query_from_raw_args_parameter(self, mock_set_history, mock_get_history):
         """Test processing a query from the raw_args parameter."""
         mock_client = MagicMock()
@@ -226,9 +226,9 @@ class TestAgentCommand(unittest.TestCase):
         )
         mock_set_history.assert_called_once()
 
-    @patch("src.agent.AgentManager", MockAgentManagerClass)
-    @patch("src.config.get_agent_history", return_value=[])
-    @patch("src.config.set_agent_history")
+    @patch("chuck_data.agent.AgentManager", MockAgentManagerClass)
+    @patch("chuck_data.config.get_agent_history", return_value=[])
+    @patch("chuck_data.config.set_agent_history")
     def test_callback_parameter_passed(self, mock_set_history, mock_get_history):
         """Test that tool_output_callback is properly passed to AgentManager."""
         mock_client = MagicMock()

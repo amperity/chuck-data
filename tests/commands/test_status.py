@@ -5,7 +5,7 @@ Tests for the status command module.
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.commands.status import handle_command
+from chuck_data.commands.status import handle_command
 
 
 class TestStatusCommand(unittest.TestCase):
@@ -15,11 +15,11 @@ class TestStatusCommand(unittest.TestCase):
         """Set up common test fixtures."""
         self.client = MagicMock()
 
-    @patch("src.commands.status.get_workspace_url")
-    @patch("src.commands.status.get_active_catalog")
-    @patch("src.commands.status.get_active_schema")
-    @patch("src.commands.status.get_active_model")
-    @patch("src.commands.status.validate_all_permissions")
+    @patch("chuck_data.commands.status.get_workspace_url")
+    @patch("chuck_data.commands.status.get_active_catalog")
+    @patch("chuck_data.commands.status.get_active_schema")
+    @patch("chuck_data.commands.status.get_active_model")
+    @patch("chuck_data.commands.status.validate_all_permissions")
     def test_handle_status_with_valid_connection(
         self,
         mock_permissions,
@@ -50,10 +50,10 @@ class TestStatusCommand(unittest.TestCase):
         )
         self.assertEqual(result.data["permissions"], mock_permissions.return_value)
 
-    @patch("src.commands.status.get_workspace_url")
-    @patch("src.commands.status.get_active_catalog")
-    @patch("src.commands.status.get_active_schema")
-    @patch("src.commands.status.get_active_model")
+    @patch("chuck_data.commands.status.get_workspace_url")
+    @patch("chuck_data.commands.status.get_active_catalog")
+    @patch("chuck_data.commands.status.get_active_schema")
+    @patch("chuck_data.commands.status.get_active_model")
     def test_handle_status_with_no_client(
         self, mock_get_model, mock_get_schema, mock_get_catalog, mock_get_url
     ):
@@ -78,11 +78,11 @@ class TestStatusCommand(unittest.TestCase):
             "Client not available or not initialized.",
         )
 
-    @patch("src.commands.status.get_workspace_url")
-    @patch("src.commands.status.get_active_catalog")
-    @patch("src.commands.status.get_active_schema")
-    @patch("src.commands.status.get_active_model")
-    @patch("src.commands.status.validate_all_permissions")
+    @patch("chuck_data.commands.status.get_workspace_url")
+    @patch("chuck_data.commands.status.get_active_catalog")
+    @patch("chuck_data.commands.status.get_active_schema")
+    @patch("chuck_data.commands.status.get_active_model")
+    @patch("chuck_data.commands.status.validate_all_permissions")
     @patch("logging.error")
     def test_handle_status_with_exception(
         self,

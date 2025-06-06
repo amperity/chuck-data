@@ -5,7 +5,7 @@ Test cluster init tools upload functionality.
 import pytest
 from unittest.mock import Mock, patch
 
-from src.commands.cluster_init_tools import _helper_upload_cluster_init_logic
+from chuck_data.commands.cluster_init_tools import _helper_upload_cluster_init_logic
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ class TestUploadClusterInitLogic:
 
     def test_upload_success(self, mock_client):
         """Test successful upload with versioned filename."""
-        with patch("src.commands.cluster_init_tools.datetime") as mock_datetime:
+        with patch("chuck_data.commands.cluster_init_tools.datetime") as mock_datetime:
             mock_datetime.datetime.now.return_value.strftime.return_value = (
                 "2025-06-02_14-30"
             )
@@ -101,7 +101,7 @@ class TestUploadClusterInitLogic:
         mock_client.list_volumes.return_value = {"volumes": []}
         mock_client.create_volume.return_value = True
 
-        with patch("src.commands.cluster_init_tools.datetime") as mock_datetime:
+        with patch("chuck_data.commands.cluster_init_tools.datetime") as mock_datetime:
             mock_datetime.datetime.now.return_value.strftime.return_value = (
                 "2025-06-02_14-30"
             )
@@ -123,7 +123,7 @@ class TestUploadClusterInitLogic:
         mock_client.list_volumes.return_value = {"volumes": [{"name": "other_volume"}]}
         mock_client.create_volume.return_value = True
 
-        with patch("src.commands.cluster_init_tools.datetime") as mock_datetime:
+        with patch("chuck_data.commands.cluster_init_tools.datetime") as mock_datetime:
             mock_datetime.datetime.now.return_value.strftime.return_value = (
                 "2025-06-02_14-30"
             )
@@ -214,7 +214,7 @@ class TestUploadClusterInitLogic:
 
     def test_timestamped_filename_format(self, mock_client):
         """Test that the timestamped filename follows the correct format."""
-        with patch("src.commands.cluster_init_tools.datetime") as mock_datetime:
+        with patch("chuck_data.commands.cluster_init_tools.datetime") as mock_datetime:
             mock_datetime.datetime.now.return_value.strftime.return_value = (
                 "2025-12-31_23-59"
             )

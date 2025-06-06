@@ -5,7 +5,7 @@ Tests for the metrics collector.
 import unittest
 from unittest.mock import patch
 
-from src.metrics_collector import MetricsCollector, get_metrics_collector
+from chuck_data.metrics_collector import MetricsCollector, get_metrics_collector
 from tests.fixtures import AmperityClientStub, ConfigManagerStub
 
 
@@ -20,11 +20,11 @@ class TestMetricsCollector(unittest.TestCase):
         # Create the metrics collector with mocked config and AmperityClientStub
         self.amperity_client_stub = AmperityClientStub()
         with patch(
-            "src.metrics_collector.get_config_manager",
+            "chuck_data.metrics_collector.get_config_manager",
             return_value=self.config_manager_stub,
         ):
             with patch(
-                "src.metrics_collector.AmperityAPIClient",
+                "chuck_data.metrics_collector.AmperityAPIClient",
                 return_value=self.amperity_client_stub,
             ):
                 self.metrics_collector = MetricsCollector()
@@ -60,7 +60,7 @@ class TestMetricsCollector(unittest.TestCase):
             },
         )
 
-    @patch("src.metrics_collector.get_amperity_token", return_value="test-token")
+    @patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
     def test_track_event_no_consent(self, mock_get_token):
         """Test that tracking is skipped when consent is not given."""
         self.config_stub.usage_tracking_consent = False
@@ -74,8 +74,8 @@ class TestMetricsCollector(unittest.TestCase):
         # Ensure submit_metrics is not called
         self.assertEqual(len(self.amperity_client_stub.metrics_calls), 0)
 
-    @patch("src.metrics_collector.get_amperity_token", return_value="test-token")
-    @patch("src.metrics_collector.MetricsCollector.send_metric")
+    @patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
+    @patch("chuck_data.metrics_collector.MetricsCollector.send_metric")
     def test_track_event_with_all_fields(self, mock_send_metric, mock_get_token):
         """Test tracking with all fields provided."""
         self.config_stub.usage_tracking_consent = True
@@ -110,7 +110,7 @@ class TestMetricsCollector(unittest.TestCase):
         self.assertEqual(payload["error"], error)
         self.assertEqual(payload["additional_data"], additional_data)
 
-    @patch("src.metrics_collector.get_amperity_token", return_value="test-token")
+    @patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
     def test_send_metric_successful(self, mock_get_token):
         """Test successful metrics sending."""
         payload = {"event": "USAGE", "prompt": "test prompt"}
@@ -126,7 +126,7 @@ class TestMetricsCollector(unittest.TestCase):
             self.amperity_client_stub.metrics_calls[0], (payload, "test-token")
         )
 
-    @patch("src.metrics_collector.get_amperity_token", return_value="test-token")
+    @patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
     def test_send_metric_failure(self, mock_get_token):
         """Test handling of metrics sending failure."""
         # Configure stub to simulate failure
@@ -143,7 +143,7 @@ class TestMetricsCollector(unittest.TestCase):
             self.amperity_client_stub.metrics_calls[0], (payload, "test-token")
         )
 
-    @patch("src.metrics_collector.get_amperity_token", return_value="test-token")
+    @patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
     def test_send_metric_exception(self, mock_get_token):
         """Test handling of exceptions during metrics sending."""
         # Configure stub to raise exception
@@ -160,7 +160,7 @@ class TestMetricsCollector(unittest.TestCase):
             self.amperity_client_stub.metrics_calls[0], (payload, "test-token")
         )
 
-    @patch("src.metrics_collector.get_amperity_token", return_value=None)
+    @patch("chuck_data.metrics_collector.get_amperity_token", return_value=None)
     def test_send_metric_no_token(self, mock_get_token):
         """Test that metrics are not sent when no token is available."""
         # Reset stub metrics call count
@@ -175,6 +175,6 @@ class TestMetricsCollector(unittest.TestCase):
 
     def test_get_metrics_collector(self):
         """Test that get_metrics_collector returns the singleton instance."""
-        with patch("src.metrics_collector._metrics_collector") as mock_collector:
+        with patch("chuck_data.metrics_collector._metrics_collector") as mock_collector:
             collector = get_metrics_collector()
             self.assertEqual(collector, mock_collector)

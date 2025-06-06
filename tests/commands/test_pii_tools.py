@@ -7,11 +7,11 @@ import os
 import tempfile
 from unittest.mock import patch, MagicMock
 
-from src.commands.pii_tools import (
+from chuck_data.commands.pii_tools import (
     _helper_tag_pii_columns_logic,
     _helper_scan_schema_for_pii_logic,
 )
-from src.config import ConfigManager
+from chuck_data.config import ConfigManager
 from tests.fixtures import DatabricksClientStub, LLMClientStub
 
 
@@ -27,7 +27,7 @@ class TestPIITools(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
 
         # Mock columns from database
@@ -45,7 +45,7 @@ class TestPIITools(unittest.TestCase):
         self.patcher.stop()
         self.temp_dir.cleanup()
 
-    @patch("src.commands.pii_tools.json.loads")
+    @patch("chuck_data.commands.pii_tools.json.loads")
     def test_tag_pii_columns_logic_success(self, mock_json_loads):
         """Test successful tagging of PII columns."""
         # Set up test data using stub

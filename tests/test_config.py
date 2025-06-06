@@ -6,7 +6,7 @@ import json
 import tempfile
 from unittest.mock import patch
 
-from src.config import (
+from chuck_data.config import (
     ConfigManager,
     get_workspace_url,
     set_workspace_url,
@@ -36,7 +36,7 @@ class TestPydanticConfig(unittest.TestCase):
         self.config_manager = ConfigManager(self.config_path)
 
         # Mock the global config manager
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.mock_manager = self.patcher.start()
 
     def tearDown(self):
@@ -281,7 +281,7 @@ class TestPydanticConfig(unittest.TestCase):
             )
             self.assertFalse(self.config_manager.needs_setup())
 
-    @patch("src.config.clear_agent_history")
+    @patch("chuck_data.config.clear_agent_history")
     def test_set_active_model_clears_history(self, mock_clear_history):
         """Ensure agent history is cleared when switching models."""
         with patch.dict(os.environ, {}, clear=True):

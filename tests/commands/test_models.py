@@ -7,10 +7,10 @@ import os
 import tempfile
 from unittest.mock import patch
 
-from src.config import ConfigManager, set_active_model, get_active_model
-from src.commands.models import handle_command as handle_models
-from src.commands.list_models import handle_command as handle_list_models
-from src.commands.model_selection import handle_command as handle_model_selection
+from chuck_data.config import ConfigManager, set_active_model, get_active_model
+from chuck_data.commands.models import handle_command as handle_models
+from chuck_data.commands.list_models import handle_command as handle_list_models
+from chuck_data.commands.model_selection import handle_command as handle_model_selection
 
 
 class StubClient:
@@ -35,7 +35,7 @@ class TestModelsCommands(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
         self.client = None
 

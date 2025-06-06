@@ -3,7 +3,7 @@ Tests for the base module in the commands package.
 """
 
 import unittest
-from src.commands.base import CommandResult
+from chuck_data.commands.base import CommandResult
 
 
 class TestCommandResult(unittest.TestCase):

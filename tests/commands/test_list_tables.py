@@ -9,8 +9,8 @@ import os
 import tempfile
 from unittest.mock import patch
 
-from src.commands.list_tables import handle_command
-from src.config import ConfigManager
+from chuck_data.commands.list_tables import handle_command
+from chuck_data.config import ConfigManager
 from tests.fixtures import DatabricksClientStub
 
 
@@ -25,7 +25,7 @@ class TestListTables(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
 
     def tearDown(self):
@@ -51,7 +51,7 @@ class TestListTables(unittest.TestCase):
     def test_no_active_schema(self):
         """Test handling when no schema is provided and no active schema is set."""
         # Set active catalog but not schema
-        from src.config import set_active_catalog
+        from chuck_data.config import set_active_catalog
 
         set_active_catalog("test_catalog")
 
@@ -108,7 +108,7 @@ class TestListTables(unittest.TestCase):
     def test_successful_list_tables_with_defaults(self):
         """Test successful list tables using default active catalog and schema."""
         # Set up active catalog and schema
-        from src.config import set_active_catalog, set_active_schema
+        from chuck_data.config import set_active_catalog, set_active_schema
 
         set_active_catalog("active_catalog")
         set_active_schema("active_schema")

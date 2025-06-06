@@ -7,13 +7,13 @@ import os
 import tempfile
 from unittest import mock
 
-from src.commands.bug import (
+from chuck_data.commands.bug import (
     handle_command,
     _get_sanitized_config,
     _prepare_bug_report,
     _get_session_log,
 )
-from src.config import ConfigManager
+from chuck_data.config import ConfigManager
 from tests.fixtures import AmperityClientStub
 
 
@@ -28,7 +28,7 @@ class TestBugCommand:
 
     def test_handle_command_with_rest_parameter(self):
         """Test bug command with rest parameter (free-form text)."""
-        with mock.patch("src.commands.bug.get_amperity_token") as mock_token:
+        with mock.patch("chuck_data.commands.bug.get_amperity_token") as mock_token:
             mock_token.return_value = None  # No token, so it should fail at auth
 
             result = handle_command(None, rest="Hi caleb!")
@@ -37,7 +37,7 @@ class TestBugCommand:
 
     def test_handle_command_with_raw_args_list(self):
         """Test bug command with raw_args as list."""
-        with mock.patch("src.commands.bug.get_amperity_token") as mock_token:
+        with mock.patch("chuck_data.commands.bug.get_amperity_token") as mock_token:
             mock_token.return_value = None  # No token, so it should fail at auth
 
             result = handle_command(None, raw_args=["Hi", "caleb!"])
@@ -46,7 +46,7 @@ class TestBugCommand:
 
     def test_handle_command_with_raw_args_string(self):
         """Test bug command with raw_args as string."""
-        with mock.patch("src.commands.bug.get_amperity_token") as mock_token:
+        with mock.patch("chuck_data.commands.bug.get_amperity_token") as mock_token:
             mock_token.return_value = None  # No token, so it should fail at auth
 
             result = handle_command(None, raw_args="Hi caleb!")
@@ -59,7 +59,7 @@ class TestBugCommand:
         assert not result.success
         assert "Bug description is required" in result.message
 
-    @mock.patch("src.commands.bug.get_amperity_token")
+    @mock.patch("chuck_data.commands.bug.get_amperity_token")
     def test_handle_command_no_token(self, mock_get_token):
         """Test bug command without Amperity token."""
         mock_get_token.return_value = None
@@ -68,9 +68,9 @@ class TestBugCommand:
         assert not result.success
         assert "Amperity authentication required" in result.message
 
-    @mock.patch("src.commands.bug.get_amperity_token")
-    @mock.patch("src.commands.bug.AmperityAPIClient")
-    @mock.patch("src.commands.bug._prepare_bug_report")
+    @mock.patch("chuck_data.commands.bug.get_amperity_token")
+    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
+    @mock.patch("chuck_data.commands.bug._prepare_bug_report")
     def test_handle_command_success(
         self, mock_prepare, mock_client_class, mock_get_token
     ):
@@ -87,8 +87,8 @@ class TestBugCommand:
         assert result.success
         assert "Bug report submitted successfully" in result.message
 
-    @mock.patch("src.commands.bug.get_amperity_token")
-    @mock.patch("src.commands.bug.AmperityAPIClient")
+    @mock.patch("chuck_data.commands.bug.get_amperity_token")
+    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
     def test_handle_command_api_failure(self, mock_client_class, mock_get_token):
         """Test bug report submission with API failure."""
         mock_get_token.return_value = "test-token"
@@ -103,8 +103,8 @@ class TestBugCommand:
         assert not result.success
         assert "Failed to submit bug report: 500" in result.message
 
-    @mock.patch("src.commands.bug.get_amperity_token")
-    @mock.patch("src.commands.bug.AmperityAPIClient")
+    @mock.patch("chuck_data.commands.bug.get_amperity_token")
+    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
     def test_handle_command_network_error(self, mock_client_class, mock_get_token):
         """Test bug report submission with network error."""
         mock_get_token.return_value = "test-token"
@@ -143,7 +143,7 @@ class TestBugCommand:
             config_manager = ConfigManager(temp_path)
 
             with mock.patch(
-                "src.commands.bug.get_config_manager", return_value=config_manager
+                "chuck_data.commands.bug.get_config_manager", return_value=config_manager
             ):
                 sanitized = _get_sanitized_config()
 
@@ -176,7 +176,7 @@ class TestBugCommand:
             config_manager = ConfigManager(temp_path)
 
             with mock.patch(
-                "src.commands.bug.get_config_manager", return_value=config_manager
+                "chuck_data.commands.bug.get_config_manager", return_value=config_manager
             ):
                 sanitized = _get_sanitized_config()
 
@@ -187,8 +187,8 @@ class TestBugCommand:
         finally:
             os.unlink(temp_path)
 
-    @mock.patch("src.commands.bug._get_session_log")
-    @mock.patch("src.commands.bug._get_sanitized_config")
+    @mock.patch("chuck_data.commands.bug._get_session_log")
+    @mock.patch("chuck_data.commands.bug._get_sanitized_config")
     def test_prepare_bug_report(self, mock_config, mock_log):
         """Test bug report payload preparation."""
         mock_config.return_value = {"workspace_url": "test"}
@@ -205,7 +205,7 @@ class TestBugCommand:
         assert "platform" in payload["system_info"]
         assert "python_version" in payload["system_info"]
 
-    @mock.patch("src.commands.bug.get_current_log_file")
+    @mock.patch("chuck_data.commands.bug.get_current_log_file")
     def test_get_session_log_no_file(self, mock_get_log_file):
         """Test session log retrieval when no log file exists."""
         mock_get_log_file.return_value = None
@@ -213,7 +213,7 @@ class TestBugCommand:
         log_content = _get_session_log()
         assert log_content == "Session log not available"
 
-    @mock.patch("src.commands.bug.get_current_log_file")
+    @mock.patch("chuck_data.commands.bug.get_current_log_file")
     def test_get_session_log_file_not_found(self, mock_get_log_file):
         """Test session log retrieval when log file doesn't exist."""
         mock_get_log_file.return_value = "/nonexistent/file.log"
@@ -221,7 +221,7 @@ class TestBugCommand:
         log_content = _get_session_log()
         assert log_content == "Session log not available"
 
-    @mock.patch("src.commands.bug.get_current_log_file")
+    @mock.patch("chuck_data.commands.bug.get_current_log_file")
     def test_get_session_log_success(self, mock_get_log_file):
         """Test successful session log retrieval."""
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
@@ -240,7 +240,7 @@ class TestBugCommand:
         finally:
             os.unlink(temp_path)
 
-    @mock.patch("src.commands.bug.get_current_log_file")
+    @mock.patch("chuck_data.commands.bug.get_current_log_file")
     def test_get_session_log_large_file(self, mock_get_log_file):
         """Test session log retrieval for large files (should read last 10KB)."""
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
@@ -262,9 +262,9 @@ class TestBugCommand:
         finally:
             os.unlink(temp_path)
 
-    @mock.patch("src.commands.bug.get_amperity_token")
-    @mock.patch("src.commands.bug.AmperityAPIClient")
-    @mock.patch("src.commands.bug._prepare_bug_report")
+    @mock.patch("chuck_data.commands.bug.get_amperity_token")
+    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
+    @mock.patch("chuck_data.commands.bug._prepare_bug_report")
     def test_handle_command_with_rest_success(
         self, mock_prepare, mock_client_class, mock_get_token
     ):

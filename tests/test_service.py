@@ -5,9 +5,9 @@ Tests for the service layer.
 import unittest
 from unittest.mock import patch, MagicMock
 
-from src.service import ChuckService
-from src.command_registry import CommandDefinition
-from src.commands.base import CommandResult
+from chuck_data.service import ChuckService
+from chuck_data.command_registry import CommandDefinition
+from chuck_data.commands.base import CommandResult
 
 
 class TestChuckService(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestChuckService(unittest.TestCase):
         """Test service initialization with client."""
         self.assertEqual(self.service.client, self.mock_client)
 
-    @patch("src.service.get_command")
+    @patch("chuck_data.service.get_command")
     def test_execute_command_status(self, mock_get_command):
         """Test execute_command with status command (which now includes auth functionality)."""
         # Setup mock handler and command definition
@@ -60,7 +60,7 @@ class TestChuckService(unittest.TestCase):
         self.assertIn("connection", result.data)
         self.assertIn("permissions", result.data)
 
-    @patch("src.service.get_command")
+    @patch("chuck_data.service.get_command")
     def test_execute_command_models(self, mock_get_command):
         """Test execute_command with models command."""
         # Setup mock handler
@@ -96,7 +96,7 @@ class TestChuckService(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("Unknown command", result.message)
 
-    @patch("src.service.get_command")
+    @patch("chuck_data.service.get_command")
     def test_execute_command_with_params(self, mock_get_command):
         """Test execute_command with parameters."""
         # Setup mock handler
@@ -134,8 +134,8 @@ class TestChuckService(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.message, "Model selected")
 
-    @patch("src.service.get_command")
-    @patch("src.service.get_metrics_collector")
+    @patch("chuck_data.service.get_command")
+    @patch("chuck_data.service.get_metrics_collector")
     def test_execute_command_error_handling(
         self, mock_get_metrics_collector, mock_get_command
     ):

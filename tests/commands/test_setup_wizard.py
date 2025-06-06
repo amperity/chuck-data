@@ -10,12 +10,12 @@ from unittest.mock import patch, MagicMock
 from io import StringIO
 from tests.fixtures import AmperityClientStub
 
-from src.commands.setup_wizard import (
+from chuck_data.commands.setup_wizard import (
     DEFINITION,
     SetupWizardOrchestrator,
 )
-from src.commands.wizard import WizardStep, WizardState, InputValidator
-from src.commands.wizard.steps import (
+from chuck_data.commands.wizard import WizardStep, WizardState, InputValidator
+from chuck_data.commands.wizard.steps import (
     AmperityAuthStep,
     WorkspaceUrlStep,
     TokenInputStep,
@@ -23,8 +23,8 @@ from src.commands.wizard.steps import (
     UsageConsentStep,
     create_step,
 )
-from src.commands.wizard.renderer import WizardRenderer
-from src.interactive_context import InteractiveContext
+from chuck_data.commands.wizard.renderer import WizardRenderer
+from chuck_data.interactive_context import InteractiveContext
 
 
 class TestWizardComponents:
@@ -166,7 +166,7 @@ class TestWizardComponents:
         assert result.processed_value == "Test-Model"
 
         # Test token validation with invalid workspace
-        with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
             mock_client.side_effect = Exception("Connection failed")
             result = validator.validate_token(
                 "some-token", "https://invalid-workspace.com"
@@ -186,7 +186,7 @@ class TestStepHandlers:
 
         # Only mock external API call
         with patch(
-            "src.commands.wizard.steps.get_amperity_token",
+            "chuck_data.commands.wizard.steps.get_amperity_token",
             return_value="existing-token",
         ):
             result = step.handle_input("", state)
@@ -205,9 +205,9 @@ class TestStepHandlers:
         amperity_stub = AmperityClientStub()
 
         with (
-            patch("src.commands.wizard.steps.get_amperity_token", return_value=None),
+            patch("chuck_data.commands.wizard.steps.get_amperity_token", return_value=None),
             patch(
-                "src.commands.wizard.steps.AmperityAPIClient",
+                "chuck_data.commands.wizard.steps.AmperityAPIClient",
                 return_value=amperity_stub,
             ),
         ):
@@ -270,7 +270,7 @@ class TestStepHandlers:
         state = WizardState(models=models)
 
         # Only mock external config setting
-        with patch("src.commands.wizard.steps.set_active_model", return_value=True):
+        with patch("chuck_data.commands.wizard.steps.set_active_model", return_value=True):
             # Test valid index (uses real validation)
             result = step.handle_input("1", state)
             assert result.success
@@ -295,7 +295,7 @@ class TestStepHandlers:
 
         # Only mock external config setting
         with patch(
-            "src.commands.wizard.steps.set_usage_tracking_consent", return_value=True
+            "chuck_data.commands.wizard.steps.set_usage_tracking_consent", return_value=True
         ):
             # Test valid input (uses real validation)
             result = step.handle_input("yes", state)
@@ -323,7 +323,7 @@ class TestStepHandlers:
 
         # Test valid response
         with patch(
-            "src.commands.wizard.steps.set_usage_tracking_consent", return_value=True
+            "chuck_data.commands.wizard.steps.set_usage_tracking_consent", return_value=True
         ):
             result = step.handle_input("yes", state)
             assert result.success
@@ -361,8 +361,8 @@ class TestSetupWizardOrchestrator:
             WizardStep.TOKEN_INPUT, WizardStep.WORKSPACE_URL
         )
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
-    @patch("src.commands.wizard.renderer.WizardRenderer.render_step")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.renderer.WizardRenderer.render_step")
     def test_no_double_rendering_on_input_processing(
         self, mock_render_step, mock_get_token
     ):
@@ -388,7 +388,7 @@ class TestSetupWizardOrchestrator:
             transition_render_count <= 1
         ), f"Expected at most 1 render for transition, got {transition_render_count}"
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
     def test_render_step_parameter_controls_initial_rendering(self, mock_get_token):
         """Test that _process_step render_step parameter controls the initial step rendering."""
         mock_get_token.return_value = "existing-token"
@@ -396,7 +396,7 @@ class TestSetupWizardOrchestrator:
         orchestrator = SetupWizardOrchestrator()
 
         # Test with a simple state that won't cause transitions
-        from src.commands.wizard.state import WizardState, WizardStep
+        from chuck_data.commands.wizard.state import WizardState, WizardStep
 
         state = WizardState(current_step=WizardStep.WORKSPACE_URL)
 
@@ -426,7 +426,7 @@ class TestSetupWizardOrchestrator:
     def test_start_wizard_vs_handle_interactive_input_rendering(self):
         """Test that start_wizard renders but handle_interactive_input doesn't double-render."""
         with patch(
-            "src.commands.wizard.steps.get_amperity_token",
+            "chuck_data.commands.wizard.steps.get_amperity_token",
             return_value="existing-token",
         ):
             orchestrator = SetupWizardOrchestrator()
@@ -447,7 +447,7 @@ class TestSetupWizardOrchestrator:
                 with patch.object(
                     orchestrator, "_load_state_from_context"
                 ) as mock_load_state:
-                    from src.commands.wizard.state import WizardState, WizardStep
+                    from chuck_data.commands.wizard.state import WizardState, WizardStep
 
                     mock_load_state.return_value = WizardState(
                         current_step=WizardStep.WORKSPACE_URL
@@ -461,7 +461,7 @@ class TestSetupWizardOrchestrator:
                         kwargs.get("render_step", True) is False
                     ), "handle_interactive_input should call _process_step with render_step=False"
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
     def test_error_scenario_no_screen_clear(self, mock_get_token):
         """Test that errors don't trigger screen clearing."""
         mock_get_token.return_value = "existing-token"
@@ -521,9 +521,9 @@ class TestWizardOrchestratorIntegration:
 class TestErrorFlowIntegration:
     """Test complete error flows end-to-end."""
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
-    @patch("src.commands.wizard.steps.AmperityAPIClient")
-    @patch("src.clients.databricks.DatabricksAPIClient")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.AmperityAPIClient")
+    @patch("chuck_data.clients.databricks.DatabricksAPIClient")
     def test_complete_error_recovery_flow(
         self, mock_databricks_client, mock_amperity_client, mock_get_token
     ):
@@ -684,9 +684,9 @@ class TestSecurityFixes:
 
     def test_token_validation_error_flow(self):
         """Test that token validation failures trigger the correct error flow."""
-        from src.commands.wizard.steps import TokenInputStep
-        from src.commands.wizard.validator import InputValidator
-        from src.commands.wizard.state import WizardState, WizardStep
+        from chuck_data.commands.wizard.steps import TokenInputStep
+        from chuck_data.commands.wizard.validator import InputValidator
+        from chuck_data.commands.wizard.state import WizardState, WizardStep
 
         validator = InputValidator()
         step = TokenInputStep(validator)
@@ -704,12 +704,12 @@ class TestSecurityFixes:
 
     def test_token_not_stored_in_processed_value_on_failure(self):
         """Test that tokens are not stored in processed_value when validation fails."""
-        from src.commands.wizard.validator import InputValidator
+        from chuck_data.commands.wizard.validator import InputValidator
 
         validator = InputValidator()
 
         # Mock token validation to fail
-        with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
             mock_client.side_effect = Exception("Validation failed")
 
             result = validator.validate_token("secret-token-123", "https://test.com")
@@ -748,11 +748,11 @@ class TestSecurityFixes:
             hide_input is False
         ), "Should NOT hide input on workspace step (even with workspace_url present)"
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
     def test_context_step_update_on_token_failure(self, mock_get_token):
         """Test that context step is updated correctly when token validation fails."""
-        from src.commands.setup_wizard import SetupWizardOrchestrator
-        from src.interactive_context import InteractiveContext
+        from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
+        from chuck_data.interactive_context import InteractiveContext
 
         mock_get_token.return_value = "existing-token"
 
@@ -775,7 +775,7 @@ class TestSecurityFixes:
             assert context_data.get("current_step") == "token_input"
 
             # Mock a validation failure that should go back to workspace URL
-            with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+            with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
                 mock_db_client = MagicMock()
                 mock_db_client.validate_token.return_value = False
                 mock_client.return_value = mock_db_client
@@ -796,9 +796,9 @@ class TestSecurityFixes:
 
     def test_usage_consent_invalid_input_shows_error(self):
         """Test that invalid usage consent input shows error message to user."""
-        from src.commands.wizard.steps import UsageConsentStep
-        from src.commands.wizard.validator import InputValidator
-        from src.commands.wizard.state import WizardState
+        from chuck_data.commands.wizard.steps import UsageConsentStep
+        from chuck_data.commands.wizard.validator import InputValidator
+        from chuck_data.commands.wizard.state import WizardState
 
         # Create usage consent step directly to test the error display
         validator = InputValidator()
@@ -813,8 +813,8 @@ class TestSecurityFixes:
         assert "Please enter 'yes' or 'no'" in result.message
 
         # Now test that the orchestrator preserves this error message
-        from src.commands.setup_wizard import SetupWizardOrchestrator
-        from src.interactive_context import InteractiveContext
+        from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
+        from chuck_data.interactive_context import InteractiveContext
 
         context = InteractiveContext()
         context.clear_active_context("/setup")
@@ -845,7 +845,7 @@ class TestSecurityFixes:
             # The critical test: RETRY actions should trigger re-rendering to show error
             # Mock the renderer to verify it's called during the RETRY action
             with patch(
-                "src.commands.wizard.renderer.WizardRenderer.render_step"
+                "chuck_data.commands.wizard.renderer.WizardRenderer.render_step"
             ) as mock_render:
                 # This call should trigger RETRY action and re-render with error
                 result2 = orchestrator.handle_interactive_input("invalid_again")
@@ -901,8 +901,8 @@ class TestTokenSecurityAndInputMode:
         """Clean up test environment."""
         self.context.clear_active_context("/setup")
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
-    @patch("src.clients.databricks.DatabricksAPIClient")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.clients.databricks.DatabricksAPIClient")
     def test_token_not_stored_in_history_on_failure(
         self, mock_databricks_client, mock_get_token
     ):
@@ -987,7 +987,7 @@ class TestTokenSecurityAndInputMode:
                 hide_input == expected_hide
             ), f"{description}. Got hide_input={hide_input}"
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
     def test_step_context_updates_correctly_on_token_failure(self, mock_get_token):
         """Test that step context is correctly updated when token validation fails."""
         mock_get_token.return_value = "existing-token"
@@ -1006,7 +1006,7 @@ class TestTokenSecurityAndInputMode:
         assert context_data.get("current_step") == "token_input"
 
         # Mock token validation failure and process token input
-        with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
             mock_db_client = MagicMock()
             mock_db_client.validate_token.return_value = False
             mock_client.return_value = mock_db_client
@@ -1024,12 +1024,12 @@ class TestTokenSecurityAndInputMode:
 
     def test_token_not_in_wizard_state_after_failure(self):
         """Test that failed tokens are not stored in wizard state."""
-        from src.commands.wizard.validator import InputValidator
+        from chuck_data.commands.wizard.validator import InputValidator
 
         validator = InputValidator()
 
         # Mock token validation failure
-        with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
             mock_client.side_effect = Exception("Connection failed")
 
             result = validator.validate_token(
@@ -1042,7 +1042,7 @@ class TestTokenSecurityAndInputMode:
                 result.processed_value
             )
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
     def test_no_token_leakage_in_error_messages(self, mock_get_token):
         """Test that tokens don't leak into error messages."""
         mock_get_token.return_value = "existing-token"
@@ -1054,7 +1054,7 @@ class TestTokenSecurityAndInputMode:
         result = orchestrator.handle_interactive_input("workspace123")
 
         # Mock token validation failure
-        with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
             mock_client.side_effect = Exception("Network error with secret details")
 
             result = orchestrator.handle_interactive_input("super-secret-token")
@@ -1118,11 +1118,11 @@ class TestTUISecurityIntegration:
                 enable_history == expected_history
             ), f"{description}. Got enable_history={enable_history}"
 
-    @patch("src.commands.wizard.steps.get_amperity_token")
+    @patch("chuck_data.commands.wizard.steps.get_amperity_token")
     def test_api_error_message_displayed_to_user(self, mock_get_token):
         """Test that API errors from token validation are displayed to the user."""
-        from src.commands.setup_wizard import SetupWizardOrchestrator
-        from src.interactive_context import InteractiveContext
+        from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
+        from chuck_data.interactive_context import InteractiveContext
 
         mock_get_token.return_value = "existing-token"
         context = InteractiveContext()
@@ -1140,7 +1140,7 @@ class TestTUISecurityIntegration:
             assert result.success
 
             # Mock API error when validating token
-            with patch("src.clients.databricks.DatabricksAPIClient") as mock_client:
+            with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
                 mock_client.side_effect = Exception(
                     "Connection error: Failed to resolve 'workspace123.cloud.databricks.com'"
                 )

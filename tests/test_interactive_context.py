@@ -2,7 +2,7 @@
 Tests for the interactive context module.
 """
 
-from src.interactive_context import InteractiveContext
+from chuck_data.interactive_context import InteractiveContext
 
 
 def test_command_name_normalization():

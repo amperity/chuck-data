@@ -9,8 +9,8 @@ import os
 import tempfile
 from unittest.mock import patch
 
-from src.commands.list_catalogs import handle_command
-from src.config import ConfigManager
+from chuck_data.commands.list_catalogs import handle_command
+from chuck_data.config import ConfigManager
 from tests.fixtures import DatabricksClientStub
 
 
@@ -25,7 +25,7 @@ class TestListCatalogs(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
         self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("src.config._config_manager", self.config_manager)
+        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
         self.patcher.start()
 
     def tearDown(self):

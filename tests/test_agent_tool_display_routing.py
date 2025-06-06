@@ -7,9 +7,9 @@ the same formatted tables as when users use equivalent slash commands.
 
 import unittest
 from unittest.mock import patch
-from src.ui.tui import ChuckTUI
-from src.commands.base import CommandResult
-from src.agent.tool_executor import execute_tool
+from chuck_data.ui.tui import ChuckTUI
+from chuck_data.commands.base import CommandResult
+from chuck_data.agent.tool_executor import execute_tool
 
 
 class TestAgentToolDisplayRouting(unittest.TestCase):
@@ -28,8 +28,8 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
         This is the critical test that prevents the regression where agents
         would see raw JSON instead of formatted tables.
         """
-        from src.commands import register_all_commands
-        from src.command_registry import get_command
+        from chuck_data.commands import register_all_commands
+        from chuck_data.command_registry import get_command
         from unittest.mock import MagicMock
 
         # Register all commands
@@ -116,7 +116,7 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
                     # For conditional display, we need to test with display=true to see the table
                     test_data_with_display = case["test_data"].copy()
                     test_data_with_display["display"] = True
-                    from src.exceptions import PaginationCancelled
+                    from chuck_data.exceptions import PaginationCancelled
 
                     with self.assertRaises(PaginationCancelled):
                         self.tui.display_tool_output(
@@ -130,7 +130,7 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
                         f"Command {case['tool_name']} must have agent_display='full'",
                     )
                     # Call the display method with test data - should raise PaginationCancelled
-                    from src.exceptions import PaginationCancelled
+                    from chuck_data.exceptions import PaginationCancelled
 
                     with self.assertRaises(PaginationCancelled):
                         self.tui.display_tool_output(
@@ -233,8 +233,8 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
 
         This prevents regressions where commands might be added without proper display settings.
         """
-        from src.commands import register_all_commands
-        from src.command_registry import get_command, get_agent_commands
+        from chuck_data.commands import register_all_commands
+        from chuck_data.command_registry import get_command, get_agent_commands
 
         register_all_commands()
 
@@ -316,10 +316,10 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
             self.tui.display_tool_output(tool_name, tool_data)
 
         # Test with list-schemas command
-        with patch("src.agent.tool_executor.get_command") as mock_get_command:
+        with patch("chuck_data.agent.tool_executor.get_command") as mock_get_command:
             # Get the real command definition
-            from src.commands.list_schemas import DEFINITION as schemas_def
-            from src.commands import register_all_commands
+            from chuck_data.commands.list_schemas import DEFINITION as schemas_def
+            from chuck_data.commands import register_all_commands
 
             register_all_commands()
 
@@ -344,9 +344,9 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
 
                 # Execute the tool with output callback (mimics agent behavior)
                 # The output callback should raise PaginationCancelled which bubbles up
-                from src.exceptions import PaginationCancelled
+                from chuck_data.exceptions import PaginationCancelled
 
-                with patch("src.agent.tool_executor.jsonschema.validate"):
+                with patch("chuck_data.agent.tool_executor.jsonschema.validate"):
                     with self.assertRaises(PaginationCancelled):
                         execute_tool(
                             mock_client,
@@ -395,7 +395,7 @@ class TestAgentToolDisplayRouting(unittest.TestCase):
         This is the key behavior the user requested - list commands should show tables
         and immediately return to chuck > prompt, not continue with agent processing.
         """
-        from src.exceptions import PaginationCancelled
+        from chuck_data.exceptions import PaginationCancelled
         from unittest.mock import MagicMock
 
         list_display_methods = [

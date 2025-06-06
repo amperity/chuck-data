@@ -9,7 +9,11 @@ import logging
 from typing import Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.command_registry import CommandDefinition, get_user_commands, TUI_COMMAND_MAP
+from chuck_data.command_registry import (
+    CommandDefinition,
+    get_user_commands,
+    TUI_COMMAND_MAP,
+)
 from .base import CommandResult
 
 

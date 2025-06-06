@@ -4,7 +4,10 @@ import logging
 import os
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.config import get_workspace_url, get_databricks_token as get_token_from_config
+from chuck_data.config import (
+    get_workspace_url,
+    get_databricks_token as get_token_from_config,
+)
 
 
 def get_databricks_token() -> str:

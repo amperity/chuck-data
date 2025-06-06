@@ -7,7 +7,7 @@ This module contains tests for the workspace selection command handler.
 import unittest
 from unittest.mock import patch
 
-from src.commands.workspace_selection import handle_command
+from chuck_data.commands.workspace_selection import handle_command
 
 
 class TestWorkspaceSelection(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestWorkspaceSelection(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("workspace_url parameter is required", result.message)
 
-    @patch("src.databricks.url_utils.validate_workspace_url")
+    @patch("chuck_data.databricks.url_utils.validate_workspace_url")
     def test_invalid_workspace_url(self, mock_validate_workspace_url):
         """Test handling when workspace_url is invalid."""
         # Setup mocks
@@ -33,11 +33,11 @@ class TestWorkspaceSelection(unittest.TestCase):
         self.assertIn("Error: Invalid URL format", result.message)
         mock_validate_workspace_url.assert_called_once_with("invalid-url")
 
-    @patch("src.databricks.url_utils.validate_workspace_url")
-    @patch("src.databricks.url_utils.normalize_workspace_url")
-    @patch("src.databricks.url_utils.detect_cloud_provider")
-    @patch("src.databricks.url_utils.format_workspace_url_for_display")
-    @patch("src.commands.workspace_selection.set_workspace_url")
+    @patch("chuck_data.databricks.url_utils.validate_workspace_url")
+    @patch("chuck_data.databricks.url_utils.normalize_workspace_url")
+    @patch("chuck_data.databricks.url_utils.detect_cloud_provider")
+    @patch("chuck_data.databricks.url_utils.format_workspace_url_for_display")
+    @patch("chuck_data.commands.workspace_selection.set_workspace_url")
     def test_successful_workspace_selection(
         self,
         mock_set_workspace_url,
@@ -74,7 +74,7 @@ class TestWorkspaceSelection(unittest.TestCase):
             "https://dbc-example.cloud.databricks.com"
         )
 
-    @patch("src.databricks.url_utils.validate_workspace_url")
+    @patch("chuck_data.databricks.url_utils.validate_workspace_url")
     def test_workspace_url_exception(self, mock_validate_workspace_url):
         """Test handling when an exception occurs."""
         # Setup mocks

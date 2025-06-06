@@ -5,11 +5,11 @@ Tests for the agent tool implementations.
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 from jsonschema.exceptions import ValidationError
-from src.agent import (
+from chuck_data.agent import (
     execute_tool,
     get_tool_schemas,
 )
-from src.commands.base import CommandResult
+from chuck_data.commands.base import CommandResult
 
 
 class TestAgentTools(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestAgentTools(unittest.TestCase):
         self.mock_client = MagicMock()
         self.mock_callback = MagicMock()
 
-    @patch("src.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.get_command")
     def test_execute_tool_unknown(self, mock_get_command):
         """Test execute_tool with unknown tool name."""
         # Configure the mock to return None for the unknown tool
@@ -33,7 +33,7 @@ class TestAgentTools(unittest.TestCase):
         # Verify the expected error response
         self.assertEqual(result, {"error": "Tool 'unknown_tool' not found."})
 
-    @patch("src.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.get_command")
     def test_execute_tool_not_visible_to_agent(self, mock_get_command):
         """Test execute_tool with a tool that's not visible to the agent."""
         # Create a mock command definition that's not visible to agents
@@ -49,8 +49,8 @@ class TestAgentTools(unittest.TestCase):
         )
         mock_get_command.assert_called_once_with("hidden_tool")
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_validation_error(self, mock_validate, mock_get_command):
         """Test execute_tool with validation error."""
         # Setup mock command definition
@@ -71,8 +71,8 @@ class TestAgentTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Invalid arguments", result["error"])
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_success(self, mock_validate, mock_get_command):
         """Test execute_tool with successful execution."""
         # Setup mock command definition with handler name
@@ -102,8 +102,8 @@ class TestAgentTools(unittest.TestCase):
         # Verify the successful result is returned
         self.assertEqual(result, {"result": "success"})
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_success_with_callback(self, mock_validate, mock_get_command):
         """Test execute_tool with successful execution and callback."""
         # Setup mock command definition with handler name
@@ -144,8 +144,8 @@ class TestAgentTools(unittest.TestCase):
         # Verify the successful result is returned
         self.assertEqual(result, {"result": "callback_test"})
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_success_callback_exception(
         self, mock_validate, mock_get_command
     ):
@@ -191,8 +191,8 @@ class TestAgentTools(unittest.TestCase):
         # Verify the successful result is still returned despite callback failure
         self.assertEqual(result, {"result": "callback_exception_test"})
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_success_no_data(self, mock_validate, mock_get_command):
         """Test execute_tool with successful execution but no data."""
         # Setup mock command definition with handler name
@@ -218,8 +218,8 @@ class TestAgentTools(unittest.TestCase):
         # Verify the default success response is returned when no data
         self.assertEqual(result, {"success": True, "message": "Success"})
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_failure(self, mock_validate, mock_get_command):
         """Test execute_tool with handler failure."""
         # Setup mock command definition with handler name
@@ -245,8 +245,8 @@ class TestAgentTools(unittest.TestCase):
         # Verify error details are included in response
         self.assertEqual(result, {"error": "Failed", "details": "Test error"})
 
-    @patch("src.agent.tool_executor.get_command")
-    @patch("src.agent.tool_executor.jsonschema.validate")
+    @patch("chuck_data.agent.tool_executor.get_command")
+    @patch("chuck_data.agent.tool_executor.jsonschema.validate")
     def test_execute_tool_handler_exception(self, mock_validate, mock_get_command):
         """Test execute_tool with handler throwing exception."""
         # Setup mock command definition with handler name
@@ -273,7 +273,7 @@ class TestAgentTools(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("Unexpected error", result["error"])
 
-    @patch("src.agent.tool_executor.get_command_registry_tool_schemas")
+    @patch("chuck_data.agent.tool_executor.get_command_registry_tool_schemas")
     def test_get_tool_schemas(self, mock_get_schemas):
         """Test get_tool_schemas returns schemas from command registry."""
         # Setup mock schemas
