@@ -15,13 +15,14 @@ from chuck_data.metrics_collector import get_metrics_collector
 
 
 def handle_command(
-    client: Optional[DatabricksAPIClient], **kwargs: Any
+    client: Optional[DatabricksAPIClient], llm_client=None, **kwargs: Any
 ) -> CommandResult:
     """
     Process a natural language query using the LLM agent.
 
     Args:
         client: DatabricksAPIClient instance for API calls (optional)
+        llm_client: LLMClient instance for AI calls (optional, creates default if None)
         **kwargs: Command parameters
             - query: The natural language query from the user
             - mode: Optional agent mode (general, pii, bulk_pii, stitch)
@@ -56,14 +57,17 @@ def handle_command(
     if isinstance(query, str):
         query = query.strip()
 
+    # Get the mode early to check if query is required
+    mode = kwargs.get("mode", "general").lower()
+
     # Now, check if the (potentially stripped) query is truly empty or None.
-    if not query:
+    # Some modes (bulk_pii, stitch) don't require a query
+    if not query and mode not in ["bulk_pii", "stitch"]:
         return CommandResult(
             False, message="Please provide a query. Usage: /ask Your question here"
         )
 
     # Get optional parameters
-    mode = kwargs.get("mode", "general").lower()
     catalog_name = kwargs.get("catalog_name")
     schema_name = kwargs.get("schema_name")
     tool_output_callback = kwargs.get("tool_output_callback")
@@ -75,8 +79,10 @@ def handle_command(
         # Get metrics collector
         metrics_collector = get_metrics_collector()
 
-        # Create agent manager with the API client and tool output callback
-        agent = AgentManager(client, tool_output_callback=tool_output_callback)
+        # Create agent manager with the API client, tool output callback, and optional LLM client
+        agent = AgentManager(
+            client, tool_output_callback=tool_output_callback, llm_client=llm_client
+        )
 
         # Load conversation history
         try:
@@ -90,9 +96,7 @@ def handle_command(
         # Process the query based on the selected mode
         if mode == "pii":
             # PII detection mode for a single table
-            response = agent.process_pii_detection(
-                table_name=query, catalog_name=catalog_name, schema_name=schema_name
-            )
+            response = agent.process_pii_detection(table_name=query)
         elif mode == "bulk_pii":
             # Bulk PII scanning mode for a schema
             response = agent.process_bulk_pii_scan(

@@ -19,9 +19,9 @@ from .prompts import (
 
 
 class AgentManager:
-    def __init__(self, client, model=None, tool_output_callback=None):
+    def __init__(self, client, model=None, tool_output_callback=None, llm_client=None):
         self.api_client = client
-        self.llm_client = LLMClient()
+        self.llm_client = llm_client or LLMClient()
         self.model = model
         self.tool_output_callback = tool_output_callback
         self.conversation_history = [
