@@ -1,43 +1,43 @@
 """Tests for TUI display methods."""
 
-import unittest
+import pytest
 from unittest.mock import patch, MagicMock
 from rich.console import Console
 from chuck_data.ui.tui import ChuckTUI
 
 
-class TestTUIDisplay(unittest.TestCase):
-    """Test cases for TUI display methods."""
+@pytest.fixture
+def tui():
+    """Create a TUI instance with mocked console."""
+    tui_instance = ChuckTUI()
+    tui_instance.console = MagicMock()
+    return tui_instance
 
-    def setUp(self):
-        """Set up common test fixtures."""
-        self.tui = ChuckTUI()
-        self.tui.console = MagicMock()
+def test_no_color_mode_initialization():
+    """Test that TUI initializes properly with no_color=True."""
+    tui_no_color = ChuckTUI(no_color=True)
+    assert tui_no_color.no_color
+    # Check that console was created with no color
+    assert tui_no_color.console._force_terminal == False
 
-    def test_no_color_mode_initialization(self):
-        """Test that TUI initializes properly with no_color=True."""
-        tui_no_color = ChuckTUI(no_color=True)
-        self.assertTrue(tui_no_color.no_color)
-        # Check that console was created with no color
-        self.assertEqual(tui_no_color.console._force_terminal, False)
 
-    def test_color_mode_initialization(self):
-        """Test that TUI initializes properly with default color mode."""
-        tui_default = ChuckTUI()
-        self.assertFalse(tui_default.no_color)
-        # Check that console was created with colors enabled
-        self.assertEqual(tui_default.console._force_terminal, True)
+def test_color_mode_initialization():
+    """Test that TUI initializes properly with default color mode."""
+    tui_default = ChuckTUI()
+    assert not tui_default.no_color
+    # Check that console was created with colors enabled
+    assert tui_default.console._force_terminal == True
 
-    def test_prompt_styling_respects_no_color(self):
-        """Test that prompt styling is disabled in no-color mode."""
-        # This test verifies that the run() method sets up prompt styles correctly
-        # We can't easily test the actual PromptSession creation without major mocking,
-        # but we can verify the no_color setting is propagated correctly
-        tui_no_color = ChuckTUI(no_color=True)
-        tui_with_color = ChuckTUI(no_color=False)
+def test_prompt_styling_respects_no_color():
+    """Test that prompt styling is disabled in no-color mode."""
+    # This test verifies that the run() method sets up prompt styles correctly
+    # We can't easily test the actual PromptSession creation without major mocking,
+    # but we can verify the no_color setting is propagated correctly
+    tui_no_color = ChuckTUI(no_color=True)
+    tui_with_color = ChuckTUI(no_color=False)
 
-        self.assertTrue(tui_no_color.no_color)
-        self.assertFalse(tui_with_color.no_color)
+    assert tui_no_color.no_color
+    assert not tui_with_color.no_color
 
     def test_display_status_full_data(self):
         """Test status display method with full data including connection and permissions."""
