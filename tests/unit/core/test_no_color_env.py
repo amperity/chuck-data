@@ -23,12 +23,15 @@ def test_default_color_mode(mock_setup_logging, mock_chuck_tui):
 
 @patch("chuck_data.__main__.ChuckTUI")
 @patch("chuck_data.__main__.setup_logging")
-def test_no_color_env_var_1(mock_setup_logging, mock_chuck_tui, no_color_env):
+def test_no_color_env_var_1(mock_setup_logging, mock_chuck_tui, monkeypatch):
     """Test that NO_COLOR=1 enables no-color mode."""
     mock_tui_instance = MagicMock()
     mock_chuck_tui.return_value = mock_tui_instance
 
-    # Call main function (no_color_env fixture sets NO_COLOR=1)
+    # Set NO_COLOR environment variable
+    monkeypatch.setenv("NO_COLOR", "1")
+
+    # Call main function
     chuck.main([])
 
     # Verify ChuckTUI was called with no_color=True due to env var
@@ -37,12 +40,15 @@ def test_no_color_env_var_1(mock_setup_logging, mock_chuck_tui, no_color_env):
 
 @patch("chuck_data.__main__.ChuckTUI")
 @patch("chuck_data.__main__.setup_logging")
-def test_no_color_env_var_true(mock_setup_logging, mock_chuck_tui, no_color_true_env):
+def test_no_color_env_var_true(mock_setup_logging, mock_chuck_tui, monkeypatch):
     """Test that NO_COLOR=true enables no-color mode."""
     mock_tui_instance = MagicMock()
     mock_chuck_tui.return_value = mock_tui_instance
 
-    # Call main function (no_color_true_env fixture sets NO_COLOR=true)
+    # Set NO_COLOR environment variable
+    monkeypatch.setenv("NO_COLOR", "true")
+
+    # Call main function
     chuck.main([])
 
     # Verify ChuckTUI was called with no_color=True due to env var

@@ -58,11 +58,11 @@ def test_default_config(config_setup):
     assert config.active_schema is None
 
 
-def test_config_update(config_setup, clean_env):
+def test_config_update(config_setup):
     """Test updating configuration values."""
     config_manager, config_path, temp_dir = config_setup
 
-    # Update values (clean_env fixture ensures no env interference)
+    # Update values
     config_manager.update(
         workspace_url="test-workspace",
         active_model="test-model",
@@ -93,7 +93,7 @@ def test_config_update(config_setup, clean_env):
     assert saved_config["active_schema"] == "test-schema"
 
 
-def test_config_load_save_cycle(config_setup, clean_env):
+def test_config_load_save_cycle(config_setup):
     """Test loading and saving configuration."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -119,7 +119,7 @@ def test_config_load_save_cycle(config_setup, clean_env):
     assert config.warehouse_id == test_warehouse
 
 
-def test_api_functions(config_setup, clean_env):
+def test_api_functions(config_setup):
     """Test compatibility API functions."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -138,7 +138,7 @@ def test_api_functions(config_setup, clean_env):
     assert get_active_schema() == "api-schema"
 
 
-def test_environment_override(config_setup, chuck_env_vars):
+def test_environment_override(config_setup, monkeypatch):
     """Test environment variable override for all config values."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -151,7 +151,11 @@ def test_environment_override(config_setup, chuck_env_vars):
         set_active_schema("config-schema")
 
     # Now test that CHUCK_ environment variables take precedence
-    # (chuck_env_vars fixture provides the env vars)
+    monkeypatch.setenv("CHUCK_WORKSPACE_URL", "env-workspace")
+    monkeypatch.setenv("CHUCK_ACTIVE_MODEL", "env-model")
+    monkeypatch.setenv("CHUCK_WAREHOUSE_ID", "env-warehouse")
+    monkeypatch.setenv("CHUCK_ACTIVE_CATALOG", "env-catalog")
+    monkeypatch.setenv("CHUCK_ACTIVE_SCHEMA", "env-schema")
 
     # Create a new config manager to reload with environment overrides
     fresh_manager = ConfigManager(config_path)
@@ -165,7 +169,7 @@ def test_environment_override(config_setup, chuck_env_vars):
     assert config.active_schema == "env-schema"
 
 
-def test_graceful_validation(config_setup, clean_env):
+def test_graceful_validation(config_setup):
     """Test that invalid configuration values are handled gracefully."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -181,7 +185,7 @@ def test_graceful_validation(config_setup, clean_env):
     assert config.warehouse_id is None
 
 
-def test_singleton_pattern(config_setup, clean_env):
+def test_singleton_pattern(config_setup):
     """Test that ConfigManager behaves as singleton."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -199,7 +203,7 @@ def test_singleton_pattern(config_setup, clean_env):
         assert config2.active_model == "singleton-test"
 
 
-def test_databricks_token(config_setup, clean_env):
+def test_databricks_token(config_setup):
     """Test databricks token handling."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -218,7 +222,7 @@ def test_databricks_token(config_setup, clean_env):
             assert token == "env-token"
 
 
-def test_needs_setup_method(config_setup, clean_env):
+def test_needs_setup_method(config_setup):
     """Test needs_setup method returns correct values."""
     config_manager, config_path, temp_dir = config_setup
 
@@ -241,7 +245,7 @@ def test_needs_setup_method(config_setup, clean_env):
 
 
 @patch("chuck_data.config.clear_agent_history")
-def test_set_active_model_clears_history(mock_clear_history, config_setup, clean_env):
+def test_set_active_model_clears_history(mock_clear_history, config_setup):
     """Test that setting active model clears agent history."""
     config_manager, config_path, temp_dir = config_setup
 

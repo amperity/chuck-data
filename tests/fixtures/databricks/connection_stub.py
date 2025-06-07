@@ -36,9 +36,9 @@ class ConnectionStubMixin:
 
     def set_token_validation_result(self, result):
         """Set the token validation result for testing.
-        
+
         Args:
-            result: True for valid token, False for invalid token, 
+            result: True for valid token, False for invalid token,
                    or Exception instance to raise an exception
         """
         self.token_validation_result = result

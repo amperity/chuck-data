@@ -129,17 +129,20 @@ def test_validate_databricks_token_connection_error_real_logic():
                 assert "Network error" in str(excinfo.value)
 
 
-def test_get_databricks_token_with_real_env(mock_databricks_env):
+def test_get_databricks_token_with_real_env(monkeypatch):
     """Test retrieving token from actual environment variable with real config."""
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
         # No token in config, should fall back to real environment
 
         with patch("chuck_data.config._config_manager", config_manager):
+            # Set environment variable with monkeypatch
+            monkeypatch.setenv("DATABRICKS_TOKEN", "test_token")
+
             # Test real config + real environment integration
             token = get_databricks_token()
 
-            # mock_databricks_env fixture sets DATABRICKS_TOKEN to "test_token"
+            # Environment variable should be used when no token in config
             assert token == "test_token"
 
 

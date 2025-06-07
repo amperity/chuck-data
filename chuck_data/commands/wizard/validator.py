@@ -26,10 +26,10 @@ class ValidationResult:
 
 class InputValidator:
     """Handles validation of user inputs for wizard steps."""
-    
+
     def __init__(self, databricks_client_factory=None):
         """Initialize validator with optional client factory for dependency injection.
-        
+
         Args:
             databricks_client_factory: Optional factory function that takes (workspace_url, token)
                                      and returns a Databricks client instance. If None, creates
@@ -89,8 +89,9 @@ class InputValidator:
             else:
                 # Validate token with Databricks API using the provided workspace URL
                 from chuck_data.clients.databricks import DatabricksAPIClient
+
                 client = DatabricksAPIClient(workspace_url, token)
-            
+
             is_valid = client.validate_token()
 
             if not is_valid:
