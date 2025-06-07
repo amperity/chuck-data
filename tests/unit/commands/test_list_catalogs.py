@@ -5,31 +5,9 @@ This module contains tests for the list_catalogs command handler.
 """
 
 import pytest
-import os
-import tempfile
 from unittest.mock import patch
 
 from chuck_data.commands.list_catalogs import handle_command
-from chuck_data.config import ConfigManager
-from tests.fixtures.fixtures import DatabricksClientStub
-
-
-@pytest.fixture
-def client_and_config():
-    """Set up DatabricksClientStub and real ConfigManager with temp file."""
-    client_stub = DatabricksClientStub()
-
-    # Set up config management with real ConfigManager and temp file
-    temp_dir = tempfile.TemporaryDirectory()
-    config_path = os.path.join(temp_dir.name, "test_config.json")
-    config_manager = ConfigManager(config_path)
-    patcher = patch("chuck_data.config._config_manager", config_manager)
-    patcher.start()
-
-    yield client_stub, config_manager
-
-    patcher.stop()
-    temp_dir.cleanup()
 
 
 def test_no_client():
@@ -39,9 +17,10 @@ def test_no_client():
     assert "No Databricks client available" in result.message
 
 
-def test_successful_list_catalogs(client_and_config):
+def test_successful_list_catalogs(databricks_client_stub, temp_config):
     """Test successful list catalogs."""
-    client_stub, config_manager = client_and_config
+    client_stub = databricks_client_stub
+    config_manager = temp_config
 
     # Set up test data using stub - this simulates external API
     client_stub.add_catalog(
@@ -60,7 +39,8 @@ def test_successful_list_catalogs(client_and_config):
     )
 
     # Call function with parameters - tests real command logic
-    result = handle_command(client_stub, include_browse=True, max_results=50)
+    with patch("chuck_data.config._config_manager", config_manager):
+        result = handle_command(client_stub, include_browse=True, max_results=50)
 
     # Verify results
     assert result.success
@@ -75,87 +55,92 @@ def test_successful_list_catalogs(client_and_config):
     assert "catalog1" in catalog_names
     assert "catalog2" in catalog_names
 
-    def test_successful_list_catalogs_with_pagination(self):
-        """Test successful list catalogs with pagination."""
-        # Set up test data
-        self.client_stub.add_catalog("catalog1", catalog_type="MANAGED")
-        self.client_stub.add_catalog("catalog2", catalog_type="EXTERNAL")
+def test_successful_list_catalogs_with_pagination(databricks_client_stub):
+    """Test successful list catalogs with pagination."""
+    from tests.fixtures.databricks.client import DatabricksClientStub
+    
+    # For pagination testing, we need to modify the stub to return pagination token
+    class PaginatingClientStub(DatabricksClientStub):
+        def list_catalogs(
+            self, include_browse=False, max_results=None, page_token=None
+        ):
+            result = super().list_catalogs(include_browse, max_results, page_token)
+            # Add pagination token if page_token was provided
+            if page_token:
+                result["next_page_token"] = "abc123"
+            return result
 
-        # For pagination testing, we need to modify the stub to return pagination token
-        class PaginatingClientStub(DatabricksClientStub):
-            def list_catalogs(
-                self, include_browse=False, max_results=None, page_token=None
-            ):
-                result = super().list_catalogs(include_browse, max_results, page_token)
-                # Add pagination token if page_token was provided
-                if page_token:
-                    result["next_page_token"] = "abc123"
-                return result
+    paginating_stub = PaginatingClientStub()
+    paginating_stub.add_catalog("catalog1", catalog_type="MANAGED")
+    paginating_stub.add_catalog("catalog2", catalog_type="EXTERNAL")
 
-        paginating_stub = PaginatingClientStub()
-        paginating_stub.add_catalog("catalog1", catalog_type="MANAGED")
-        paginating_stub.add_catalog("catalog2", catalog_type="EXTERNAL")
+    # Call function with page token
+    result = handle_command(paginating_stub, page_token="xyz789")
 
-        # Call function with page token
-        result = handle_command(paginating_stub, page_token="xyz789")
+    # Verify results
+    assert result.success
+    assert result.data["next_page_token"] == "abc123"
+    assert "More catalogs available with page token: abc123" in result.message
 
-        # Verify results
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["next_page_token"], "abc123")
-        self.assertIn("More catalogs available with page token: abc123", result.message)
 
-    def test_empty_catalog_list(self):
-        """Test handling when no catalogs are found."""
-        # Don't add any catalogs to stub
+def test_empty_catalog_list(databricks_client_stub):
+    """Test handling when no catalogs are found."""
+    # Use empty client stub (no catalogs added)
+    client_stub = databricks_client_stub
+    client_stub.catalogs.clear()  # Ensure it's empty
 
-        # Call function
-        result = handle_command(self.client_stub)
+    # Call function
+    result = handle_command(client_stub)
 
-        # Verify results
-        self.assertTrue(result.success)
-        self.assertIn("No catalogs found in this workspace.", result.message)
-        self.assertEqual(result.data["total_count"], 0)
-        self.assertFalse(result.data.get("display", True))
-        self.assertIn("current_catalog", result.data)
+    # Verify results
+    assert result.success
+    assert "No catalogs found in this workspace." in result.message
+    assert result.data["total_count"] == 0
+    assert not result.data.get("display", True)
+    assert "current_catalog" in result.data
 
-    def test_list_catalogs_exception(self):
-        """Test list_catalogs with unexpected exception."""
 
-        # Create a stub that raises an exception for list_catalogs
-        class FailingClientStub(DatabricksClientStub):
-            def list_catalogs(
-                self, include_browse=False, max_results=None, page_token=None
-            ):
-                raise Exception("API error")
+def test_list_catalogs_exception():
+    """Test list_catalogs with unexpected exception."""
+    from tests.fixtures.databricks.client import DatabricksClientStub
 
-        failing_client = FailingClientStub()
+    # Create a stub that raises an exception for list_catalogs
+    class FailingClientStub(DatabricksClientStub):
+        def list_catalogs(
+            self, include_browse=False, max_results=None, page_token=None
+        ):
+            raise Exception("API error")
 
-        # Call function
-        result = handle_command(failing_client)
+    failing_client = FailingClientStub()
 
-        # Verify results
-        self.assertFalse(result.success)
-        self.assertIn("Failed to list catalogs", result.message)
-        self.assertEqual(str(result.error), "API error")
+    # Call function
+    result = handle_command(failing_client)
 
-    def test_list_catalogs_with_display_true(self):
-        """Test list catalogs with display=true shows table."""
-        # Set up test data
-        self.client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
+    # Verify results
+    assert not result.success
+    assert "Failed to list catalogs" in result.message
+    assert str(result.error) == "API error"
 
-        result = handle_command(self.client_stub, display=True)
 
-        self.assertTrue(result.success)
-        self.assertTrue(result.data.get("display"))
-        self.assertEqual(len(result.data.get("catalogs", [])), 1)
+def test_list_catalogs_with_display_true(databricks_client_stub):
+    """Test list catalogs with display=true shows table."""
+    # Set up test data
+    databricks_client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
 
-    def test_list_catalogs_with_display_false(self):
-        """Test list catalogs with display=false returns data without display."""
-        # Set up test data
-        self.client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
+    result = handle_command(databricks_client_stub, display=True)
 
-        result = handle_command(self.client_stub, display=False)
+    assert result.success
+    assert result.data.get("display")
+    assert len(result.data.get("catalogs", [])) == 1
 
-        self.assertTrue(result.success)
-        self.assertFalse(result.data.get("display"))
-        self.assertEqual(len(result.data.get("catalogs", [])), 1)
+
+def test_list_catalogs_with_display_false(databricks_client_stub):
+    """Test list catalogs with display=false returns data without display."""
+    # Set up test data
+    databricks_client_stub.add_catalog("Test Catalog", catalog_type="MANAGED")
+
+    result = handle_command(databricks_client_stub, display=False)
+
+    assert result.success
+    assert not result.data.get("display")
+    assert len(result.data.get("catalogs", [])) == 1
