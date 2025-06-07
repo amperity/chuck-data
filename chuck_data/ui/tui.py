@@ -626,7 +626,7 @@ class ChuckTUI:
             self._display_volumes(tool_result)
         elif tool_name in ["get_table_info", "table", "show_table"]:
             self._display_table_details(tool_result)
-        elif tool_name in ["scan_schema_for_pii", "scan_pii"]:
+        elif tool_name in ["scan-schema-for-pii", "scan_schema_for_pii", "scan_pii"]:
             self._display_pii_scan_results(tool_result)
         elif tool_name == "get_status":
             self._display_status(tool_result)

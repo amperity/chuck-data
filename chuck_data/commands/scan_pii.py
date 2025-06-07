@@ -88,6 +88,7 @@ DEFINITION = CommandDefinition(
     },
     required_params=[],
     tui_aliases=["/scan-pii"],
+    agent_display="full",
     condensed_action="Scanning for PII in schema",
     visible_to_user=True,
     visible_to_agent=True,
