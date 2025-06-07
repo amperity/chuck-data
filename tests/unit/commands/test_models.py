@@ -1,135 +1,80 @@
 """
-Tests for the model-related command modules.
+Tests for models command handler.
+
+Behavioral tests focused on command execution patterns rather than implementation details.
+This file focuses on the /models command specifically, with other model commands tested in dedicated files.
 """
 
-import pytest
 from unittest.mock import patch
 
-from chuck_data.config import set_active_model, get_active_model
-from chuck_data.commands.models import handle_command as handle_models
-from chuck_data.commands.list_models import handle_command as handle_list_models
-from chuck_data.commands.model_selection import handle_command as handle_model_selection
+from chuck_data.commands.models import handle_command
 
 
-class StubClient:
-    """Simple client stub for model commands."""
-
-    def __init__(self, models=None, active_model=None):
-        self.models = models or []
-        self.active_model = active_model
-
-    def list_models(self):
-        return self.models
-
-    def get_active_model(self):
-        return self.active_model
-
-
-@pytest.fixture
-def stub_client():
-    """Create a basic stub client."""
-    return StubClient()
-
-
-def test_handle_models_with_models(temp_config):
-    """Test handling models command with available models."""
+# Direct command execution tests
+def test_direct_command_lists_available_models(databricks_client_stub, temp_config):
+    """Direct command successfully lists available models."""
     with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(
-            models=[
-                {"name": "model1", "status": "READY"},
-                {"name": "model2", "status": "READY"},
-            ]
-        )
+        # Setup test data
+        databricks_client_stub.add_model("claude-v1", created_timestamp=123456789)
+        databricks_client_stub.add_model("gpt-4", created_timestamp=987654321)
 
-        result = handle_models(client)
+        # Execute command
+        result = handle_command(databricks_client_stub)
 
+        # Verify behavioral outcome
         assert result.success
-        assert result.data == client.list_models()
+        assert len(result.data) == 2
+        assert any(model["name"] == "claude-v1" for model in result.data)
+        assert any(model["name"] == "gpt-4" for model in result.data)
 
 
-def test_handle_models_empty(temp_config):
-    """Test handling models command with no available models."""
+def test_direct_command_handles_empty_model_list(databricks_client_stub, temp_config):
+    """Direct command handles empty model list gracefully."""
     with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(models=[])
+        # Don't add any models to stub
 
-        result = handle_models(client)
+        # Execute command
+        result = handle_command(databricks_client_stub)
 
+        # Verify behavioral outcome
         assert result.success
         assert result.data == []
         assert "No models found" in result.message
 
 
-def test_handle_list_models_basic(temp_config):
-    """Test list models command (basic)."""
+def test_databricks_api_errors_handled_gracefully(databricks_client_stub, temp_config):
+    """Databricks API errors are handled gracefully."""
     with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(
-            models=[
-                {"name": "model1", "status": "READY"},
-                {"name": "model2", "status": "READY"},
-            ],
-            active_model="model1",
-        )
-        set_active_model(client.active_model)
+        # Configure stub to raise API exception
+        databricks_client_stub.set_list_models_error(Exception("API error"))
 
-        result = handle_list_models(client)
+        # Execute command
+        result = handle_command(databricks_client_stub)
 
-        assert result.success
-        assert result.data["models"] == client.list_models()
-        assert result.data["active_model"] == client.active_model
-        assert not result.data["detailed"]
-        assert result.data["filter"] is None
-
-
-def test_handle_list_models_filter(temp_config):
-    """Test list models command with filter."""
-    with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(
-            models=[
-                {"name": "model1", "status": "READY"},
-                {"name": "model2", "status": "READY"},
-            ],
-            active_model="model1",
-        )
-        set_active_model(client.active_model)
-
-        result = handle_list_models(client, filter="model1")
-
-        assert result.success
-        assert len(result.data["models"]) == 1
-        assert result.data["models"][0]["name"] == "model1"
-        assert result.data["filter"] == "model1"
-
-
-def test_handle_model_selection_success(temp_config):
-    """Test successful model selection."""
-    with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(models=[{"name": "model1"}, {"name": "valid-model"}])
-
-        result = handle_model_selection(client, model_name="valid-model")
-
-        assert result.success
-        assert get_active_model() == "valid-model"
-        assert "Active model is now set to 'valid-model'" in result.message
-
-
-def test_handle_model_selection_invalid(temp_config):
-    """Test selecting an invalid model."""
-    with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(models=[{"name": "model1"}, {"name": "model2"}])
-
-        result = handle_model_selection(client, model_name="nonexistent-model")
-
+        # Verify graceful error handling
         assert not result.success
-        assert "not found" in result.message
+        assert str(result.error) == "API error"
 
 
-def test_handle_model_selection_no_name(temp_config):
-    """Test model selection with no model name provided."""
+# Agent-specific behavioral tests
+def test_agent_tool_executor_end_to_end_integration(
+    databricks_client_stub, temp_config
+):
+    """Agent tool_executor integration works end-to-end."""
+    from chuck_data.agent.tool_executor import execute_tool
+
     with patch("chuck_data.config._config_manager", temp_config):
-        client = StubClient(models=[])  # models unused
+        # Setup test data
+        databricks_client_stub.add_model("claude-v1", created_timestamp=123456789)
+        databricks_client_stub.add_model("gpt-4", created_timestamp=987654321)
 
-        result = handle_model_selection(client)
+        # Execute via agent tool_executor
+        result = execute_tool(
+            api_client=databricks_client_stub, tool_name="models", tool_args={}
+        )
 
-        # Verify the result
-        assert not result.success
-        assert "model_name parameter is required" in result.message
+        # Verify agent gets proper result format
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert any(model["name"] == "claude-v1" for model in result)
+        assert any(model["name"] == "gpt-4" for model in result)
