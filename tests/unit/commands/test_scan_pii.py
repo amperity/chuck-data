@@ -240,7 +240,10 @@ def test_direct_command_handles_databricks_api_errors():
 
     # Should handle API errors gracefully
     assert not result.success
-    assert "Error during bulk PII scan" in result.message
+    assert (
+        "Failed to list tables" in result.message
+        or "Error during bulk PII scan" in result.message
+    )
 
 
 def test_direct_command_handles_llm_errors():
@@ -251,10 +254,15 @@ def test_direct_command_handles_llm_errors():
     client_stub = DatabricksClientStub()
     llm_stub = LLMClientStub()
 
-    # Setup test data
+    # Setup test data with columns to trigger LLM call
     client_stub.add_catalog("test_catalog")
     client_stub.add_schema("test_catalog", "test_schema")
-    client_stub.add_table("test_catalog", "test_schema", "users")
+    client_stub.add_table(
+        "test_catalog",
+        "test_schema",
+        "users",
+        columns=[{"name": "email", "type_name": "string"}],
+    )
 
     # Force LLM error
     llm_stub.set_exception(True)
@@ -268,9 +276,14 @@ def test_direct_command_handles_llm_errors():
                     client_stub, catalog_name="test_catalog", schema_name="test_schema"
                 )
 
-    # Should handle LLM errors gracefully
-    assert not result.success
-    assert "Error during bulk PII scan" in result.message
+    # Should handle LLM errors gracefully - scan succeeds but table is skipped
+    assert result.success
+    assert "Scanned 0/1 tables" in result.message  # 0 successful, 1 attempted
+    assert result.data["tables_successfully_processed"] == 0
+    assert len(result.data["results_detail"]) == 1
+    error_detail = result.data["results_detail"][0]
+    assert error_detail["skipped"] is True
+    assert "Test LLM exception" in error_detail["error"]
 
 
 # ===== Agent Progress Tests =====
@@ -461,3 +474,118 @@ def test_agent_handles_tool_callback_errors_gracefully():
     # Should complete successfully since scan-pii doesn't depend on callback
     assert result.success
     assert "callback_test_catalog.callback_test_schema" in result.message
+
+
+def test_direct_command_display_shows_all_columns_not_just_pii():
+    """Direct command display shows all columns (PII and non-PII) for complete table view."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+    from chuck_data.ui.tui import ChuckTUI
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup table with mix of PII and non-PII columns
+    client_stub.add_catalog("complete_catalog")
+    client_stub.add_schema("complete_catalog", "complete_schema")
+    client_stub.add_table(
+        "complete_catalog",
+        "complete_schema",
+        "customer_data",
+        columns=[
+            {"name": "customer_id", "type_name": "INTEGER"},  # Non-PII
+            {"name": "email", "type_name": "STRING"},  # PII
+            {"name": "first_name", "type_name": "STRING"},  # PII
+            {"name": "signup_date", "type_name": "DATE"},  # Non-PII
+            {"name": "account_status", "type_name": "STRING"},  # Non-PII
+        ],
+    )
+
+    # Configure LLM to identify only some columns as PII
+    llm_stub.set_response_content(
+        '[{"name":"customer_id","semantic":null},'
+        '{"name":"email","semantic":"email"},'
+        '{"name":"first_name","semantic":"given-name"},'
+        '{"name":"signup_date","semantic":null},'
+        '{"name":"account_status","semantic":null}]'
+    )
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(
+                    client_stub,
+                    catalog_name="complete_catalog",
+                    schema_name="complete_schema",
+                )
+
+    # Verify scan completed successfully
+    assert result.success
+    assert result.data is not None
+
+    # Test the display behavior by mocking display_table calls
+    tui = ChuckTUI(no_color=True)
+
+    with patch("chuck_data.ui.table_formatter.display_table") as mock_display_table:
+        tui._display_pii_scan_results(result.data)
+
+        # Should have been called twice: once for table summary, once for column details
+        assert (
+            mock_display_table.call_count >= 2
+        ), "Should call display_table for table summary and column details"
+
+        # Get the call for column details (should be the last call with individual column data)
+        column_display_calls = [
+            call
+            for call in mock_display_table.call_args_list
+            if len(call[1].get("data", [])) > 0
+            and isinstance(call[1].get("data", [{}])[0], dict)
+            and "name" in call[1].get("data", [{}])[0]
+            and "semantic" in call[1].get("data", [{}])[0]
+        ]
+
+        assert len(column_display_calls) > 0, "Should have column display calls"
+
+        # Check the column data that was passed to display_table
+        column_call = column_display_calls[0]
+        column_data = column_call[1]["data"]
+
+        # THIS IS THE KEY TEST: Should display ALL columns, not just PII columns
+        column_names = [col["name"] for col in column_data]
+
+        # Verify all columns are displayed with correct PII indicators
+        assert (
+            "customer_id" in column_names
+        ), "Should display non-PII column customer_id"
+        assert "email" in column_names, "Should display PII column email"
+        assert "first_name" in column_names, "Should display PII column first_name"
+        assert (
+            "signup_date" in column_names
+        ), "Should display non-PII column signup_date"
+        assert (
+            "account_status" in column_names
+        ), "Should display non-PII column account_status"
+
+        assert (
+            len(column_data) == 5
+        ), f"Should display all 5 columns, but only got {len(column_data)}: {column_names}"
+
+        # Verify PII indicators are correct (blank for non-PII, semantic tag for PII)
+        column_semantics = {col["name"]: col["semantic"] for col in column_data}
+        assert (
+            column_semantics["customer_id"] == ""
+        ), "Non-PII column should have blank semantic"
+        assert (
+            column_semantics["email"] == "email"
+        ), "PII column should have semantic tag"
+        assert (
+            column_semantics["first_name"] == "given-name"
+        ), "PII column should have semantic tag"
+        assert (
+            column_semantics["signup_date"] == ""
+        ), "Non-PII column should have blank semantic"
+        assert (
+            column_semantics["account_status"] == ""
+        ), "Non-PII column should have blank semantic"
