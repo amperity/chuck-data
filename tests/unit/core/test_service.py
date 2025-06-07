@@ -2,25 +2,19 @@
 Tests for the service layer.
 """
 
-import unittest
 from unittest.mock import patch, MagicMock
 
 from chuck_data.service import ChuckService
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.commands.base import CommandResult
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
-class TestChuckService(unittest.TestCase):
-    """Test cases for ChuckService."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.mock_client = MagicMock()
-        self.service = ChuckService(client=self.mock_client)
-
-    def test_service_initialization(self):
-        """Test service initialization with client."""
-        self.assertEqual(self.service.client, self.mock_client)
+def test_service_initialization():
+    """Test service initialization with client."""
+    mock_client = MagicMock()
+    service = ChuckService(client=mock_client)
+    assert service.client == mock_client
 
     @patch("chuck_data.service.get_command")
     def test_execute_command_status(self, mock_get_command):

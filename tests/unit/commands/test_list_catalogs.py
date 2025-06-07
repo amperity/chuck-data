@@ -4,7 +4,7 @@ Tests for list_catalogs command handler.
 This module contains tests for the list_catalogs command handler.
 """
 
-import unittest
+import pytest
 import os
 import tempfile
 from unittest.mock import patch
@@ -14,63 +14,65 @@ from chuck_data.config import ConfigManager
 from tests.fixtures.fixtures import DatabricksClientStub
 
 
-class TestListCatalogs(unittest.TestCase):
-    """Tests for list_catalogs command handler."""
+@pytest.fixture
+def client_and_config():
+    """Set up DatabricksClientStub and real ConfigManager with temp file."""
+    client_stub = DatabricksClientStub()
 
-    def setUp(self):
-        """Set up test fixtures."""
-        self.client_stub = DatabricksClientStub()
+    # Set up config management with real ConfigManager and temp file
+    temp_dir = tempfile.TemporaryDirectory()
+    config_path = os.path.join(temp_dir.name, "test_config.json")
+    config_manager = ConfigManager(config_path)
+    patcher = patch("chuck_data.config._config_manager", config_manager)
+    patcher.start()
 
-        # Set up config management
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
-        self.config_manager = ConfigManager(self.config_path)
-        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
-        self.patcher.start()
+    yield client_stub, config_manager
 
-    def tearDown(self):
-        self.patcher.stop()
-        self.temp_dir.cleanup()
+    patcher.stop()
+    temp_dir.cleanup()
 
-    def test_no_client(self):
-        """Test handling when no client is provided."""
-        result = handle_command(None)
-        self.assertFalse(result.success)
-        self.assertIn("No Databricks client available", result.message)
+def test_no_client():
+    """Test handling when no client is provided."""
+    result = handle_command(None)
+    assert not result.success
+    assert "No Databricks client available" in result.message
 
-    def test_successful_list_catalogs(self):
-        """Test successful list catalogs."""
-        # Set up test data using stub
-        self.client_stub.add_catalog(
-            "catalog1",
-            catalog_type="MANAGED",
-            comment="Test catalog 1",
-            provider={"name": "provider1"},
-            created_at="2023-01-01",
-        )
-        self.client_stub.add_catalog(
-            "catalog2",
-            catalog_type="EXTERNAL",
-            comment="Test catalog 2",
-            provider={"name": "provider2"},
-            created_at="2023-01-02",
-        )
 
-        # Call function with parameters
-        result = handle_command(self.client_stub, include_browse=True, max_results=50)
+def test_successful_list_catalogs(client_and_config):
+    """Test successful list catalogs."""
+    client_stub, config_manager = client_and_config
+    
+    # Set up test data using stub - this simulates external API
+    client_stub.add_catalog(
+        "catalog1",
+        catalog_type="MANAGED",
+        comment="Test catalog 1",
+        provider={"name": "provider1"},
+        created_at="2023-01-01",
+    )
+    client_stub.add_catalog(
+        "catalog2",
+        catalog_type="EXTERNAL",
+        comment="Test catalog 2",
+        provider={"name": "provider2"},
+        created_at="2023-01-02",
+    )
 
-        # Verify results
-        self.assertTrue(result.success)
-        self.assertEqual(len(result.data["catalogs"]), 2)
-        self.assertEqual(result.data["total_count"], 2)
-        self.assertIn("Found 2 catalog(s).", result.message)
-        self.assertFalse(result.data.get("display", True))  # Should default to False
-        self.assertIn("current_catalog", result.data)
+    # Call function with parameters - tests real command logic
+    result = handle_command(client_stub, include_browse=True, max_results=50)
 
-        # Verify catalog data
-        catalog_names = [c["name"] for c in result.data["catalogs"]]
-        self.assertIn("catalog1", catalog_names)
-        self.assertIn("catalog2", catalog_names)
+    # Verify results
+    assert result.success
+    assert len(result.data["catalogs"]) == 2
+    assert result.data["total_count"] == 2
+    assert "Found 2 catalog(s)." in result.message
+    assert result.data.get("display", True) == False  # Should default to False
+    assert "current_catalog" in result.data
+
+    # Verify catalog data
+    catalog_names = [c["name"] for c in result.data["catalogs"]]
+    assert "catalog1" in catalog_names
+    assert "catalog2" in catalog_names
 
     def test_successful_list_catalogs_with_pagination(self):
         """Test successful list catalogs with pagination."""
