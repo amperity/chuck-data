@@ -8,7 +8,6 @@ making them available for both CLI and agent usage.
 from chuck_data.command_registry import register_command
 
 # Import command definitions
-from .models import DEFINITION as models_definition
 from .list_models import DEFINITION as list_models_definition
 from .model_selection import DEFINITION as model_selection_definition
 from .catalog_selection import DEFINITION as catalog_selection_definition
@@ -54,7 +53,6 @@ ALL_COMMAND_DEFINITIONS = [
     workspace_selection_definition,
     setup_wizard_definition,
     # Model related commands
-    models_definition,
     list_models_definition,
     model_selection_definition,
     # Catalog & Schema commands

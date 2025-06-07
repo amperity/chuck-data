@@ -66,8 +66,8 @@ After deployment, run the models command again to verify availability."""
 
 
 DEFINITION = CommandDefinition(
-    name="detailed-models",
-    description="List available models with filtering and detailed information",
+    name="list-models",
+    description="List available language models in the Databricks workspace",
     handler=handle_command,
     parameters={
         "detailed": {
@@ -80,7 +80,7 @@ DEFINITION = CommandDefinition(
         },
     },
     required_params=[],
-    tui_aliases=["/list-models"],
+    tui_aliases=["/models", "/list-models"],
     visible_to_user=True,
     visible_to_agent=True,
     agent_display="full",  # Show full model list in tables

@@ -120,7 +120,7 @@ def test_agent_tool_executor_end_to_end_integration(
 
         # Execute via agent tool_executor
         result = execute_tool(
-            api_client=databricks_client_stub, tool_name="detailed-models", tool_args={}
+            api_client=databricks_client_stub, tool_name="list-models", tool_args={}
         )
 
         # Verify agent gets proper result format (list_models returns data dict)
