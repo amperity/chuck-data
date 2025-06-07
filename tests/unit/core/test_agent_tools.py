@@ -7,11 +7,8 @@ Following approved testing patterns:
 - Test end-to-end agent tool behavior with real command routing
 """
 
-import pytest
 from unittest.mock import MagicMock
-from jsonschema.exceptions import ValidationError
 from chuck_data.agent import execute_tool, get_tool_schemas
-from chuck_data.commands.base import CommandResult
 
 
 def test_execute_tool_unknown_command_real_routing(databricks_client_stub):

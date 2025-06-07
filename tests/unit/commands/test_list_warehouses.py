@@ -71,7 +71,7 @@ def test_successful_list_warehouses(databricks_client_stub):
     assert serverless_warehouse["id"] == "warehouse-123"
     assert serverless_warehouse["size"] == "XLARGE"
     assert serverless_warehouse["state"] == "STOPPED"
-    assert serverless_warehouse["enable_serverless_compute"] == True
+    assert serverless_warehouse["enable_serverless_compute"]
     assert serverless_warehouse["warehouse_type"] == "PRO"
     assert serverless_warehouse["creator_name"] == "test.user@example.com"
     assert serverless_warehouse["auto_stop_mins"] == 10
@@ -82,7 +82,7 @@ def test_successful_list_warehouses(databricks_client_stub):
     assert regular_warehouse["id"] == "warehouse-456"
     assert regular_warehouse["size"] == "SMALL"
     assert regular_warehouse["state"] == "RUNNING"
-    assert regular_warehouse["enable_serverless_compute"] == False
+    assert not regular_warehouse["enable_serverless_compute"]
     assert regular_warehouse["warehouse_type"] == "CLASSIC"
     assert regular_warehouse["creator_name"] == "another.user@example.com"
     assert regular_warehouse["auto_stop_mins"] == 60
@@ -166,7 +166,7 @@ def test_warehouse_data_integrity(databricks_client_stub):
     assert warehouse["name"] == "Complete Test Warehouse"
     assert warehouse["size"] == "MEDIUM"
     assert warehouse["state"] == "STOPPED"
-    assert warehouse["enable_serverless_compute"] == True
+    assert warehouse["enable_serverless_compute"]
     assert warehouse["creator_name"] == "complete.user@example.com"
     assert warehouse["auto_stop_mins"] == 30
 
@@ -273,8 +273,8 @@ def test_serverless_compute_boolean_handling(databricks_client_stub):
         w for w in warehouses if w["name"] == "Serverless False Warehouse"
     )
 
-    assert serverless_true["enable_serverless_compute"] == True
-    assert serverless_false["enable_serverless_compute"] == False
+    assert serverless_true["enable_serverless_compute"]
+    assert not serverless_false["enable_serverless_compute"]
 
     # Ensure they're proper boolean values, not strings
     assert isinstance(serverless_true["enable_serverless_compute"], bool)
@@ -320,4 +320,4 @@ def test_display_parameter_false_default(databricks_client_stub):
     # Should include current_warehouse_id for highlighting
     assert "current_warehouse_id" in result.data
     # Should default to display=False
-    assert result.data["display"] == False
+    assert not result.data["display"]

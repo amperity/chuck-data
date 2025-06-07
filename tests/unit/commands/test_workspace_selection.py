@@ -4,7 +4,6 @@ Tests for workspace_selection command handler.
 This module contains tests for the workspace selection command handler.
 """
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.workspace_selection import handle_command

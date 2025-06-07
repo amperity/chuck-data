@@ -67,8 +67,8 @@ def test_tag_pii_columns_logic_success(
         assert result["table_name"] == "users"
         assert result["column_count"] == 3
         assert result["pii_column_count"] == 2
-        assert result["has_pii"] == True
-        assert result["skipped"] == False
+        assert result["has_pii"]
+        assert not result["skipped"]
         assert result["columns"][0]["semantic"] == "given-name"
         assert result["columns"][1]["semantic"] == "email"
         assert result["columns"][2]["semantic"] is None

@@ -22,7 +22,7 @@ def integration_setup():
 
     # Replace the global config manager with our test instance
     config_manager_patcher = patch("chuck_data.config._config_manager", config_manager)
-    mock_config_manager = config_manager_patcher.start()
+    config_manager_patcher.start()
 
     # Mock environment for authentication
     env_patcher = patch.dict(

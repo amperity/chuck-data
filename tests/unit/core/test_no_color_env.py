@@ -1,6 +1,5 @@
 """Tests for the NO_COLOR environment variable."""
 
-import os
 from unittest.mock import patch, MagicMock
 
 import chuck_data.__main__ as chuck

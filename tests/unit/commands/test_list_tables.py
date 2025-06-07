@@ -4,7 +4,6 @@ Tests for list_tables command handler.
 This module contains tests for the list_tables command handler.
 """
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.list_tables import handle_command

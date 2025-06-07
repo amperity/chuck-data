@@ -7,7 +7,6 @@ Following approved testing patterns:
 - Test end-to-end service behavior with real command registry
 """
 
-import pytest
 from chuck_data.service import ChuckService
 from chuck_data.commands.base import CommandResult
 
