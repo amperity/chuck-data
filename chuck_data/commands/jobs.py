@@ -16,7 +16,7 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
     config_path: str = kwargs.get("config_path")
     init_script_path: str = kwargs.get("init_script_path")
     run_name: Optional[str] = kwargs.get("run_name")
-    tool_output_callback = kwargs.get("tool_output_callback")  # Get the callback
+    tool_output_callback = kwargs.get("tool_output_callback")
 
     if not config_path or not init_script_path:
         return CommandResult(
@@ -70,7 +70,7 @@ def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         **kwargs: run_id (str), tool_output_callback (callable, optional)
     """
     run_id_str: str = kwargs.get("run_id")
-    tool_output_callback = kwargs.get("tool_output_callback")  # Get the callback
+    tool_output_callback = kwargs.get("tool_output_callback")
 
     if not run_id_str:
         return CommandResult(False, message="run_id parameter is required.")
@@ -113,7 +113,6 @@ def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         return CommandResult(False, error=e, message=str(e))
 
 
-# Command definitions (NO CHANGES BEYOND THIS POINT)
 LAUNCH_JOB_DEFINITION = CommandDefinition(
     name="launch-job",
     description="Launch a Databricks job using a config file",

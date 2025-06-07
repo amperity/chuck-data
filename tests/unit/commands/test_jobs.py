@@ -7,15 +7,8 @@ from unittest.mock import patch
 
 from chuck_data.commands.jobs import handle_launch_job, handle_job_status
 from chuck_data.commands.base import CommandResult
+from chuck_data.agent.tool_executor import execute_tool
 
-# Imports for agent tests (assuming execute_tool location)
-# You may need to adjust this import based on your project structure
-try:
-    from chuck_data.agent.tool_executor import execute_tool
-except ImportError:
-    execute_tool = (
-        None  # If execute_tool is None, tests will now fail if it's not found.
-    )
 
 # --- Parameter Validation Tests ---
 
