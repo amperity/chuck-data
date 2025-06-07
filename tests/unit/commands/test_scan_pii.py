@@ -1,8 +1,8 @@
 """
 Tests for scan_pii command handler.
 
-Following approved testing patterns:
-- Mock external boundaries only (LLM client)
+Following approved testing patterns from CLAUDE.md:
+- Mock external boundaries only (LLM client, UI/Terminal)
 - Use real config system with temporary files
 - Use real internal business logic (_helper_scan_schema_for_pii_logic)
 - Test end-to-end PII scanning behavior
@@ -24,26 +24,41 @@ def test_missing_client():
     assert "Client is required" in result.message
 
 
-def test_missing_context_real_config(databricks_client_stub):
+def test_missing_context_real_config():
     """Test handling when catalog or schema is missing in real config."""
+    # Use real Databricks client stub (external boundary)
+    from tests.fixtures.databricks import DatabricksClientStub
+
+    client_stub = DatabricksClientStub()
+
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
         # Don't set active_catalog or active_schema in config
 
         with patch("chuck_data.config._config_manager", config_manager):
             # Test real config validation with missing values
-            result = handle_command(databricks_client_stub)
+            result = handle_command(client_stub)
 
             assert not result.success
             assert "Catalog and schema must be specified" in result.message
 
 
-def test_successful_scan_with_explicit_params_real_logic(
-    databricks_client_stub_with_data, llm_client_stub
-):
+def test_successful_scan_with_explicit_params_real_logic():
     """Test successful schema scan with explicit catalog/schema parameters."""
+    # Use real client stubs (external boundaries)
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Set up test data in stubs
+    client_stub.add_catalog("test_catalog")
+    client_stub.add_schema("test_catalog", "test_schema")
+    client_stub.add_table("test_catalog", "test_schema", "users")
+
     # Configure LLM stub for PII detection
-    llm_client_stub.set_response_content(
+    llm_stub.set_response_content(
         '[{"name":"email","semantic":"email"},{"name":"phone","semantic":"phone"}]'
     )
 
@@ -51,12 +66,10 @@ def test_successful_scan_with_explicit_params_real_logic(
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.scan_pii.LLMClient", return_value=llm_client_stub
-            ):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
                 # Test real PII scanning logic with explicit parameters
                 result = handle_command(
-                    databricks_client_stub_with_data,
+                    client_stub,
                     catalog_name="test_catalog",
                     schema_name="test_schema",
                 )
@@ -73,14 +86,22 @@ def test_successful_scan_with_explicit_params_real_logic(
     )
 
 
-def test_scan_with_active_context_real_logic(
-    databricks_client_stub_with_data, llm_client_stub
-):
+def test_scan_with_active_context_real_logic():
     """Test schema scan using real active catalog and schema from config."""
+    # Use real client stubs (external boundaries)
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Set up test data
+    client_stub.add_catalog("active_catalog")
+    client_stub.add_schema("active_catalog", "active_schema")
+    client_stub.add_table("active_catalog", "active_schema", "users")
+
     # Configure LLM stub
-    llm_client_stub.set_response_content(
-        '[{"name":"user_id","semantic":"customer-id"}]'
-    )
+    llm_stub.set_response_content('[{"name":"user_id","semantic":"customer-id"}]')
 
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
@@ -91,34 +112,40 @@ def test_scan_with_active_context_real_logic(
         )
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.scan_pii.LLMClient", return_value=llm_client_stub
-            ):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
                 # Test real config integration - should use active values
-                result = handle_command(databricks_client_stub_with_data)
+                result = handle_command(client_stub)
 
     # Should succeed using real active catalog/schema from config
     assert result.success
     assert result.data is not None
 
 
-def test_scan_with_llm_error_real_logic(
-    databricks_client_stub_with_data, llm_client_stub
-):
+def test_scan_with_llm_error_real_logic():
     """Test handling when LLM client encounters error with real business logic."""
+    # Use real client stubs (external boundaries)
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Set up test data
+    client_stub.add_catalog("test_catalog")
+    client_stub.add_schema("test_catalog", "test_schema")
+    client_stub.add_table("test_catalog", "test_schema", "users")
+
     # Configure LLM stub to simulate error
-    llm_client_stub.set_exception(True)
+    llm_stub.set_exception(True)
 
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.scan_pii.LLMClient", return_value=llm_client_stub
-            ):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
                 # Test real error handling with LLM failure
                 result = handle_command(
-                    databricks_client_stub_with_data,
+                    client_stub,
                     catalog_name="test_catalog",
                     schema_name="test_schema",
                 )
@@ -128,31 +155,34 @@ def test_scan_with_llm_error_real_logic(
     assert result.error is not None or result.message is not None
 
 
-def test_scan_with_databricks_client_stub_integration(
-    databricks_client_stub_with_data, llm_client_stub
-):
+def test_scan_with_databricks_client_stub_integration():
     """Test PII scanning with Databricks client stub integration."""
+    # Use real client stubs (external boundaries)
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
     # Configure LLM stub for realistic PII response
-    llm_client_stub.set_response_content(
+    llm_stub.set_response_content(
         '[{"name":"first_name","semantic":"given-name"},{"name":"last_name","semantic":"family-name"}]'
     )
 
     # Set up Databricks stub with test data
-    databricks_client_stub_with_data.add_catalog("test_catalog")
-    databricks_client_stub_with_data.add_schema("test_catalog", "test_schema")
-    databricks_client_stub_with_data.add_table("test_catalog", "test_schema", "users")
-    databricks_client_stub_with_data.add_table("test_catalog", "test_schema", "orders")
+    client_stub.add_catalog("test_catalog")
+    client_stub.add_schema("test_catalog", "test_schema")
+    client_stub.add_table("test_catalog", "test_schema", "users")
+    client_stub.add_table("test_catalog", "test_schema", "orders")
 
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.scan_pii.LLMClient", return_value=llm_client_stub
-            ):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
                 # Test real PII scanning with stubbed external boundaries
                 result = handle_command(
-                    databricks_client_stub_with_data,
+                    client_stub,
                     catalog_name="test_catalog",
                     schema_name="test_schema",
                 )
@@ -163,11 +193,23 @@ def test_scan_with_databricks_client_stub_integration(
     assert "test_catalog.test_schema" in result.message
 
 
-def test_scan_parameter_priority_real_logic(
-    databricks_client_stub_with_data, llm_client_stub
-):
+def test_scan_parameter_priority_real_logic():
     """Test that explicit parameters take priority over active config."""
-    llm_client_stub.set_response_content("[]")  # No PII found
+    # Use real client stubs (external boundaries)
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Set up test data for both catalogs
+    client_stub.add_catalog("config_catalog")
+    client_stub.add_schema("config_catalog", "config_schema")
+    client_stub.add_catalog("explicit_catalog")
+    client_stub.add_schema("explicit_catalog", "explicit_schema")
+    client_stub.add_table("explicit_catalog", "explicit_schema", "users")
+
+    llm_stub.set_response_content("[]")  # No PII found
 
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
@@ -178,12 +220,10 @@ def test_scan_parameter_priority_real_logic(
         )
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.scan_pii.LLMClient", return_value=llm_client_stub
-            ):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
                 # Test real parameter priority logic: explicit should override config
                 result = handle_command(
-                    databricks_client_stub_with_data,
+                    client_stub,
                     catalog_name="explicit_catalog",
                     schema_name="explicit_schema",
                 )
@@ -193,11 +233,16 @@ def test_scan_parameter_priority_real_logic(
     assert "explicit_catalog.explicit_schema" in result.message
 
 
-def test_scan_with_partial_config_real_logic(
-    databricks_client_stub_with_data, llm_client_stub
-):
+def test_scan_with_partial_config_real_logic():
     """Test scan with partially configured active context."""
-    llm_client_stub.set_response_content("[]")
+    # Use real client stubs (external boundaries)
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    llm_stub.set_response_content("[]")
 
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
@@ -207,11 +252,9 @@ def test_scan_with_partial_config_real_logic(
         # active_schema is None/missing
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.scan_pii.LLMClient", return_value=llm_client_stub
-            ):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
                 # Test real validation logic with partial config
-                result = handle_command(databricks_client_stub_with_data)
+                result = handle_command(client_stub)
 
     # Should fail with real validation logic
     assert not result.success
@@ -246,10 +289,11 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         """Set up common test fixtures."""
         # Use real databricks client stub (external boundary)
         from tests.fixtures import DatabricksClientStub
+
         self.client_stub = DatabricksClientStub()
 
     @patch("rich.console.Console")
-    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used  
+    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used
     def test_interactive_display_with_real_business_logic(self, mock_console_class):
         """Test interactive display using real business logic (following CLAUDE.md guidelines)."""
         # Setup mock console (external boundary - UI/Terminal)
@@ -285,6 +329,7 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         # Mock the LLM class but use real LLM client stub
         with patch("chuck_data.commands.scan_pii.LLMClient") as mock_llm_class:
             from tests.fixtures import LLMClientStub
+
             llm_stub = LLMClientStub()
             # Set up responses for multiple tables
             llm_stub.set_response_content(pii_response)
@@ -337,6 +382,7 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
 
         with patch("chuck_data.commands.scan_pii.LLMClient") as mock_llm_class:
             from tests.fixtures import LLMClientStub
+
             llm_stub = LLMClientStub()
             llm_stub.set_response_content(pii_response)
             mock_llm_class.return_value = llm_stub
@@ -371,4 +417,6 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         # Verify the parameter is defined
         self.assertIn("show_progress", DEFINITION.parameters)
         self.assertEqual(DEFINITION.parameters["show_progress"]["type"], "boolean")
-        self.assertIn("progress", DEFINITION.parameters["show_progress"]["description"].lower())
+        self.assertIn(
+            "progress", DEFINITION.parameters["show_progress"]["description"].lower()
+        )
