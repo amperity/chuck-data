@@ -19,7 +19,7 @@ class FileStubMixin:
 
     def fetch_amperity_job_init(self, amperity_token=None):
         """Fetch Amperity job initialization script."""
-        if hasattr(self, '_fetch_amperity_error'):
+        if hasattr(self, "_fetch_amperity_error"):
             raise self._fetch_amperity_error
         return {"cluster-init": "echo 'Amperity init script'"}
 

@@ -27,7 +27,7 @@ class TableStubMixin:
         """List tables in a schema."""
         if self.list_tables_error:
             raise self.list_tables_error
-            
+
         self.list_tables_calls.append(
             (
                 catalog_name,

@@ -13,8 +13,6 @@ from chuck_data.profiler import (
 )
 
 
-
-
 @pytest.fixture
 def warehouse_id():
     """Warehouse ID fixture."""
@@ -159,17 +157,17 @@ def test_profile_table_success(mock_sleep, databricks_client_stub, warehouse_id)
         "schema_name": "schema1",
         "table_name": "table1",
     }
-    
+
     # Configure databricks_client_stub for all the API calls
     # Mock the SQL query execution for list_tables
     databricks_client_stub.post.side_effect = [
         {"statement_id": "stmt-123"},  # list_tables query
-        {"statement_id": "stmt-456"},  # get_table_schema query  
+        {"statement_id": "stmt-456"},  # get_table_schema query
         {"statement_id": "stmt-789"},  # get_sample_data query
         {"predictions": [{"pii_tags": ["id"]}]},  # query_llm endpoint call
-        {"success": True}  # store_manifest DBFS call
+        {"success": True},  # store_manifest DBFS call
     ]
-    
+
     databricks_client_stub.get.side_effect = [
         {  # list_tables result
             "status": {"state": "SUCCEEDED"},
@@ -181,22 +179,18 @@ def test_profile_table_success(mock_sleep, databricks_client_stub, warehouse_id)
         },
         {  # get_table_schema result
             "status": {"state": "SUCCEEDED"},
-            "result": {
-                "data": [
-                    ["id", "integer", "Y", None, None, None, None]
-                ]
-            },
+            "result": {"data": [["id", "integer", "Y", None, None, None, None]]},
         },
         {  # get_sample_data result
             "status": {"state": "SUCCEEDED"},
             "result": {
                 "data": [
                     ["id"],  # column headers
-                    [1],     # data row
-                    [2],     # data row
+                    [1],  # data row
+                    [2],  # data row
                 ]
             },
-        }
+        },
     ]
 
     # Call the function - should use real profiler logic
@@ -208,8 +202,10 @@ def test_profile_table_success(mock_sleep, databricks_client_stub, warehouse_id)
     assert result.endswith("_manifest.json")
 
     # Verify API calls were made (external boundaries)
-    assert databricks_client_stub.post.call_count >= 4  # list, schema, sample, llm calls
-    assert databricks_client_stub.get.call_count >= 3   # polling for query results
+    assert (
+        databricks_client_stub.post.call_count >= 4
+    )  # list, schema, sample, llm calls
+    assert databricks_client_stub.get.call_count >= 3  # polling for query results
 
 
 def test_query_llm(databricks_client_stub):

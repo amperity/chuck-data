@@ -21,7 +21,7 @@ class VolumeStubMixin:
         """Create a volume."""
         if self.create_volume_failure:
             return None
-            
+
         key = catalog_name
         if key not in self.volumes:
             self.volumes[key] = []

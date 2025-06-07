@@ -67,16 +67,18 @@ def test_track_event_no_consent(metrics_collector_with_stubs):
     """Test that tracking is skipped when consent is not given."""
     import tempfile
     from chuck_data.config import ConfigManager, set_amperity_token
-    
+
     # Use real config system
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        
+
         with patch("chuck_data.config._config_manager", config_manager):
             # Set amperity token using real config
             set_amperity_token("test-token")
-            
-            metrics_collector, config_stub, amperity_client_stub = metrics_collector_with_stubs
+
+            metrics_collector, config_stub, amperity_client_stub = (
+                metrics_collector_with_stubs
+            )
             config_stub.usage_tracking_consent = False
 
             # Reset stub metrics call count
@@ -94,15 +96,15 @@ def test_track_event_with_all_fields(mock_send_metric, metrics_collector_with_st
     """Test tracking with all fields provided."""
     import tempfile
     from chuck_data.config import ConfigManager, set_amperity_token
-    
+
     # Use real config system
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        
+
         with patch("chuck_data.config._config_manager", config_manager):
             # Set amperity token using real config
             set_amperity_token("test-token")
-            
+
             metrics_collector, config_stub, _ = metrics_collector_with_stubs
             config_stub.usage_tracking_consent = True
             mock_send_metric.return_value = True
@@ -141,15 +143,15 @@ def test_send_metric_successful(metrics_collector_with_stubs):
     """Test successful metrics sending."""
     import tempfile
     from chuck_data.config import ConfigManager, set_amperity_token
-    
+
     # Use real config system
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        
+
         with patch("chuck_data.config._config_manager", config_manager):
             # Set amperity token using real config
             set_amperity_token("test-token")
-            
+
             metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
             payload = {"event": "USAGE", "prompt": "test prompt"}
 
@@ -167,15 +169,15 @@ def test_send_metric_failure(metrics_collector_with_stubs):
     """Test handling of metrics sending failure."""
     import tempfile
     from chuck_data.config import ConfigManager, set_amperity_token
-    
+
     # Use real config system
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        
+
         with patch("chuck_data.config._config_manager", config_manager):
             # Set amperity token using real config
             set_amperity_token("test-token")
-            
+
             metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
 
             # Configure stub to simulate failure
@@ -195,15 +197,15 @@ def test_send_metric_exception(metrics_collector_with_stubs):
     """Test handling of exceptions during metrics sending."""
     import tempfile
     from chuck_data.config import ConfigManager, set_amperity_token
-    
+
     # Use real config system
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        
+
         with patch("chuck_data.config._config_manager", config_manager):
             # Set amperity token using real config
             set_amperity_token("test-token")
-            
+
             metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
 
             # Configure stub to raise exception
@@ -223,14 +225,14 @@ def test_send_metric_no_token(metrics_collector_with_stubs):
     """Test that metrics are not sent when no token is available."""
     import tempfile
     from chuck_data.config import ConfigManager
-    
+
     # Use real config system with no token set
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        
+
         with patch("chuck_data.config._config_manager", config_manager):
             # Don't set any amperity token (should be None by default)
-            
+
             metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
 
             # Reset stub metrics call count

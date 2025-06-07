@@ -24,22 +24,44 @@ def mock_client():
 def databricks_client_stub():
     """DatabricksClientStub fixture for integration testing."""
     from tests.fixtures.databricks.client import DatabricksClientStub
+
     return DatabricksClientStub()
 
 
 def test_validate_all_permissions_success(databricks_client_stub):
     """Test that validate_all_permissions works with all permissions granted."""
     # Set up successful responses for all permission checks
-    databricks_client_stub.set_get_response("/api/2.0/preview/scim/v2/Me", {"userName": "test_user"})
-    databricks_client_stub.set_get_response("/api/2.1/unity-catalog/catalogs?max_results=1", {"catalogs": [{"name": "test_catalog"}]})
-    databricks_client_stub.set_get_response("/api/2.0/sql/warehouses?page_size=1", {"warehouses": [{"id": "warehouse1"}]})
-    databricks_client_stub.set_get_response("/api/2.1/jobs/list?limit=1", {"jobs": [{"job_id": "job1"}]})
-    databricks_client_stub.set_get_response("/api/2.0/mlflow/registered-models/list?max_results=1", {"registered_models": [{"name": "model1"}]})
-    
+    databricks_client_stub.set_get_response(
+        "/api/2.0/preview/scim/v2/Me", {"userName": "test_user"}
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/catalogs?max_results=1",
+        {"catalogs": [{"name": "test_catalog"}]},
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/sql/warehouses?page_size=1", {"warehouses": [{"id": "warehouse1"}]}
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/jobs/list?limit=1", {"jobs": [{"job_id": "job1"}]}
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/mlflow/registered-models/list?max_results=1",
+        {"registered_models": [{"name": "model1"}]},
+    )
+
     # Set up volume check responses (multi-step process)
-    databricks_client_stub.set_get_response("/api/2.1/unity-catalog/catalogs?max_results=1", {"catalogs": [{"name": "test_catalog"}]})
-    databricks_client_stub.set_get_response("/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1", {"schemas": [{"name": "test_schema"}]})
-    databricks_client_stub.set_get_response("/api/2.1/unity-catalog/volumes?catalog_name=test_catalog&schema_name=test_schema", {"volumes": [{"name": "test_volume"}]})
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/catalogs?max_results=1",
+        {"catalogs": [{"name": "test_catalog"}]},
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1",
+        {"schemas": [{"name": "test_schema"}]},
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/volumes?catalog_name=test_catalog&schema_name=test_schema",
+        {"volumes": [{"name": "test_volume"}]},
+    )
 
     # Call the real function with real business logic
     result = validate_all_permissions(databricks_client_stub)
@@ -51,7 +73,7 @@ def test_validate_all_permissions_success(databricks_client_stub):
     assert "jobs" in result
     assert "models" in result
     assert "volumes" in result
-    
+
     # Verify all categories show as authorized
     assert result["basic_connectivity"]["authorized"]
     assert result["unity_catalog"]["authorized"]
@@ -64,14 +86,25 @@ def test_validate_all_permissions_success(databricks_client_stub):
 def test_validate_all_permissions_with_failures(databricks_client_stub):
     """Test that validate_all_permissions handles permission failures correctly."""
     # Set up mixed success/failure responses
-    databricks_client_stub.set_get_response("/api/2.0/preview/scim/v2/Me", {"userName": "test_user"})
-    databricks_client_stub.set_get_error("/api/2.1/unity-catalog/catalogs?max_results=1", Exception("Access denied"))
-    databricks_client_stub.set_get_response("/api/2.0/sql/warehouses?page_size=1", {"warehouses": []})
-    databricks_client_stub.set_get_error("/api/2.1/jobs/list?limit=1", Exception("Forbidden"))
-    databricks_client_stub.set_get_response("/api/2.0/mlflow/registered-models/list?max_results=1", {"registered_models": []})
-    
+    databricks_client_stub.set_get_response(
+        "/api/2.0/preview/scim/v2/Me", {"userName": "test_user"}
+    )
+    databricks_client_stub.set_get_error(
+        "/api/2.1/unity-catalog/catalogs?max_results=1", Exception("Access denied")
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/sql/warehouses?page_size=1", {"warehouses": []}
+    )
+    databricks_client_stub.set_get_error(
+        "/api/2.1/jobs/list?limit=1", Exception("Forbidden")
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/mlflow/registered-models/list?max_results=1",
+        {"registered_models": []},
+    )
+
     # Volumes will fail due to catalog access denial
-    
+
     # Call the real function
     result = validate_all_permissions(databricks_client_stub)
 
@@ -82,14 +115,18 @@ def test_validate_all_permissions_with_failures(databricks_client_stub):
     assert "jobs" in result
     assert "models" in result
     assert "volumes" in result
-    
+
     # Verify mixed authorization results
     assert result["basic_connectivity"]["authorized"]  # Should succeed
-    assert not result["unity_catalog"]["authorized"]   # Should fail - access denied
-    assert result["sql_warehouse"]["authorized"]       # Should succeed - empty list still authorized
-    assert not result["jobs"]["authorized"]            # Should fail - forbidden
-    assert result["models"]["authorized"]              # Should succeed - empty list still authorized
-    assert not result["volumes"]["authorized"]         # Should fail - catalog access denied
+    assert not result["unity_catalog"]["authorized"]  # Should fail - access denied
+    assert result["sql_warehouse"][
+        "authorized"
+    ]  # Should succeed - empty list still authorized
+    assert not result["jobs"]["authorized"]  # Should fail - forbidden
+    assert result["models"][
+        "authorized"
+    ]  # Should succeed - empty list still authorized
+    assert not result["volumes"]["authorized"]  # Should fail - catalog access denied
 
 
 @patch("logging.debug")
@@ -144,7 +181,9 @@ def test_check_unity_catalog_success(mock_debug, mock_client):
     result = check_unity_catalog(mock_client)
 
     # Verify the API was called correctly
-    mock_client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert result["authorized"]
@@ -165,7 +204,9 @@ def test_check_unity_catalog_empty(mock_debug, mock_client):
     result = check_unity_catalog(mock_client)
 
     # Verify the API was called correctly
-    mock_client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert result["authorized"]
@@ -186,7 +227,9 @@ def test_check_unity_catalog_error(mock_debug, mock_client):
     result = check_unity_catalog(mock_client)
 
     # Verify the API was called correctly
-    mock_client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert not result["authorized"]
@@ -377,7 +420,9 @@ def test_check_volumes_no_catalogs(mock_debug, mock_client):
     result = check_volumes(mock_client)
 
     # Verify only the catalogs API was called
-    mock_client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert not result["authorized"]
@@ -430,7 +475,9 @@ def test_check_volumes_error(mock_debug, mock_client):
     result = check_volumes(mock_client)
 
     # Verify the API was called
-    mock_client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert not result["authorized"]

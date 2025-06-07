@@ -9,50 +9,54 @@ from chuck_data.commands.auth import (
 )
 
 
-@patch("chuck_data.commands.auth.AmperityAPIClient")
-def test_amperity_login_success(mock_auth_client_class, amperity_client_stub):
+def test_amperity_login_success(amperity_client_stub):
     """Test successful Amperity login flow."""
-    # Use AmperityClientStub instead of MagicMock
-    mock_auth_client_class.return_value = amperity_client_stub
+    # NOTE: We need to patch the class instantiation because handle_amperity_login
+    # doesn't support dependency injection. This is a pragmatic compromise.
+    # The AmperityClientStub provides the actual behavior with mocked HTTP calls.
+    with patch("chuck_data.commands.auth.AmperityAPIClient") as mock_client_class:
+        mock_client_class.return_value = amperity_client_stub
 
-    # Execute
-    result = handle_amperity_login(None)
+        # Execute
+        result = handle_amperity_login(None)
 
-    # Verify
-    assert result.success
-    assert result.message == "Authentication completed successfully."
+        # Verify
+        assert result.success
+        assert result.message == "Authentication completed successfully."
 
 
-@patch("chuck_data.commands.auth.AmperityAPIClient")
-def test_amperity_login_start_failure(mock_auth_client_class, amperity_client_stub):
+def test_amperity_login_start_failure(amperity_client_stub):
     """Test failure during start of Amperity login flow."""
-    # Use AmperityClientStub configured to fail at start
+    # Configure stub to fail at start
     amperity_client_stub.set_auth_start_failure(True)
-    mock_auth_client_class.return_value = amperity_client_stub
 
-    # Execute
-    result = handle_amperity_login(None)
+    with patch("chuck_data.commands.auth.AmperityAPIClient") as mock_client_class:
+        mock_client_class.return_value = amperity_client_stub
 
-    # Verify
-    assert not result.success
-    assert result.message == "Login failed: Failed to start auth: 500 - Server Error"
+        # Execute
+        result = handle_amperity_login(None)
+
+        # Verify
+        assert not result.success
+        assert (
+            result.message == "Login failed: Failed to start auth: 500 - Server Error"
+        )
 
 
-@patch("chuck_data.commands.auth.AmperityAPIClient")
-def test_amperity_login_completion_failure(
-    mock_auth_client_class, amperity_client_stub
-):
+def test_amperity_login_completion_failure(amperity_client_stub):
     """Test failure during completion of Amperity login flow."""
-    # Use AmperityClientStub configured to fail at completion
+    # Configure stub to fail at completion
     amperity_client_stub.set_auth_completion_failure(True)
-    mock_auth_client_class.return_value = amperity_client_stub
 
-    # Execute
-    result = handle_amperity_login(None)
+    with patch("chuck_data.commands.auth.AmperityAPIClient") as mock_client_class:
+        mock_client_class.return_value = amperity_client_stub
 
-    # Verify
-    assert not result.success
-    assert result.message == "Login failed: Authentication failed: error"
+        # Execute
+        result = handle_amperity_login(None)
+
+        # Verify
+        assert not result.success
+        assert result.message == "Login failed: Authentication failed: error"
 
 
 def test_databricks_login_success():
