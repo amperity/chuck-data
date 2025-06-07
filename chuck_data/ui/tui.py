@@ -538,6 +538,33 @@ class ChuckTUI:
                     )
                 )
             elif (
+                cmd.startswith("/discord")
+                and isinstance(result.data, dict)
+                and "discord_message" in result.data
+                and "discord_url" in result.data
+                and result.data.get("prompt_open_browser", False)
+            ):
+                # Custom display for Discord invitation
+                self.console.print(
+                    Panel(
+                        result.data["discord_message"],
+                        title="Join Chuck on Discord",
+                        border_style="cyan",
+                    )
+                )
+                
+                # Prompt for browser opening
+                try:
+                    response = input("> ").strip().lower()
+                    if response in ["y", "yes"]:
+                        discord_url = result.data["discord_url"]
+                        self.console.print(f"[{INFO_STYLE}]Opening Discord invite link in browser...[/{INFO_STYLE}]")
+                        import webbrowser
+                        webbrowser.open(discord_url)
+                except Exception as e:
+                    self.console.print(f"[{ERROR_STYLE}]Error opening browser: {str(e)}[/{ERROR_STYLE}]")
+                    logging.error(f"Error opening browser for Discord: {e}", exc_info=True)
+            elif (
                 cmd in ["/agent", "/ask"]
                 and isinstance(result.data, dict)
                 and "response" in result.data
