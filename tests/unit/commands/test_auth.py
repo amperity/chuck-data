@@ -1,6 +1,5 @@
 """Unit tests for the auth commands module."""
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.auth import (

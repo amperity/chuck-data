@@ -4,11 +4,10 @@ Tests for warehouse_selection command handler.
 This module contains tests for the warehouse selection command handler.
 """
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.warehouse_selection import handle_command
-from chuck_data.config import ConfigManager, get_warehouse_id
+from chuck_data.config import get_warehouse_id
 
 
 def test_missing_warehouse_parameter(databricks_client_stub, temp_config):

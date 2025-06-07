@@ -2,12 +2,11 @@
 Tests for schema commands including list-schemas and select-schema.
 """
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.list_schemas import handle_command as list_schemas_handler
 from chuck_data.commands.schema_selection import handle_command as select_schema_handler
-from chuck_data.config import ConfigManager, get_active_schema, set_active_catalog
+from chuck_data.config import get_active_schema, set_active_catalog
 
 
 # Tests for list-schemas command

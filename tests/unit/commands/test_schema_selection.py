@@ -4,11 +4,10 @@ Tests for schema_selection command handler.
 This module contains tests for the schema selection command handler.
 """
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.schema_selection import handle_command
-from chuck_data.config import ConfigManager, get_active_schema, set_active_catalog
+from chuck_data.config import get_active_schema, set_active_catalog
 
 
 def test_missing_schema_name(databricks_client_stub, temp_config):

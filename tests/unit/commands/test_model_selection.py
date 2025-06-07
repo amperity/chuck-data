@@ -7,7 +7,7 @@ This module contains tests for the model_selection command handler.
 from unittest.mock import patch
 
 from chuck_data.commands.model_selection import handle_command
-from chuck_data.config import ConfigManager, get_active_model
+from chuck_data.config import get_active_model
 
 
 def test_missing_model_name(databricks_client_stub, temp_config):

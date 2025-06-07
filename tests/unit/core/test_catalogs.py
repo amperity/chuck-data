@@ -2,7 +2,6 @@
 Tests for the catalogs module.
 """
 
-import pytest
 from chuck_data.catalogs import (
     list_catalogs,
     get_catalog,
@@ -90,7 +89,7 @@ def test_list_schemas_all_params(databricks_client_stub):
     databricks_client_stub.add_schema("test_catalog", "schema1")
 
     # Call the function with all parameters
-    result = list_schemas(
+    list_schemas(
         databricks_client_stub, 
         "test_catalog", 
         include_browse=True, 
@@ -146,7 +145,7 @@ def test_list_tables_all_params(databricks_client_stub):
     databricks_client_stub.add_table("test_catalog", "test_schema", "table1")
 
     # Call the function with all parameters
-    result = list_tables(
+    list_tables(
         databricks_client_stub,
         "test_catalog",
         "test_schema",
@@ -195,7 +194,7 @@ def test_get_table_all_params(databricks_client_stub):
     databricks_client_stub.add_table("test_catalog", "test_schema", "test_table")
 
     # Call the function with all parameters
-    result = get_table(
+    get_table(
         databricks_client_stub,
         "test_catalog.test_schema.test_table",
         include_delta_metadata=True,

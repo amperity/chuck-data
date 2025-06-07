@@ -4,7 +4,6 @@ Tests for list_catalogs command handler.
 This module contains tests for the list_catalogs command handler.
 """
 
-import pytest
 from unittest.mock import patch
 
 from chuck_data.commands.list_catalogs import handle_command

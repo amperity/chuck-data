@@ -8,7 +8,7 @@ Comprehensive tests for the setup wizard command covering:
 import pytest
 from unittest.mock import patch, MagicMock
 from io import StringIO
-from tests.fixtures.fixtures import AmperityClientStub
+from tests.fixtures.amperity import AmperityClientStub
 
 from chuck_data.commands.setup_wizard import (
     DEFINITION,
