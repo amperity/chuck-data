@@ -506,10 +506,11 @@ class ChuckTUI:
                 if result.message:
                     self._display_usage(result.message)
             elif (
-                cmd == "/help"
+                cmd.startswith("/help")
                 and isinstance(result.data, dict)
                 and "help_text" in result.data
             ):
+                # Custom display for help text with special formatting
                 self.console.print(
                     Panel(
                         result.data["help_text"],
@@ -517,6 +518,66 @@ class ChuckTUI:
                         border_style="cyan",
                     )
                 )
+            elif (
+                cmd.startswith("/getting-started")
+                or cmd.startswith("/examples")
+                or cmd.startswith("/tips")
+            ):
+                # Custom display for getting started tips with special formatting
+                self.console.print(
+                    Panel(
+                        result.data["getting_started_text"],
+                        title="Getting Started with Chuck",
+                        border_style="cyan",
+                    )
+                )
+            elif (
+                (cmd.startswith("/support") or cmd.startswith("/help-me"))
+                and isinstance(result.data, dict)
+                and "support_text" in result.data
+            ):
+                # Custom display for support options with special formatting
+                self.console.print(
+                    Panel(
+                        result.data["support_text"],
+                        title="Chuck Support Options",
+                        border_style="cyan",
+                    )
+                )
+            elif (
+                cmd.startswith("/discord")
+                and isinstance(result.data, dict)
+                and "discord_message" in result.data
+                and "discord_url" in result.data
+                and result.data.get("prompt_open_browser", False)
+            ):
+                # Custom display for Discord invitation
+                self.console.print(
+                    Panel(
+                        result.data["discord_message"],
+                        title="Join Chuck on Discord",
+                        border_style="cyan",
+                    )
+                )
+
+                # Prompt for browser opening
+                try:
+                    response = input("> ").strip().lower()
+                    if response in ["y", "yes"]:
+                        discord_url = result.data["discord_url"]
+                        self.console.print(
+                            f"[{INFO_STYLE}]Opening Discord invite link in browser...[/{INFO_STYLE}]"
+                        )
+                        import webbrowser
+
+                        webbrowser.open(discord_url)
+                except Exception as e:
+                    self.console.print(
+                        f"[{ERROR_STYLE}]Error opening browser: {str(e)}[/{ERROR_STYLE}]"
+                    )
+                    logging.error(
+                        f"Error opening browser for Discord: {e}", exc_info=True
+                    )
             elif (
                 cmd in ["/agent", "/ask"]
                 and isinstance(result.data, dict)

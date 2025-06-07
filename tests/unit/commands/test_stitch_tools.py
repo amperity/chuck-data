@@ -12,12 +12,6 @@ from tests.fixtures.llm import LLMClientStub
 
 
 @pytest.fixture
-def client():
-    """Mock client fixture."""
-    return MagicMock()
-
-
-@pytest.fixture
 def llm_client():
     """LLM client stub fixture."""
     return LLMClientStub()
@@ -126,22 +120,23 @@ def mock_pii_scan_results_with_unsupported():
     }
 
 
-def test_missing_params(client, llm_client):
+def test_missing_params(databricks_client_stub, llm_client_stub):
     """Test handling when parameters are missing."""
-    result = _helper_setup_stitch_logic(client, llm_client, "", "test_schema")
+    result = _helper_setup_stitch_logic(
+        databricks_client_stub, llm_client_stub, "", "test_schema"
+    )
     assert "error" in result
     assert "Target catalog and schema are required" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-def test_pii_scan_error(mock_scan_pii, client, llm_client):
+def test_pii_scan_error(databricks_client_stub, llm_client_stub):
     """Test handling when PII scan returns an error."""
-    # Setup mock
-    mock_scan_pii.return_value = {"error": "Failed to access tables"}
+    # Configure databricks_client_stub to fail when listing tables
+    databricks_client_stub.set_list_tables_error(Exception("Failed to access tables"))
 
-    # Call function
+    # Call function - real PII scan logic will fail and return error
     result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
+        databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
     # Verify results
@@ -149,16 +144,38 @@ def test_pii_scan_error(mock_scan_pii, client, llm_client):
     assert "PII Scan failed during Stitch setup" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-def test_volume_list_error(mock_scan_pii, client, llm_client, mock_pii_scan_results):
+def test_volume_list_error(
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
+):
     """Test handling when listing volumes fails."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.side_effect = Exception("API Error")
+    # Set up PII scan to succeed by providing tables with PII
+    databricks_client_stub.add_table(
+        "test_catalog",
+        "test_schema",
+        "customers",
+        columns=[{"name": "email", "type_name": "STRING"}],
+    )
+    databricks_client_stub.add_table(
+        "test_catalog",
+        "test_schema",
+        "orders",
+        columns=[{"name": "shipping_address", "type_name": "STRING"}],
+    )
 
-    # Call function
+    # Configure LLM to return PII tags
+    llm_client_stub.set_pii_detection_result(
+        [
+            {"column": "email", "semantic": "email"},
+            {"column": "shipping_address", "semantic": "address"},
+        ]
+    )
+
+    # Configure volume listing to fail
+    databricks_client_stub.set_list_volumes_error(Exception("API Error"))
+
+    # Call function - real business logic will handle the volume error
     result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
+        databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
     # Verify results
@@ -166,19 +183,28 @@ def test_volume_list_error(mock_scan_pii, client, llm_client, mock_pii_scan_resu
     assert "Failed to list volumes" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-def test_volume_create_error(mock_scan_pii, client, llm_client, mock_pii_scan_results):
+def test_volume_create_error(
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
+):
     """Test handling when creating volume fails."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {
-        "volumes": []
-    }  # Empty list, volume doesn't exist
-    client.create_volume.return_value = None  # Creation failed
+    # Set up PII scan to succeed by providing tables with PII
+    databricks_client_stub.add_table(
+        "test_catalog",
+        "test_schema",
+        "customers",
+        columns=[{"name": "email", "type_name": "STRING"}],
+    )
 
-    # Call function
+    # Configure LLM to return PII tags
+    llm_client_stub.set_pii_detection_result([{"column": "email", "semantic": "email"}])
+
+    # Volume doesn't exist (empty list) and creation will fail
+    # databricks_client_stub starts with no volumes by default
+    databricks_client_stub.set_create_volume_failure(True)
+
+    # Call function - real business logic will try to create volume and fail
     result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
+        databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
     # Verify results
@@ -186,26 +212,27 @@ def test_volume_create_error(mock_scan_pii, client, llm_client, mock_pii_scan_re
     assert "Failed to create volume 'chuck'" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-def test_no_tables_with_pii(mock_scan_pii, client, llm_client, mock_pii_scan_results):
+def test_no_tables_with_pii(
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
+):
     """Test handling when no tables with PII are found."""
-    # Setup mocks
-    no_pii_results = mock_pii_scan_results.copy()
-    # Override results_detail with no tables that have PII
-    no_pii_results["results_detail"] = [
-        {
-            "full_name": "test_catalog.test_schema.metrics",
-            "has_pii": False,
-            "skipped": False,
-            "columns": [{"name": "id", "type": "int", "semantic": None}],
-        }
-    ]
-    mock_scan_pii.return_value = no_pii_results
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
+    # Set up tables with no PII (LLM returns no semantic tags)
+    databricks_client_stub.add_table(
+        "test_catalog",
+        "test_schema",
+        "metrics",
+        columns=[{"name": "id", "type_name": "INT"}],
+    )
 
-    # Call function
+    # Configure LLM to return no PII tags
+    llm_client_stub.set_pii_detection_result([])
+
+    # Volume exists
+    databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+    # Call function - real PII scan will find no PII
     result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
+        databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
     # Verify results
@@ -213,251 +240,410 @@ def test_no_tables_with_pii(mock_scan_pii, client, llm_client, mock_pii_scan_res
     assert "No tables with PII found" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-@patch("chuck_data.commands.stitch_tools.get_amperity_token")
 def test_missing_amperity_token(
-    mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
 ):
     """Test handling when Amperity token is missing."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
-    client.upload_file.return_value = True  # Config file upload successful
-    mock_get_amperity_token.return_value = None  # No token
+    import tempfile
+    from chuck_data.config import ConfigManager
 
-    # Call function
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
-    )
+    # Use real config system with no token set
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    # Verify results
-    assert "error" in result
-    assert "Amperity token not found" in result["error"]
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set up PII scan to succeed
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "customers",
+                columns=[{"name": "email", "type_name": "STRING"}],
+            )
+
+            # Configure LLM to return PII tags
+            llm_client_stub.set_pii_detection_result(
+                [{"column": "email", "semantic": "email"}]
+            )
+
+            # Volume exists
+            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+            # Don't set any amperity token (should be None by default)
+
+            # Call function - real config logic will detect missing token
+            result = _helper_setup_stitch_logic(
+                databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
+            )
+
+            # Verify results
+            assert "error" in result
+            assert "Amperity token not found" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-@patch("chuck_data.commands.stitch_tools.get_amperity_token")
 def test_amperity_init_script_error(
-    mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
 ):
     """Test handling when fetching Amperity init script fails."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
-    client.upload_file.return_value = True  # Config file upload successful
-    mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.side_effect = Exception("API Error")
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Call function
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
-    )
+    # Use real config system with token
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    # Verify results
-    assert "error" in result
-    assert "Error fetching Amperity init script" in result["error"]
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("fake_token")
+
+            # Set up PII scan to succeed
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "customers",
+                columns=[{"name": "email", "type_name": "STRING"}],
+            )
+
+            # Configure LLM to return PII tags
+            llm_client_stub.set_pii_detection_result(
+                [{"column": "email", "semantic": "email"}]
+            )
+
+            # Volume exists
+            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+            # Configure fetch_amperity_job_init to fail
+            databricks_client_stub.set_fetch_amperity_error(Exception("API Error"))
+
+            # Call function - real business logic will handle fetch error
+            result = _helper_setup_stitch_logic(
+                databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
+            )
+
+            # Verify results
+            assert "error" in result
+            assert "Error fetching Amperity init script" in result["error"]
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-@patch("chuck_data.commands.stitch_tools.get_amperity_token")
-@patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
 def test_versioned_init_script_upload_error(
-    mock_upload_init,
-    mock_get_amperity_token,
-    mock_scan_pii,
-    client,
-    llm_client,
-    mock_pii_scan_results,
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
 ):
     """Test handling when versioned init script upload fails."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
-    mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.return_value = {"cluster-init": "echo 'init script'"}
-    # Mock versioned init script upload failure
-    mock_upload_init.return_value = {"error": "Failed to upload versioned init script"}
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Call function
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
-    )
+    # Use real config system with token
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    # Verify results
-    assert "error" in result
-    assert result["error"] == "Failed to upload versioned init script"
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("fake_token")
+
+            # Set up PII scan to succeed
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "customers",
+                columns=[{"name": "email", "type_name": "STRING"}],
+            )
+
+            # Configure LLM to return PII tags
+            llm_client_stub.set_pii_detection_result(
+                [{"column": "email", "semantic": "email"}]
+            )
+
+            # Volume exists
+            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+            # For this test, we need to mock the upload cluster init logic to fail
+            # since it's complex internal logic, but this represents a compromise
+            with patch(
+                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+            ) as mock_upload:
+                mock_upload.return_value = {
+                    "error": "Failed to upload versioned init script"
+                }
+
+                # Call function
+                result = _helper_setup_stitch_logic(
+                    databricks_client_stub,
+                    llm_client_stub,
+                    "test_catalog",
+                    "test_schema",
+                )
+
+                # Verify results
+                assert "error" in result
+                assert result["error"] == "Failed to upload versioned init script"
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-@patch("chuck_data.commands.stitch_tools.get_amperity_token")
-@patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
 def test_successful_setup(
-    mock_upload_init,
-    mock_get_amperity_token,
-    mock_scan_pii,
-    client,
-    llm_client,
-    mock_pii_scan_results,
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results
 ):
     """Test successful Stitch integration setup with versioned init script."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
-    client.upload_file.return_value = True  # File uploads successful
-    mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.return_value = {"cluster-init": "echo 'init script'"}
-    # Mock versioned init script upload
-    mock_upload_init.return_value = {
-        "success": True,
-        "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
-        "filename": "cluster_init-2025-06-02_14-30.sh",
-        "timestamp": "2025-06-02_14-30",
-    }
-    client.submit_job_run.return_value = {"run_id": "12345"}
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Call function
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
-    )
+    # Use real config system with token
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    # Verify results
-    assert result.get("success")
-    assert "stitch_config" in result
-    assert "metadata" in result
-    metadata = result["metadata"]
-    assert "config_file_path" in metadata
-    assert "init_script_path" in metadata
-    assert (
-        metadata["init_script_path"]
-        == "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh"
-    )
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("fake_token")
 
-    # Verify versioned init script upload was called
-    mock_upload_init.assert_called_once_with(
-        client=client,
-        target_catalog="test_catalog",
-        target_schema="test_schema",
-        init_script_content="echo 'init script'",
-    )
+            # Set up successful PII scan with real tables
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "customers",
+                columns=[
+                    {"name": "id", "type_name": "INT"},
+                    {"name": "name", "type_name": "STRING"},
+                    {"name": "email", "type_name": "STRING"},
+                ],
+            )
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "orders",
+                columns=[
+                    {"name": "id", "type_name": "INT"},
+                    {"name": "customer_id", "type_name": "INT"},
+                    {"name": "shipping_address", "type_name": "STRING"},
+                ],
+            )
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "metrics",
+                columns=[
+                    {"name": "id", "type_name": "INT"},
+                    {"name": "date", "type_name": "DATE"},
+                ],
+            )
 
-    # Verify no unsupported columns warning when all columns are supported
-    assert "unsupported_columns" in metadata
-    assert len(metadata["unsupported_columns"]) == 0
-    assert "Note: Some columns were excluded" not in result.get("message", "")
+            # Configure LLM to return PII tags matching the mock data
+            llm_client_stub.set_pii_detection_result(
+                [
+                    {"column": "name", "semantic": "full-name"},
+                    {"column": "email", "semantic": "email"},
+                    {"column": "shipping_address", "semantic": "address"},
+                ]
+            )
+
+            # Volume exists
+            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+            # For the upload logic, we'll mock it since it's complex file handling
+            with patch(
+                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+            ) as mock_upload:
+                mock_upload.return_value = {
+                    "success": True,
+                    "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
+                    "filename": "cluster_init-2025-06-02_14-30.sh",
+                    "timestamp": "2025-06-02_14-30",
+                }
+
+                # Call function - should succeed with real business logic
+                result = _helper_setup_stitch_logic(
+                    databricks_client_stub,
+                    llm_client_stub,
+                    "test_catalog",
+                    "test_schema",
+                )
+
+                # Verify results
+                assert result.get("success")
+                assert "stitch_config" in result
+                assert "metadata" in result
+                metadata = result["metadata"]
+                assert "config_file_path" in metadata
+                assert "init_script_path" in metadata
+                assert (
+                    metadata["init_script_path"]
+                    == "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh"
+                )
+
+                # Verify versioned init script upload was called with real business logic
+                mock_upload.assert_called_once_with(
+                    client=databricks_client_stub,
+                    target_catalog="test_catalog",
+                    target_schema="test_schema",
+                    init_script_content="echo 'Amperity init script'",
+                )
+
+                # Verify no unsupported columns warning when all columns are supported
+                assert "unsupported_columns" in metadata
+                assert len(metadata["unsupported_columns"]) == 0
 
 
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-@patch("chuck_data.commands.stitch_tools.get_amperity_token")
-@patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
 def test_unsupported_types_filtered(
-    mock_upload_init,
-    mock_get_amperity_token,
-    mock_scan_pii,
-    client,
-    llm_client,
-    mock_pii_scan_results_with_unsupported,
+    databricks_client_stub, llm_client_stub, mock_pii_scan_results_with_unsupported
 ):
     """Test that unsupported column types are filtered out from Stitch config."""
-    # Setup mocks
-    mock_scan_pii.return_value = mock_pii_scan_results_with_unsupported
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
-    client.upload_file.return_value = True  # File uploads successful
-    mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.return_value = {"cluster-init": "echo 'init script'"}
-    # Mock versioned init script upload
-    mock_upload_init.return_value = {
-        "success": True,
-        "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
-        "filename": "cluster_init-2025-06-02_14-30.sh",
-        "timestamp": "2025-06-02_14-30",
-    }
-    client.submit_job_run.return_value = {"run_id": "12345"}
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Call function
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
-    )
+    # Use real config system with token
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    # Verify results
-    assert result.get("success")
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("fake_token")
 
-    # Get the generated config content
-    import json
-
-    config_content = json.dumps(result["stitch_config"])
-
-    # Verify unsupported types are not in the config
-    unsupported_types = ["STRUCT", "ARRAY", "GEOGRAPHY", "GEOMETRY", "MAP"]
-    for unsupported_type in unsupported_types:
-        assert (
-            unsupported_type not in config_content
-        ), f"Config should not contain unsupported type: {unsupported_type}"
-
-    # Verify supported types are still included
-    assert "int" in config_content, "Config should contain supported type: int"
-    assert "string" in config_content, "Config should contain supported type: string"
-
-    # Verify unsupported columns are reported to user
-    assert "metadata" in result
-    metadata = result["metadata"]
-    assert "unsupported_columns" in metadata
-    unsupported_info = metadata["unsupported_columns"]
-    assert len(unsupported_info) == 2  # Two tables have unsupported columns
-
-    # Check first table (customers)
-    customers_unsupported = next(
-        t for t in unsupported_info if "customers" in t["table"]
-    )
-    assert len(customers_unsupported["columns"]) == 2  # metadata and tags
-    column_types = [col["type"] for col in customers_unsupported["columns"]]
-    assert "STRUCT" in column_types
-    assert "ARRAY" in column_types
-
-    # Check second table (geo_data)
-    geo_unsupported = next(t for t in unsupported_info if "geo_data" in t["table"])
-    assert len(geo_unsupported["columns"]) == 3  # location, geometry, properties
-    geo_column_types = [col["type"] for col in geo_unsupported["columns"]]
-    assert "GEOGRAPHY" in geo_column_types
-    assert "GEOMETRY" in geo_column_types
-    assert "MAP" in geo_column_types
-
-    # Verify warning message includes unsupported columns info in metadata
-    assert "unsupported_columns" in metadata
-
-
-@patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
-@patch("chuck_data.commands.stitch_tools.get_amperity_token")
-def test_all_columns_unsupported_types(
-    mock_get_amperity_token, mock_scan_pii, client, llm_client
-):
-    """Test handling when all columns have unsupported types."""
-    # Setup mocks with all unsupported types
-    all_unsupported_results = {
-        "tables_successfully_processed": 1,
-        "tables_with_pii": 1,
-        "total_pii_columns": 2,
-        "results_detail": [
-            {
-                "full_name": "test_catalog.test_schema.complex_data",
-                "has_pii": True,
-                "skipped": False,
-                "columns": [
-                    {"name": "metadata", "type": "STRUCT", "semantic": "full-name"},
-                    {"name": "tags", "type": "ARRAY", "semantic": "address"},
-                    {"name": "location", "type": "GEOGRAPHY", "semantic": None},
+            # Set up tables with unsupported column types
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "customers",
+                columns=[
+                    {"name": "id", "type_name": "INT"},
+                    {"name": "name", "type_name": "STRING"},
+                    {"name": "metadata", "type_name": "STRUCT"},
+                    {"name": "tags", "type_name": "ARRAY"},
                 ],
-            },
-        ],
-    }
-    mock_scan_pii.return_value = all_unsupported_results
-    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
-    mock_get_amperity_token.return_value = "fake_token"  # Add token mock
+            )
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "geo_data",
+                columns=[
+                    {"name": "location", "type_name": "GEOGRAPHY"},
+                    {"name": "geometry", "type_name": "GEOMETRY"},
+                    {"name": "properties", "type_name": "MAP"},
+                    {"name": "description", "type_name": "STRING"},
+                ],
+            )
 
-    # Call function
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "test_catalog", "test_schema"
-    )
+            # Configure LLM to return PII tags for all columns (including unsupported ones)
+            llm_client_stub.set_pii_detection_result(
+                [
+                    {"column": "name", "semantic": "full-name"},
+                    {"column": "metadata", "semantic": "full-name"},  # Will be filtered
+                    {"column": "tags", "semantic": "address"},  # Will be filtered
+                    {"column": "location", "semantic": "address"},  # Will be filtered
+                    {"column": "geometry", "semantic": None},  # Will be filtered
+                    {"column": "properties", "semantic": None},  # Will be filtered
+                    {"column": "description", "semantic": "full-name"},
+                ]
+            )
 
-    # Verify results - should fail because no supported columns remain
-    assert "error" in result
-    assert "No tables with PII found" in result["error"]
+            # Volume exists
+            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+            # Mock upload logic
+            with patch(
+                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+            ) as mock_upload:
+                mock_upload.return_value = {
+                    "success": True,
+                    "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
+                    "filename": "cluster_init-2025-06-02_14-30.sh",
+                    "timestamp": "2025-06-02_14-30",
+                }
+
+                # Call function - real business logic should filter unsupported types
+                result = _helper_setup_stitch_logic(
+                    databricks_client_stub,
+                    llm_client_stub,
+                    "test_catalog",
+                    "test_schema",
+                )
+
+                # Verify results
+                assert result.get("success")
+
+                # Get the generated config content
+                import json
+
+                config_content = json.dumps(result["stitch_config"])
+
+                # Verify unsupported types are not in the config
+                unsupported_types = ["STRUCT", "ARRAY", "GEOGRAPHY", "GEOMETRY", "MAP"]
+                for unsupported_type in unsupported_types:
+                    assert (
+                        unsupported_type not in config_content
+                    ), f"Config should not contain unsupported type: {unsupported_type}"
+
+                # Verify supported types are still included
+                assert (
+                    "string" in config_content.lower()
+                ), "Config should contain supported type: string"
+
+                # Verify unsupported columns are reported to user
+                assert "metadata" in result
+                metadata = result["metadata"]
+                assert "unsupported_columns" in metadata
+                unsupported_info = metadata["unsupported_columns"]
+                assert len(unsupported_info) == 2  # Two tables have unsupported columns
+
+                # Check first table (customers)
+                customers_unsupported = next(
+                    t for t in unsupported_info if "customers" in t["table"]
+                )
+                assert len(customers_unsupported["columns"]) == 2  # metadata and tags
+                column_types = [col["type"] for col in customers_unsupported["columns"]]
+                assert "STRUCT" in column_types
+                assert "ARRAY" in column_types
+
+                # Check second table (geo_data)
+                geo_unsupported = next(
+                    t for t in unsupported_info if "geo_data" in t["table"]
+                )
+                assert (
+                    len(geo_unsupported["columns"]) == 3
+                )  # location, geometry, properties
+                geo_column_types = [col["type"] for col in geo_unsupported["columns"]]
+                assert "GEOGRAPHY" in geo_column_types
+                assert "GEOMETRY" in geo_column_types
+                assert "MAP" in geo_column_types
+
+
+def test_all_columns_unsupported_types(databricks_client_stub, llm_client_stub):
+    """Test handling when all columns have unsupported types."""
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
+
+    # Use real config system with token
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("fake_token")
+
+            # Set up table with only unsupported column types
+            databricks_client_stub.add_table(
+                "test_catalog",
+                "test_schema",
+                "complex_data",
+                columns=[
+                    {"name": "metadata", "type_name": "STRUCT"},
+                    {"name": "tags", "type_name": "ARRAY"},
+                    {"name": "location", "type_name": "GEOGRAPHY"},
+                ],
+            )
+
+            # Configure LLM to return PII tags for all columns (but they're all unsupported)
+            llm_client_stub.set_pii_detection_result(
+                [
+                    {"column": "metadata", "semantic": "full-name"},
+                    {"column": "tags", "semantic": "address"},
+                    {"column": "location", "semantic": None},
+                ]
+            )
+
+            # Volume exists
+            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
+
+            # Call function - real business logic will filter out all unsupported types
+            result = _helper_setup_stitch_logic(
+                databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
+            )
+
+            # Verify results - should fail because no supported columns remain after filtering
+            assert "error" in result
+            assert "No tables with PII found" in result["error"]

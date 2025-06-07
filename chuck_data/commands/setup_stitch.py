@@ -315,6 +315,20 @@ def _phase_2_handle_review(
     if user_input_lower in ["launch", "yes", "y", "launch it", "go", "proceed"]:
         # Move to launch phase
         context.store_context_data("setup-stitch", "phase", "ready_to_launch")
+
+        console.print(
+            "When you launch Stitch it will create a job in Databricks and a notebook that will show you Stitch results when the job completes."
+        )
+        console.print(
+            "Stitch will create a schema called stitch_outputs with two new tables called unified_coalesced and unified_scores."
+        )
+        console.print(
+            "The unified_coalesced table will contain the standardized PII and amperity_ids."
+        )
+        console.print(
+            "The unified_scores table will contain the links and confidence scores."
+        )
+        console.print("Be sure to check out the results in the Stitch Report notebook!")
         console.print(
             f"\n[{WARNING}]Ready to launch Stitch job. Type 'confirm' to proceed or 'cancel' to abort.[/{WARNING}]"
         )

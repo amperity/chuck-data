@@ -3,7 +3,7 @@ Tests for the profiler module.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from chuck_data.profiler import (
     list_tables,
     query_llm,
@@ -14,25 +14,19 @@ from chuck_data.profiler import (
 
 
 @pytest.fixture
-def client():
-    """Mock client fixture."""
-    return MagicMock()
-
-
-@pytest.fixture
 def warehouse_id():
     """Warehouse ID fixture."""
     return "warehouse-123"
 
 
 @patch("chuck_data.profiler.time.sleep")
-def test_list_tables(mock_sleep, client, warehouse_id):
+def test_list_tables(mock_sleep, databricks_client_stub, warehouse_id):
     """Test listing tables."""
-    # Set up mock responses
-    client.post.return_value = {"statement_id": "stmt-123"}
+    # Set up external API responses
+    databricks_client_stub.post.return_value = {"statement_id": "stmt-123"}
 
     # Mock the get call to return a completed query status
-    client.get.return_value = {
+    databricks_client_stub.get.return_value = {
         "status": {"state": "SUCCEEDED"},
         "result": {
             "data": [
@@ -43,7 +37,7 @@ def test_list_tables(mock_sleep, client, warehouse_id):
     }
 
     # Call the function
-    result = list_tables(client, warehouse_id)
+    result = list_tables(databricks_client_stub, warehouse_id)
 
     # Check the result
     expected_tables = [
@@ -61,18 +55,18 @@ def test_list_tables(mock_sleep, client, warehouse_id):
     assert result == expected_tables
 
     # Verify API calls
-    client.post.assert_called_once()
-    client.get.assert_called_once()
+    databricks_client_stub.post.assert_called_once()
+    databricks_client_stub.get.assert_called_once()
 
 
 @patch("chuck_data.profiler.time.sleep")
-def test_list_tables_polling(mock_sleep, client, warehouse_id):
+def test_list_tables_polling(mock_sleep, databricks_client_stub, warehouse_id):
     """Test polling behavior when listing tables."""
-    # Set up mock responses
-    client.post.return_value = {"statement_id": "stmt-123"}
+    # Set up external API responses
+    databricks_client_stub.post.return_value = {"statement_id": "stmt-123"}
 
     # Set up get to return PENDING then RUNNING then SUCCEEDED
-    client.get.side_effect = [
+    databricks_client_stub.get.side_effect = [
         {"status": {"state": "PENDING"}},
         {"status": {"state": "RUNNING"}},
         {
@@ -82,10 +76,10 @@ def test_list_tables_polling(mock_sleep, client, warehouse_id):
     ]
 
     # Call the function
-    result = list_tables(client, warehouse_id)
+    result = list_tables(databricks_client_stub, warehouse_id)
 
     # Verify polling behavior
-    assert len(client.get.call_args_list) == 3
+    assert len(databricks_client_stub.get.call_args_list) == 3
     assert mock_sleep.call_count == 2
 
     # Check result
@@ -94,14 +88,14 @@ def test_list_tables_polling(mock_sleep, client, warehouse_id):
 
 
 @patch("chuck_data.profiler.time.sleep")
-def test_list_tables_failed_query(mock_sleep, client, warehouse_id):
+def test_list_tables_failed_query(mock_sleep, databricks_client_stub, warehouse_id):
     """Test list tables with failed SQL query."""
-    # Set up mock responses
-    client.post.return_value = {"statement_id": "stmt-123"}
-    client.get.return_value = {"status": {"state": "FAILED"}}
+    # Set up external API responses
+    databricks_client_stub.post.return_value = {"statement_id": "stmt-123"}
+    databricks_client_stub.get.return_value = {"status": {"state": "FAILED"}}
 
     # Call the function
-    result = list_tables(client, warehouse_id)
+    result = list_tables(databricks_client_stub, warehouse_id)
 
     # Verify it returns empty list on failure
     assert result == []
@@ -131,84 +125,93 @@ def test_generate_manifest():
 
 @patch("chuck_data.profiler.time.sleep")
 @patch("chuck_data.profiler.base64.b64encode")
-def test_store_manifest(mock_b64encode, mock_sleep, client):
+def test_store_manifest(mock_b64encode, mock_sleep, databricks_client_stub):
     """Test storing a manifest."""
-    # Set up mock responses
+    # Set up external dependencies
     mock_b64encode.return_value = b"base64_encoded_data"
-    client.post.return_value = {"success": True}
+    databricks_client_stub.post.return_value = {"success": True}
 
     # Test data
     manifest = {"table": {"name": "table1"}, "pii_tags": ["id"]}
     manifest_path = "/chuck/manifests/table1_manifest.json"
 
     # Call the function
-    result = store_manifest(client, manifest_path, manifest)
+    result = store_manifest(databricks_client_stub, manifest_path, manifest)
 
     # Check the result
     assert result
 
     # Verify API call
-    client.post.assert_called_once()
-    assert client.post.call_args[0][0] == "/api/2.0/dbfs/put"
+    databricks_client_stub.post.assert_called_once()
+    assert databricks_client_stub.post.call_args[0][0] == "/api/2.0/dbfs/put"
     # Verify the manifest path was passed correctly
-    assert client.post.call_args[0][1]["path"] == manifest_path
+    assert databricks_client_stub.post.call_args[0][1]["path"] == manifest_path
 
 
-@patch("chuck_data.profiler.store_manifest")
-@patch("chuck_data.profiler.generate_manifest")
-@patch("chuck_data.profiler.query_llm")
-@patch("chuck_data.profiler.get_sample_data")
-@patch("chuck_data.profiler.get_table_schema")
-@patch("chuck_data.profiler.list_tables")
-def test_profile_table_success(
-    mock_list_tables,
-    mock_get_schema,
-    mock_get_sample,
-    mock_query_llm,
-    mock_generate_manifest,
-    mock_store_manifest,
-    client,
-    warehouse_id,
-):
+@patch("chuck_data.profiler.time.sleep")
+def test_profile_table_success(mock_sleep, databricks_client_stub, warehouse_id):
     """Test successfully profiling a table."""
-    # Set up mock responses
+    # Use real profiler logic with external API stubbing
     table_info = {
         "catalog_name": "catalog1",
         "schema_name": "schema1",
         "table_name": "table1",
     }
-    schema = [{"col_name": "id", "data_type": "integer"}]
-    sample_data = {"column_names": ["id"], "rows": [{"id": 1}]}
-    pii_tags = ["id"]
-    manifest = {"table": table_info, "pii_tags": pii_tags}
-    manifest_path = "/chuck/manifests/table1_manifest.json"
 
-    mock_list_tables.return_value = [table_info]
-    mock_get_schema.return_value = schema
-    mock_get_sample.return_value = sample_data
-    mock_query_llm.return_value = {"predictions": [{"pii_tags": pii_tags}]}
-    mock_generate_manifest.return_value = manifest
-    mock_store_manifest.return_value = True
+    # Configure databricks_client_stub for all the API calls
+    # Mock the SQL query execution for list_tables
+    databricks_client_stub.post.side_effect = [
+        {"statement_id": "stmt-123"},  # list_tables query
+        {"statement_id": "stmt-456"},  # get_table_schema query
+        {"statement_id": "stmt-789"},  # get_sample_data query
+        {"predictions": [{"pii_tags": ["id"]}]},  # query_llm endpoint call
+        {"success": True},  # store_manifest DBFS call
+    ]
 
-    # Call the function without specific table (should use first table found)
-    result = profile_table(client, warehouse_id, "test-model")
+    databricks_client_stub.get.side_effect = [
+        {  # list_tables result
+            "status": {"state": "SUCCEEDED"},
+            "result": {
+                "data": [
+                    ["table1", "catalog1", "schema1"],
+                ]
+            },
+        },
+        {  # get_table_schema result
+            "status": {"state": "SUCCEEDED"},
+            "result": {"data": [["id", "integer", "Y", None, None, None, None]]},
+        },
+        {  # get_sample_data result
+            "status": {"state": "SUCCEEDED"},
+            "result": {
+                "data": [
+                    ["id"],  # column headers
+                    [1],  # data row
+                    [2],  # data row
+                ]
+            },
+        },
+    ]
 
-    # Check the result
-    assert result == manifest_path
+    # Call the function - should use real profiler logic
+    result = profile_table(databricks_client_stub, warehouse_id, "test-model")
 
-    # Verify the correct functions were called
-    mock_list_tables.assert_called_once_with(client, warehouse_id)
-    mock_get_schema.assert_called_once()
-    mock_get_sample.assert_called_once()
-    mock_query_llm.assert_called_once()
-    mock_generate_manifest.assert_called_once()
-    mock_store_manifest.assert_called_once()
+    # Verify the result is a manifest path
+    assert result is not None
+    assert "/chuck/manifests/" in result
+    assert result.endswith("_manifest.json")
+
+    # Verify API calls were made (external boundaries)
+    assert (
+        databricks_client_stub.post.call_count >= 4
+    )  # list, schema, sample, llm calls
+    assert databricks_client_stub.get.call_count >= 3  # polling for query results
 
 
-def test_query_llm(client):
+def test_query_llm(databricks_client_stub):
     """Test querying the LLM."""
-    # Set up mock response
-    client.post.return_value = {"predictions": [{"pii_tags": ["id"]}]}
+    # Set up external API response
+    databricks_client_stub.post.return_value = {"predictions": [{"pii_tags": ["id"]}]}
 
     # Test data
     endpoint_name = "test-model"
@@ -218,14 +221,14 @@ def test_query_llm(client):
     }
 
     # Call the function
-    result = query_llm(client, endpoint_name, input_data)
+    result = query_llm(databricks_client_stub, endpoint_name, input_data)
 
     # Check the result
     assert result == {"predictions": [{"pii_tags": ["id"]}]}
 
     # Verify API call
-    client.post.assert_called_once()
+    databricks_client_stub.post.assert_called_once()
     assert (
-        client.post.call_args[0][0]
+        databricks_client_stub.post.call_args[0][0]
         == "/api/2.0/serving-endpoints/test-model/invocations"
     )

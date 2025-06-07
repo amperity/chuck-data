@@ -47,24 +47,22 @@ def format_help_text(
             "amperity-login",
             "logout",
             "status",
-            "setup_wizard",
+            "setup-wizard",
         ],
         "Catalog & Schema Management": [
-            "list_catalogs",
+            "list-catalogs",
             "catalog",
-            "list_schemas",
-            "schema",
-            "list_tables",
-            "table",
             "catalog-selection",
-            "set-catalog",
+            "select-catalog",
+            "list-schemas",
+            "schema",
             "schema-selection",
-            "set-schema",
+            "select-schema",
+            "list-tables",
+            "table",
         ],
         "Model & Endpoint Management": [
-            "models",
-            "detailed-models",
-            "list_models",
+            "list-models",
             "model-selection",
             "select-model",
         ],
@@ -84,8 +82,8 @@ def format_help_text(
         "PII & Data Management": [
             "scan-schema-for-pii",
             "tag-pii-columns",
-            "setup_stitch",
-            "add_stitch_report",
+            "setup-stitch",
+            "add-stitch-report",
         ],
         "Job Management": [
             "launch-job",
@@ -93,8 +91,10 @@ def format_help_text(
         ],
         "Utilities": [
             "help",
+            "getting-started",
+            "discord",
+            "support",
             "bug",
-            "agent",
             "exit",
         ],
     }
@@ -158,9 +158,9 @@ def format_help_text(
         elif cmd_name == "agent" or cmd.name == "agent":
             alias = f"{alias} <query>"
         elif cmd_name == "scan-schema-for-pii" or cmd.name == "scan-schema-for-pii":
-            alias = f"{alias} <table_name>"
+            alias = f"{alias} [--catalog_name <catalog>] [--schema_name <schema>]"
         elif cmd_name == "tag-pii-columns" or cmd.name == "tag-pii-columns":
-            alias = f"{alias} <table_name>"
+            alias = f"{alias} [--table name <table-name> --pii_columns <pii-columns>]"
         elif cmd_name == "create-volume" or cmd.name == "create-volume":
             alias = f"{alias} --name <volume_name> [--catalog_name <catalog>] [--schema_name <schema>] [--volume_type MANAGED|EXTERNAL]"
         elif cmd_name == "upload-file" or cmd.name == "upload-file":

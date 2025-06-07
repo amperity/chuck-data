@@ -15,69 +15,131 @@ from chuck_data.databricks.permission_validator import (
 
 
 @pytest.fixture
-def client():
-    """Mock client fixture."""
+def mock_client():
+    """Mock HTTP client fixture for testing individual functions."""
     return MagicMock()
 
 
-def test_validate_all_permissions(client):
-    """Test that validate_all_permissions calls all check functions."""
-    with (
-        patch(
-            "chuck_data.databricks.permission_validator.check_basic_connectivity"
-        ) as mock_basic,
-        patch(
-            "chuck_data.databricks.permission_validator.check_unity_catalog"
-        ) as mock_catalog,
-        patch(
-            "chuck_data.databricks.permission_validator.check_sql_warehouse"
-        ) as mock_warehouse,
-        patch("chuck_data.databricks.permission_validator.check_jobs") as mock_jobs,
-        patch("chuck_data.databricks.permission_validator.check_models") as mock_models,
-        patch(
-            "chuck_data.databricks.permission_validator.check_volumes"
-        ) as mock_volumes,
-    ):
+@pytest.fixture
+def databricks_client_stub():
+    """DatabricksClientStub fixture for integration testing."""
+    from tests.fixtures.databricks.client import DatabricksClientStub
 
-        # Set return values for mock functions
-        mock_basic.return_value = {"authorized": True}
-        mock_catalog.return_value = {"authorized": True}
-        mock_warehouse.return_value = {"authorized": True}
-        mock_jobs.return_value = {"authorized": True}
-        mock_models.return_value = {"authorized": True}
-        mock_volumes.return_value = {"authorized": True}
+    return DatabricksClientStub()
 
-        # Call the function
-        result = validate_all_permissions(client)
 
-        # Verify all check functions were called
-        mock_basic.assert_called_once_with(client)
-        mock_catalog.assert_called_once_with(client)
-        mock_warehouse.assert_called_once_with(client)
-        mock_jobs.assert_called_once_with(client)
-        mock_models.assert_called_once_with(client)
-        mock_volumes.assert_called_once_with(client)
+def test_validate_all_permissions_success(databricks_client_stub):
+    """Test that validate_all_permissions works with all permissions granted."""
+    # Set up successful responses for all permission checks
+    databricks_client_stub.set_get_response(
+        "/api/2.0/preview/scim/v2/Me", {"userName": "test_user"}
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/catalogs?max_results=1",
+        {"catalogs": [{"name": "test_catalog"}]},
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/sql/warehouses?page_size=1", {"warehouses": [{"id": "warehouse1"}]}
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/jobs/list?limit=1", {"jobs": [{"job_id": "job1"}]}
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/mlflow/registered-models/list?max_results=1",
+        {"registered_models": [{"name": "model1"}]},
+    )
 
-        # Verify result contains all categories
-        assert "basic_connectivity" in result
-        assert "unity_catalog" in result
-        assert "sql_warehouse" in result
-        assert "jobs" in result
-        assert "models" in result
-        assert "volumes" in result
+    # Set up volume check responses (multi-step process)
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/catalogs?max_results=1",
+        {"catalogs": [{"name": "test_catalog"}]},
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1",
+        {"schemas": [{"name": "test_schema"}]},
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.1/unity-catalog/volumes?catalog_name=test_catalog&schema_name=test_schema",
+        {"volumes": [{"name": "test_volume"}]},
+    )
+
+    # Call the real function with real business logic
+    result = validate_all_permissions(databricks_client_stub)
+
+    # Verify result contains all categories with expected structure
+    assert "basic_connectivity" in result
+    assert "unity_catalog" in result
+    assert "sql_warehouse" in result
+    assert "jobs" in result
+    assert "models" in result
+    assert "volumes" in result
+
+    # Verify all categories show as authorized
+    assert result["basic_connectivity"]["authorized"]
+    assert result["unity_catalog"]["authorized"]
+    assert result["sql_warehouse"]["authorized"]
+    assert result["jobs"]["authorized"]
+    assert result["models"]["authorized"]
+    assert result["volumes"]["authorized"]
+
+
+def test_validate_all_permissions_with_failures(databricks_client_stub):
+    """Test that validate_all_permissions handles permission failures correctly."""
+    # Set up mixed success/failure responses
+    databricks_client_stub.set_get_response(
+        "/api/2.0/preview/scim/v2/Me", {"userName": "test_user"}
+    )
+    databricks_client_stub.set_get_error(
+        "/api/2.1/unity-catalog/catalogs?max_results=1", Exception("Access denied")
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/sql/warehouses?page_size=1", {"warehouses": []}
+    )
+    databricks_client_stub.set_get_error(
+        "/api/2.1/jobs/list?limit=1", Exception("Forbidden")
+    )
+    databricks_client_stub.set_get_response(
+        "/api/2.0/mlflow/registered-models/list?max_results=1",
+        {"registered_models": []},
+    )
+
+    # Volumes will fail due to catalog access denial
+
+    # Call the real function
+    result = validate_all_permissions(databricks_client_stub)
+
+    # Verify result structure
+    assert "basic_connectivity" in result
+    assert "unity_catalog" in result
+    assert "sql_warehouse" in result
+    assert "jobs" in result
+    assert "models" in result
+    assert "volumes" in result
+
+    # Verify mixed authorization results
+    assert result["basic_connectivity"]["authorized"]  # Should succeed
+    assert not result["unity_catalog"]["authorized"]  # Should fail - access denied
+    assert result["sql_warehouse"][
+        "authorized"
+    ]  # Should succeed - empty list still authorized
+    assert not result["jobs"]["authorized"]  # Should fail - forbidden
+    assert result["models"][
+        "authorized"
+    ]  # Should succeed - empty list still authorized
+    assert not result["volumes"]["authorized"]  # Should fail - catalog access denied
 
 
 @patch("logging.debug")
-def test_check_basic_connectivity_success(mock_debug, client):
+def test_check_basic_connectivity_success(mock_debug, mock_client):
     """Test basic connectivity check with successful response."""
     # Set up mock response
-    client.get.return_value = {"userName": "test_user"}
+    mock_client.get.return_value = {"userName": "test_user"}
 
     # Call the function
-    result = check_basic_connectivity(client)
+    result = check_basic_connectivity(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.0/preview/scim/v2/Me")
+    mock_client.get.assert_called_once_with("/api/2.0/preview/scim/v2/Me")
 
     # Verify the result
     assert result["authorized"]
@@ -89,16 +151,16 @@ def test_check_basic_connectivity_success(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_basic_connectivity_error(mock_debug, client):
+def test_check_basic_connectivity_error(mock_debug, mock_client):
     """Test basic connectivity check with error."""
     # Set up mock response
-    client.get.side_effect = Exception("Connection failed")
+    mock_client.get.side_effect = Exception("Connection failed")
 
     # Call the function
-    result = check_basic_connectivity(client)
+    result = check_basic_connectivity(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.0/preview/scim/v2/Me")
+    mock_client.get.assert_called_once_with("/api/2.0/preview/scim/v2/Me")
 
     # Verify the result
     assert not result["authorized"]
@@ -110,16 +172,18 @@ def test_check_basic_connectivity_error(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_unity_catalog_success(mock_debug, client):
+def test_check_unity_catalog_success(mock_debug, mock_client):
     """Test Unity Catalog check with successful response."""
     # Set up mock response
-    client.get.return_value = {"catalogs": [{"name": "test_catalog"}]}
+    mock_client.get.return_value = {"catalogs": [{"name": "test_catalog"}]}
 
     # Call the function
-    result = check_unity_catalog(client)
+    result = check_unity_catalog(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert result["authorized"]
@@ -131,16 +195,18 @@ def test_check_unity_catalog_success(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_unity_catalog_empty(mock_debug, client):
+def test_check_unity_catalog_empty(mock_debug, mock_client):
     """Test Unity Catalog check with empty response."""
     # Set up mock response
-    client.get.return_value = {"catalogs": []}
+    mock_client.get.return_value = {"catalogs": []}
 
     # Call the function
-    result = check_unity_catalog(client)
+    result = check_unity_catalog(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert result["authorized"]
@@ -152,16 +218,18 @@ def test_check_unity_catalog_empty(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_unity_catalog_error(mock_debug, client):
+def test_check_unity_catalog_error(mock_debug, mock_client):
     """Test Unity Catalog check with error."""
     # Set up mock response
-    client.get.side_effect = Exception("Access denied")
+    mock_client.get.side_effect = Exception("Access denied")
 
     # Call the function
-    result = check_unity_catalog(client)
+    result = check_unity_catalog(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert not result["authorized"]
@@ -173,16 +241,16 @@ def test_check_unity_catalog_error(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_sql_warehouse_success(mock_debug, client):
+def test_check_sql_warehouse_success(mock_debug, mock_client):
     """Test SQL warehouse check with successful response."""
     # Set up mock response
-    client.get.return_value = {"warehouses": [{"id": "warehouse1"}]}
+    mock_client.get.return_value = {"warehouses": [{"id": "warehouse1"}]}
 
     # Call the function
-    result = check_sql_warehouse(client)
+    result = check_sql_warehouse(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.0/sql/warehouses?page_size=1")
+    mock_client.get.assert_called_once_with("/api/2.0/sql/warehouses?page_size=1")
 
     # Verify the result
     assert result["authorized"]
@@ -194,16 +262,16 @@ def test_check_sql_warehouse_success(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_sql_warehouse_error(mock_debug, client):
+def test_check_sql_warehouse_error(mock_debug, mock_client):
     """Test SQL warehouse check with error."""
     # Set up mock response
-    client.get.side_effect = Exception("Access denied")
+    mock_client.get.side_effect = Exception("Access denied")
 
     # Call the function
-    result = check_sql_warehouse(client)
+    result = check_sql_warehouse(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.0/sql/warehouses?page_size=1")
+    mock_client.get.assert_called_once_with("/api/2.0/sql/warehouses?page_size=1")
 
     # Verify the result
     assert not result["authorized"]
@@ -215,16 +283,16 @@ def test_check_sql_warehouse_error(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_jobs_success(mock_debug, client):
+def test_check_jobs_success(mock_debug, mock_client):
     """Test jobs check with successful response."""
     # Set up mock response
-    client.get.return_value = {"jobs": [{"job_id": "job1"}]}
+    mock_client.get.return_value = {"jobs": [{"job_id": "job1"}]}
 
     # Call the function
-    result = check_jobs(client)
+    result = check_jobs(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.1/jobs/list?limit=1")
+    mock_client.get.assert_called_once_with("/api/2.1/jobs/list?limit=1")
 
     # Verify the result
     assert result["authorized"]
@@ -236,16 +304,16 @@ def test_check_jobs_success(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_jobs_error(mock_debug, client):
+def test_check_jobs_error(mock_debug, mock_client):
     """Test jobs check with error."""
     # Set up mock response
-    client.get.side_effect = Exception("Access denied")
+    mock_client.get.side_effect = Exception("Access denied")
 
     # Call the function
-    result = check_jobs(client)
+    result = check_jobs(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with("/api/2.1/jobs/list?limit=1")
+    mock_client.get.assert_called_once_with("/api/2.1/jobs/list?limit=1")
 
     # Verify the result
     assert not result["authorized"]
@@ -257,16 +325,16 @@ def test_check_jobs_error(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_models_success(mock_debug, client):
+def test_check_models_success(mock_debug, mock_client):
     """Test models check with successful response."""
     # Set up mock response
-    client.get.return_value = {"registered_models": [{"name": "model1"}]}
+    mock_client.get.return_value = {"registered_models": [{"name": "model1"}]}
 
     # Call the function
-    result = check_models(client)
+    result = check_models(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with(
+    mock_client.get.assert_called_once_with(
         "/api/2.0/mlflow/registered-models/list?max_results=1"
     )
 
@@ -280,16 +348,16 @@ def test_check_models_success(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_models_error(mock_debug, client):
+def test_check_models_error(mock_debug, mock_client):
     """Test models check with error."""
     # Set up mock response
-    client.get.side_effect = Exception("Access denied")
+    mock_client.get.side_effect = Exception("Access denied")
 
     # Call the function
-    result = check_models(client)
+    result = check_models(mock_client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with(
+    mock_client.get.assert_called_once_with(
         "/api/2.0/mlflow/registered-models/list?max_results=1"
     )
 
@@ -303,7 +371,7 @@ def test_check_models_error(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_volumes_success_full_path(mock_debug, client):
+def test_check_volumes_success_full_path(mock_debug, mock_client):
     """Test volumes check with successful response through the full path."""
     # Set up mock responses for the multi-step process
     catalog_response = {"catalogs": [{"name": "test_catalog"}]}
@@ -311,14 +379,14 @@ def test_check_volumes_success_full_path(mock_debug, client):
     volume_response = {"volumes": [{"name": "test_volume"}]}
 
     # Configure the client mock to return different responses for different calls
-    client.get.side_effect = [
+    mock_client.get.side_effect = [
         catalog_response,
         schema_response,
         volume_response,
     ]
 
     # Call the function
-    result = check_volumes(client)
+    result = check_volumes(mock_client)
 
     # Verify the API calls were made correctly
     expected_calls = [
@@ -328,7 +396,7 @@ def test_check_volumes_success_full_path(mock_debug, client):
             "/api/2.1/unity-catalog/volumes?catalog_name=test_catalog&schema_name=test_schema"
         ),
     ]
-    assert client.get.call_args_list == expected_calls
+    assert mock_client.get.call_args_list == expected_calls
 
     # Verify the result
     assert result["authorized"]
@@ -343,16 +411,18 @@ def test_check_volumes_success_full_path(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_volumes_no_catalogs(mock_debug, client):
+def test_check_volumes_no_catalogs(mock_debug, mock_client):
     """Test volumes check when no catalogs are available."""
     # Set up empty catalog response
-    client.get.return_value = {"catalogs": []}
+    mock_client.get.return_value = {"catalogs": []}
 
     # Call the function
-    result = check_volumes(client)
+    result = check_volumes(mock_client)
 
     # Verify only the catalogs API was called
-    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert not result["authorized"]
@@ -364,24 +434,24 @@ def test_check_volumes_no_catalogs(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_volumes_no_schemas(mock_debug, client):
+def test_check_volumes_no_schemas(mock_debug, mock_client):
     """Test volumes check when no schemas are available."""
     # Set up mock responses
     catalog_response = {"catalogs": [{"name": "test_catalog"}]}
     schema_response = {"schemas": []}
 
     # Configure the client mock
-    client.get.side_effect = [catalog_response, schema_response]
+    mock_client.get.side_effect = [catalog_response, schema_response]
 
     # Call the function
-    result = check_volumes(client)
+    result = check_volumes(mock_client)
 
     # Verify the APIs were called
     expected_calls = [
         call("/api/2.1/unity-catalog/catalogs?max_results=1"),
         call("/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1"),
     ]
-    assert client.get.call_args_list == expected_calls
+    assert mock_client.get.call_args_list == expected_calls
 
     # Verify the result
     assert not result["authorized"]
@@ -396,16 +466,18 @@ def test_check_volumes_no_schemas(mock_debug, client):
 
 
 @patch("logging.debug")
-def test_check_volumes_error(mock_debug, client):
+def test_check_volumes_error(mock_debug, mock_client):
     """Test volumes check with an API error."""
     # Set up mock response to raise exception
-    client.get.side_effect = Exception("Access denied")
+    mock_client.get.side_effect = Exception("Access denied")
 
     # Call the function
-    result = check_volumes(client)
+    result = check_volumes(mock_client)
 
     # Verify the API was called
-    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
+    mock_client.get.assert_called_once_with(
+        "/api/2.1/unity-catalog/catalogs?max_results=1"
+    )
 
     # Verify the result
     assert not result["authorized"]

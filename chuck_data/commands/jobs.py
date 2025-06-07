@@ -1,9 +1,3 @@
-"""
-Jobs command handlers for Chuck.
-
-This module contains job submission and status checking commands.
-"""
-
 import logging
 from typing import Optional
 
@@ -17,11 +11,13 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
 
     Args:
         client: API client instance
-        **kwargs: config_path (str), init_script_path (str), run_name (str, optional)
+        **kwargs: config_path (str), init_script_path (str), run_name (str, optional), tool_output_callback (callable, optional)
     """
     config_path: str = kwargs.get("config_path")
     init_script_path: str = kwargs.get("init_script_path")
     run_name: Optional[str] = kwargs.get("run_name")
+    tool_output_callback = kwargs.get("tool_output_callback")
+
     if not config_path or not init_script_path:
         return CommandResult(
             False, message="config_path and init_script_path are required."
@@ -29,6 +25,11 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
     if not client:
         return CommandResult(False, message="Client required to launch job.")
     try:
+        if tool_output_callback:
+            tool_output_callback(
+                "Checking job progress", {"step": "Attempting to submit job."}
+            )
+
         run_data = client.submit_job_run(
             config_path=config_path,
             init_script_path=init_script_path,
@@ -36,6 +37,11 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         )
         run_id = run_data.get("run_id")
         if run_id:
+            if tool_output_callback:
+                tool_output_callback(
+                    "Checking job progress",
+                    {"step": f"Job submitted successfully with run_id {run_id}."},
+                )
             return CommandResult(
                 True,
                 data={"run_id": str(run_id)},
@@ -43,6 +49,11 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
             )
         else:
             logging.error(f"Failed to launch job, no run_id: {run_data}")
+            if tool_output_callback:
+                tool_output_callback(
+                    "Checking job progress",
+                    {"step": "Failed to submit job, no run_id returned."},
+                )
             return CommandResult(
                 False, message="Failed to submit job (no run_id).", data=run_data
             )
@@ -56,14 +67,22 @@ def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
 
     Args:
         client: API client instance
-        **kwargs: run_id (str)
+        **kwargs: run_id (str), tool_output_callback (callable, optional)
     """
     run_id_str: str = kwargs.get("run_id")
+    tool_output_callback = kwargs.get("tool_output_callback")
+
     if not run_id_str:
         return CommandResult(False, message="run_id parameter is required.")
     if not client:
         return CommandResult(False, message="Client required to get job status.")
     try:
+        if tool_output_callback:
+            tool_output_callback(
+                "job_status_progress",
+                {"step": f"Attempting to get status for run ID {run_id_str}."},
+            )
+
         data = client.get_job_run_status(run_id_str)
         status = data.get("status", data.get("state", {}))
         life_cycle_state = status.get("life_cycle_state", status.get("state"))
@@ -77,6 +96,15 @@ def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         msg = f"Run {run_id_str}: Status: {life_cycle_state or 'N/A'}, Result: {result_state or 'N/A'}, Message: {state_message or ''}"
         if run_page_url:
             msg += f" URL: {run_page_url}"
+
+        if tool_output_callback:
+            tool_output_callback(
+                "job_status_progress",
+                {
+                    "step": f"Status for run ID {run_id_str} retrieved.",
+                    "status_data": data,
+                },
+            )
         return CommandResult(True, data=data, message=msg)
     except Exception as e:
         logging.error(
@@ -85,7 +113,6 @@ def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         return CommandResult(False, error=e, message=str(e))
 
 
-# Command definitions
 LAUNCH_JOB_DEFINITION = CommandDefinition(
     name="launch-job",
     description="Launch a Databricks job using a config file",

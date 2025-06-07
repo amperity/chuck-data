@@ -8,6 +8,7 @@ class TableStubMixin:
         self.tables = {}  # (catalog, schema) -> [tables]
         self.list_tables_calls = []
         self.get_table_calls = []
+        self.list_tables_error = None
 
     def list_tables(
         self,
@@ -24,6 +25,9 @@ class TableStubMixin:
         **kwargs,
     ):
         """List tables in a schema."""
+        if self.list_tables_error:
+            raise self.list_tables_error
+
         self.list_tables_calls.append(
             (
                 catalog_name,
@@ -102,3 +106,7 @@ class TableStubMixin:
         }
         self.tables[key].append(table)
         return table
+
+    def set_list_tables_error(self, error):
+        """Configure list_tables to raise error."""
+        self.list_tables_error = error

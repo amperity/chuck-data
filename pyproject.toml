@@ -15,13 +15,21 @@ description = "Command line AI for customer data"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
+keywords = ["agents", "databricks", "ai", "llm", "customer data"]
 authors = [
-    { name = "John Rush", email = "john.rush@amperity.com" }
+    { name = "John Rush", email = "john.rush@amperity.com" },
+    { name = "Caleb Benningfield", email = "noodles@amperity.com" }
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent"
+    "Operating System :: OS Independent",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Build Tools"
 ]
 dependencies = [
     "databricks-sdk>=0.50.0",
@@ -35,7 +43,7 @@ dependencies = [
 ]
 
 [project.scripts]
-chuck-data = "chuck_data.__main__:main"
+chuck = "chuck_data.__main__:main"
 
 [project.optional-dependencies]
 dev = [

@@ -63,128 +63,187 @@ def test_get_chuck_configuration(metrics_collector_with_stubs):
     }
 
 
-@patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
-def test_track_event_no_consent(mock_get_token, metrics_collector_with_stubs):
+def test_track_event_no_consent(metrics_collector_with_stubs):
     """Test that tracking is skipped when consent is not given."""
-    metrics_collector, config_stub, amperity_client_stub = metrics_collector_with_stubs
-    config_stub.usage_tracking_consent = False
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Reset stub metrics call count
-    amperity_client_stub.metrics_calls = []
+    # Use real config system
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    result = metrics_collector.track_event(prompt="test prompt")
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("test-token")
 
-    assert not result
-    # Ensure submit_metrics is not called
-    assert len(amperity_client_stub.metrics_calls) == 0
+            metrics_collector, config_stub, amperity_client_stub = (
+                metrics_collector_with_stubs
+            )
+            config_stub.usage_tracking_consent = False
+
+            # Reset stub metrics call count
+            amperity_client_stub.metrics_calls = []
+
+            result = metrics_collector.track_event(prompt="test prompt")
+
+            assert not result
+            # Ensure submit_metrics is not called
+            assert len(amperity_client_stub.metrics_calls) == 0
 
 
-@patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
 @patch("chuck_data.metrics_collector.MetricsCollector.send_metric")
-def test_track_event_with_all_fields(
-    mock_send_metric, mock_get_token, metrics_collector_with_stubs
-):
+def test_track_event_with_all_fields(mock_send_metric, metrics_collector_with_stubs):
     """Test tracking with all fields provided."""
-    metrics_collector, config_stub, _ = metrics_collector_with_stubs
-    config_stub.usage_tracking_consent = True
-    mock_send_metric.return_value = True
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Prepare test data
-    prompt = "test prompt"
-    tools = [{"name": "test_tool", "arguments": {"arg1": "value1"}}]
-    conversation_history = [{"role": "assistant", "content": "test response"}]
-    error = "test error"
-    additional_data = {"event_context": "test_context"}
+    # Use real config system
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    # Call track_event
-    result = metrics_collector.track_event(
-        prompt=prompt,
-        tools=tools,
-        conversation_history=conversation_history,
-        error=error,
-        additional_data=additional_data,
-    )
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("test-token")
 
-    # Assert results
-    assert result
-    mock_send_metric.assert_called_once()
+            metrics_collector, config_stub, _ = metrics_collector_with_stubs
+            config_stub.usage_tracking_consent = True
+            mock_send_metric.return_value = True
 
-    # Check payload content
-    payload = mock_send_metric.call_args[0][0]
-    assert payload["event"] == "USAGE"
-    assert payload["prompt"] == prompt
-    assert payload["tools"] == tools
-    assert payload["conversation_history"] == conversation_history
-    assert payload["error"] == error
-    assert payload["additional_data"] == additional_data
+            # Prepare test data
+            prompt = "test prompt"
+            tools = [{"name": "test_tool", "arguments": {"arg1": "value1"}}]
+            conversation_history = [{"role": "assistant", "content": "test response"}]
+            error = "test error"
+            additional_data = {"event_context": "test_context"}
+
+            # Call track_event
+            result = metrics_collector.track_event(
+                prompt=prompt,
+                tools=tools,
+                conversation_history=conversation_history,
+                error=error,
+                additional_data=additional_data,
+            )
+
+            # Assert results
+            assert result
+            mock_send_metric.assert_called_once()
+
+            # Check payload content
+            payload = mock_send_metric.call_args[0][0]
+            assert payload["event"] == "USAGE"
+            assert payload["prompt"] == prompt
+            assert payload["tools"] == tools
+            assert payload["conversation_history"] == conversation_history
+            assert payload["error"] == error
+            assert payload["additional_data"] == additional_data
 
 
-@patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
-def test_send_metric_successful(mock_get_token, metrics_collector_with_stubs):
+def test_send_metric_successful(metrics_collector_with_stubs):
     """Test successful metrics sending."""
-    metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
-    payload = {"event": "USAGE", "prompt": "test prompt"}
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Reset stub metrics call count
-    amperity_client_stub.metrics_calls = []
+    # Use real config system
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    result = metrics_collector.send_metric(payload)
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("test-token")
 
-    assert result
-    assert len(amperity_client_stub.metrics_calls) == 1
-    assert amperity_client_stub.metrics_calls[0] == (payload, "test-token")
+            metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
+            payload = {"event": "USAGE", "prompt": "test prompt"}
+
+            # Reset stub metrics call count
+            amperity_client_stub.metrics_calls = []
+
+            result = metrics_collector.send_metric(payload)
+
+            assert result
+            assert len(amperity_client_stub.metrics_calls) == 1
+            assert amperity_client_stub.metrics_calls[0] == (payload, "test-token")
 
 
-@patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
-def test_send_metric_failure(mock_get_token, metrics_collector_with_stubs):
+def test_send_metric_failure(metrics_collector_with_stubs):
     """Test handling of metrics sending failure."""
-    metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Configure stub to simulate failure
-    amperity_client_stub.should_fail_metrics = True
-    amperity_client_stub.metrics_calls = []
+    # Use real config system
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    payload = {"event": "USAGE", "prompt": "test prompt"}
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("test-token")
 
-    result = metrics_collector.send_metric(payload)
+            metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
 
-    assert not result
-    assert len(amperity_client_stub.metrics_calls) == 1
-    assert amperity_client_stub.metrics_calls[0] == (payload, "test-token")
+            # Configure stub to simulate failure
+            amperity_client_stub.should_fail_metrics = True
+            amperity_client_stub.metrics_calls = []
+
+            payload = {"event": "USAGE", "prompt": "test prompt"}
+
+            result = metrics_collector.send_metric(payload)
+
+            assert not result
+            assert len(amperity_client_stub.metrics_calls) == 1
+            assert amperity_client_stub.metrics_calls[0] == (payload, "test-token")
 
 
-@patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
-def test_send_metric_exception(mock_get_token, metrics_collector_with_stubs):
+def test_send_metric_exception(metrics_collector_with_stubs):
     """Test handling of exceptions during metrics sending."""
-    metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
+    import tempfile
+    from chuck_data.config import ConfigManager, set_amperity_token
 
-    # Configure stub to raise exception
-    amperity_client_stub.should_raise_exception = True
-    amperity_client_stub.metrics_calls = []
+    # Use real config system
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    payload = {"event": "USAGE", "prompt": "test prompt"}
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Set amperity token using real config
+            set_amperity_token("test-token")
 
-    result = metrics_collector.send_metric(payload)
+            metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
 
-    assert not result
-    assert len(amperity_client_stub.metrics_calls) == 1
-    assert amperity_client_stub.metrics_calls[0] == (payload, "test-token")
+            # Configure stub to raise exception
+            amperity_client_stub.should_raise_exception = True
+            amperity_client_stub.metrics_calls = []
+
+            payload = {"event": "USAGE", "prompt": "test prompt"}
+
+            result = metrics_collector.send_metric(payload)
+
+            assert not result
+            assert len(amperity_client_stub.metrics_calls) == 1
+            assert amperity_client_stub.metrics_calls[0] == (payload, "test-token")
 
 
-@patch("chuck_data.metrics_collector.get_amperity_token", return_value=None)
-def test_send_metric_no_token(mock_get_token, metrics_collector_with_stubs):
+def test_send_metric_no_token(metrics_collector_with_stubs):
     """Test that metrics are not sent when no token is available."""
-    metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
+    import tempfile
+    from chuck_data.config import ConfigManager
 
-    # Reset stub metrics call count
-    amperity_client_stub.metrics_calls = []
+    # Use real config system with no token set
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
 
-    payload = {"event": "USAGE", "prompt": "test prompt"}
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Don't set any amperity token (should be None by default)
 
-    result = metrics_collector.send_metric(payload)
+            metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
 
-    assert not result
-    assert len(amperity_client_stub.metrics_calls) == 0
+            # Reset stub metrics call count
+            amperity_client_stub.metrics_calls = []
+
+            payload = {"event": "USAGE", "prompt": "test prompt"}
+
+            result = metrics_collector.send_metric(payload)
+
+            assert not result
+            assert len(amperity_client_stub.metrics_calls) == 0
 
 
 def test_get_metrics_collector():
