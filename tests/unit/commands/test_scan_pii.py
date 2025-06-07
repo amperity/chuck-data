@@ -1,63 +1,404 @@
 """
-Tests for scan_pii command handler.
+Tests for scan-pii command handler.
 
-Following approved testing patterns from CLAUDE.md:
-- Mock external boundaries only (LLM client, UI/Terminal)
-- Use real config system with temporary files
-- Use real internal business logic (_helper_scan_schema_for_pii_logic)
-- Test end-to-end PII scanning behavior
-- Test interactive display functionality
+Behavioral tests focused on command execution patterns and user-visible behavior.
+Tests both direct command execution and agent interaction via tool_output_callback.
 """
 
 import tempfile
-import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from chuck_data.commands.scan_pii import handle_command
 from chuck_data.config import ConfigManager
 
 
-def test_missing_client():
-    """Test handling when client is not provided."""
+# ===== Parameter Validation Tests =====
+
+
+def test_missing_client_returns_error():
+    """Missing client parameter returns helpful error."""
     result = handle_command(None)
+
     assert not result.success
-    assert "Client is required" in result.message
+    assert "Client is required for bulk PII scan" in result.message
 
 
-def test_missing_context_real_config():
-    """Test handling when catalog or schema is missing in real config."""
-    # Use real Databricks client stub (external boundary)
+def test_missing_catalog_and_schema_returns_error():
+    """Missing catalog and schema context returns helpful error."""
     from tests.fixtures.databricks import DatabricksClientStub
 
     client_stub = DatabricksClientStub()
 
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-        # Don't set active_catalog or active_schema in config
+        # Don't set active_catalog or active_schema
 
         with patch("chuck_data.config._config_manager", config_manager):
-            # Test real config validation with missing values
             result = handle_command(client_stub)
 
-            assert not result.success
-            assert "Catalog and schema must be specified" in result.message
+    assert not result.success
+    assert "Catalog and schema must be specified or active" in result.message
 
 
-def test_successful_scan_with_explicit_params_real_logic():
-    """Test successful schema scan with explicit catalog/schema parameters."""
-    # Use real client stubs (external boundaries)
+def test_partial_context_missing_schema_returns_error():
+    """Missing schema with active catalog returns helpful error."""
+    from tests.fixtures.databricks import DatabricksClientStub
+
+    client_stub = DatabricksClientStub()
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(active_catalog="production_catalog")
+        # Don't set active_schema
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            result = handle_command(client_stub)
+
+    assert not result.success
+    assert "Catalog and schema must be specified or active" in result.message
+
+
+# ===== Direct Command Tests =====
+
+
+def test_direct_command_scans_schema_with_explicit_parameters():
+    """Direct command scans specified catalog and schema successfully."""
     from tests.fixtures.databricks import DatabricksClientStub
     from tests.fixtures.llm import LLMClientStub
 
     client_stub = DatabricksClientStub()
     llm_stub = LLMClientStub()
 
-    # Set up test data in stubs
+    # Setup test data - catalog with tables containing PII
+    client_stub.add_catalog("production_catalog")
+    client_stub.add_schema("production_catalog", "customer_data")
+    client_stub.add_table(
+        "production_catalog",
+        "customer_data",
+        "users",
+        columns=[
+            {"name": "email", "type_name": "string"},
+            {"name": "first_name", "type_name": "string"},
+        ],
+    )
+    client_stub.add_table(
+        "production_catalog",
+        "customer_data",
+        "orders",
+        columns=[{"name": "order_id", "type_name": "string"}],
+    )
+
+    # Configure LLM to identify PII
+    llm_stub.set_response_content(
+        '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"}]'
+    )
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(
+                    client_stub,
+                    catalog_name="production_catalog",
+                    schema_name="customer_data",
+                )
+
+    # Verify successful scan outcome
+    assert result.success
+    assert "production_catalog.customer_data" in result.message
+    assert "Scanned" in result.message and "tables" in result.message
+    assert "Found" in result.message and "PII columns" in result.message
+
+    # Verify scan results data structure
+    assert result.data is not None
+    assert result.data.get("catalog") == "production_catalog"
+    assert result.data.get("schema") == "customer_data"
+    assert "tables_successfully_processed" in result.data
+    assert "total_pii_columns" in result.data
+
+
+def test_direct_command_uses_active_catalog_and_schema():
+    """Direct command uses active catalog and schema from config."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup test data for active context
+    client_stub.add_catalog("active_catalog")
+    client_stub.add_schema("active_catalog", "active_schema")
+    client_stub.add_table("active_catalog", "active_schema", "customer_profiles")
+
+    llm_stub.set_response_content("[]")  # No PII found
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(
+            active_catalog="active_catalog", active_schema="active_schema"
+        )
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(client_stub)
+
+    # Verify uses active context
+    assert result.success
+    assert "active_catalog.active_schema" in result.message
+
+
+def test_direct_command_explicit_parameters_override_active_context():
+    """Direct command explicit parameters take priority over active config."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup data for both active and explicit contexts
+    client_stub.add_catalog("active_catalog")
+    client_stub.add_schema("active_catalog", "active_schema")
+    client_stub.add_catalog("explicit_catalog")
+    client_stub.add_schema("explicit_catalog", "explicit_schema")
+    client_stub.add_table("explicit_catalog", "explicit_schema", "target_table")
+
+    llm_stub.set_response_content("[]")
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(
+            active_catalog="active_catalog", active_schema="active_schema"
+        )
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(
+                    client_stub,
+                    catalog_name="explicit_catalog",
+                    schema_name="explicit_schema",
+                )
+
+    # Verify explicit parameters are used, not active config
+    assert result.success
+    assert "explicit_catalog.explicit_schema" in result.message
+
+
+def test_direct_command_handles_empty_schema():
+    """Direct command handles schema with no tables gracefully."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup empty schema
+    client_stub.add_catalog("empty_catalog")
+    client_stub.add_schema("empty_catalog", "empty_schema")
+    # Don't add any tables
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(
+                    client_stub,
+                    catalog_name="empty_catalog",
+                    schema_name="empty_schema",
+                )
+
+    # Should handle empty schema gracefully
+    assert result.success
+    assert "empty_catalog.empty_schema" in result.message
+
+
+def test_direct_command_handles_databricks_api_errors():
+    """Direct command handles Databricks API errors gracefully."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Force Databricks API error
+    def failing_list_tables(**kwargs):
+        raise Exception("Databricks API temporarily unavailable")
+
+    client_stub.list_tables = failing_list_tables
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(
+                    client_stub,
+                    catalog_name="failing_catalog",
+                    schema_name="failing_schema",
+                )
+
+    # Should handle API errors gracefully
+    assert not result.success
+    assert "Error during bulk PII scan" in result.message
+
+
+def test_direct_command_handles_llm_errors():
+    """Direct command handles LLM API errors gracefully."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup test data
     client_stub.add_catalog("test_catalog")
     client_stub.add_schema("test_catalog", "test_schema")
     client_stub.add_table("test_catalog", "test_schema", "users")
 
-    # Configure LLM stub for PII detection
+    # Force LLM error
+    llm_stub.set_exception(True)
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                result = handle_command(
+                    client_stub, catalog_name="test_catalog", schema_name="test_schema"
+                )
+
+    # Should handle LLM errors gracefully
+    assert not result.success
+    assert "Error during bulk PII scan" in result.message
+
+
+# ===== Agent Progress Tests =====
+
+
+def test_agent_shows_progress_while_scanning_tables():
+    """Agent execution shows progress for each table being scanned."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup multiple tables to scan
+    client_stub.add_catalog("production_catalog")
+    client_stub.add_schema("production_catalog", "customer_data")
+    client_stub.add_table("production_catalog", "customer_data", "users")
+    client_stub.add_table("production_catalog", "customer_data", "profiles")
+    client_stub.add_table("production_catalog", "customer_data", "preferences")
+
+    llm_stub.set_response_content("[]")  # No PII found
+
+    def capture_progress(tool_name, data):
+        # This captures the actual progress display behavior
+        pass  # Progress is shown via console.print, not callback
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                # Mock console to capture progress messages
+                with patch(
+                    "chuck_data.commands.pii_tools.get_console"
+                ) as mock_get_console:
+                    mock_console = mock_get_console.return_value
+
+                    result = handle_command(
+                        client_stub,
+                        catalog_name="production_catalog",
+                        schema_name="customer_data",
+                        show_progress=True,
+                        tool_output_callback=capture_progress,
+                    )
+
+    # Verify scan completed successfully
+    assert result.success
+    assert "production_catalog.customer_data" in result.message
+
+    # Verify progress messages were displayed
+    print_calls = mock_console.print.call_args_list
+    progress_messages = [call[0][0] for call in print_calls]
+
+    # Should show progress for each table
+    assert any(
+        "Scanning production_catalog.customer_data.users" in msg
+        for msg in progress_messages
+    )
+    assert any(
+        "Scanning production_catalog.customer_data.profiles" in msg
+        for msg in progress_messages
+    )
+    assert any(
+        "Scanning production_catalog.customer_data.preferences" in msg
+        for msg in progress_messages
+    )
+
+
+def test_agent_can_disable_progress_display():
+    """Agent execution can disable progress display when requested."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup test data
+    client_stub.add_catalog("quiet_catalog")
+    client_stub.add_schema("quiet_catalog", "quiet_schema")
+    client_stub.add_table("quiet_catalog", "quiet_schema", "users")
+    client_stub.add_table("quiet_catalog", "quiet_schema", "orders")
+
+    llm_stub.set_response_content("[]")
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+                with patch(
+                    "chuck_data.commands.pii_tools.get_console"
+                ) as mock_get_console:
+                    mock_console = mock_get_console.return_value
+
+                    result = handle_command(
+                        client_stub,
+                        catalog_name="quiet_catalog",
+                        schema_name="quiet_schema",
+                        show_progress=False,
+                    )
+
+    # Verify scan completed successfully
+    assert result.success
+
+    # Verify no progress messages when disabled
+    if mock_console.print.called:
+        print_calls = mock_console.print.call_args_list
+        progress_messages = [call[0][0] for call in print_calls]
+        scanning_messages = [msg for msg in progress_messages if "Scanning" in msg]
+        assert (
+            len(scanning_messages) == 0
+        ), "No progress messages should appear when show_progress=False"
+
+
+def test_agent_tool_executor_integration():
+    """Agent tool_executor integration works end-to-end."""
+    from tests.fixtures.databricks import DatabricksClientStub
+    from tests.fixtures.llm import LLMClientStub
+    from chuck_data.agent.tool_executor import execute_tool
+
+    client_stub = DatabricksClientStub()
+    llm_stub = LLMClientStub()
+
+    # Setup test data
+    client_stub.add_catalog("integration_catalog")
+    client_stub.add_schema("integration_catalog", "integration_schema")
+    client_stub.add_table("integration_catalog", "integration_schema", "customer_data")
+
     llm_stub.set_response_content(
         '[{"name":"email","semantic":"email"},{"name":"phone","semantic":"phone"}]'
     )
@@ -67,356 +408,56 @@ def test_successful_scan_with_explicit_params_real_logic():
 
         with patch("chuck_data.config._config_manager", config_manager):
             with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
-                # Test real PII scanning logic with explicit parameters
-                result = handle_command(
-                    client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
+                result = execute_tool(
+                    api_client=client_stub,
+                    tool_name="scan-schema-for-pii",
+                    tool_args={
+                        "catalog_name": "integration_catalog",
+                        "schema_name": "integration_schema",
+                    },
                 )
 
-    # Verify real PII scanning execution
-    assert result.success
-    assert "Scanned" in result.message
-    assert "tables" in result.message
-    assert result.data is not None
-    # Real logic should return scan summary data
-    assert (
-        "tables_successfully_processed" in result.data
-        or "tables_scanned_attempted" in result.data
-    )
+    # Verify agent gets proper result format
+    assert "catalog" in result
+    assert result["catalog"] == "integration_catalog"
+    assert "schema" in result
+    assert result["schema"] == "integration_schema"
+    assert "total_pii_columns" in result
+    assert "tables_with_pii" in result
 
 
-def test_scan_with_active_context_real_logic():
-    """Test schema scan using real active catalog and schema from config."""
-    # Use real client stubs (external boundaries)
+def test_agent_handles_tool_callback_errors_gracefully():
+    """Agent callback failures are handled gracefully (current behavior)."""
     from tests.fixtures.databricks import DatabricksClientStub
     from tests.fixtures.llm import LLMClientStub
 
     client_stub = DatabricksClientStub()
     llm_stub = LLMClientStub()
 
-    # Set up test data
-    client_stub.add_catalog("active_catalog")
-    client_stub.add_schema("active_catalog", "active_schema")
-    client_stub.add_table("active_catalog", "active_schema", "users")
-
-    # Configure LLM stub
-    llm_stub.set_response_content('[{"name":"user_id","semantic":"customer-id"}]')
-
-    with tempfile.NamedTemporaryFile() as tmp:
-        config_manager = ConfigManager(tmp.name)
-
-        # Set up real config with active catalog/schema
-        config_manager.update(
-            active_catalog="active_catalog", active_schema="active_schema"
-        )
-
-        with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
-                # Test real config integration - should use active values
-                result = handle_command(client_stub)
-
-    # Should succeed using real active catalog/schema from config
-    assert result.success
-    assert result.data is not None
-
-
-def test_scan_with_llm_error_real_logic():
-    """Test handling when LLM client encounters error with real business logic."""
-    # Use real client stubs (external boundaries)
-    from tests.fixtures.databricks import DatabricksClientStub
-    from tests.fixtures.llm import LLMClientStub
-
-    client_stub = DatabricksClientStub()
-    llm_stub = LLMClientStub()
-
-    # Set up test data
-    client_stub.add_catalog("test_catalog")
-    client_stub.add_schema("test_catalog", "test_schema")
-    client_stub.add_table("test_catalog", "test_schema", "users")
-
-    # Configure LLM stub to simulate error
-    llm_stub.set_exception(True)
-
-    with tempfile.NamedTemporaryFile() as tmp:
-        config_manager = ConfigManager(tmp.name)
-
-        with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
-                # Test real error handling with LLM failure
-                result = handle_command(
-                    client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
-                )
-
-    # Real error handling should handle LLM errors gracefully
-    assert isinstance(result.success, bool)
-    assert result.error is not None or result.message is not None
-
-
-def test_scan_with_databricks_client_stub_integration():
-    """Test PII scanning with Databricks client stub integration."""
-    # Use real client stubs (external boundaries)
-    from tests.fixtures.databricks import DatabricksClientStub
-    from tests.fixtures.llm import LLMClientStub
-
-    client_stub = DatabricksClientStub()
-    llm_stub = LLMClientStub()
-
-    # Configure LLM stub for realistic PII response
-    llm_stub.set_response_content(
-        '[{"name":"first_name","semantic":"given-name"},{"name":"last_name","semantic":"family-name"}]'
-    )
-
-    # Set up Databricks stub with test data
-    client_stub.add_catalog("test_catalog")
-    client_stub.add_schema("test_catalog", "test_schema")
-    client_stub.add_table("test_catalog", "test_schema", "users")
-    client_stub.add_table("test_catalog", "test_schema", "orders")
-
-    with tempfile.NamedTemporaryFile() as tmp:
-        config_manager = ConfigManager(tmp.name)
-
-        with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
-                # Test real PII scanning with stubbed external boundaries
-                result = handle_command(
-                    client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
-                )
-
-    # Should work with real business logic + external stubs
-    assert result.success
-    assert result.data is not None
-    assert "test_catalog.test_schema" in result.message
-
-
-def test_scan_parameter_priority_real_logic():
-    """Test that explicit parameters take priority over active config."""
-    # Use real client stubs (external boundaries)
-    from tests.fixtures.databricks import DatabricksClientStub
-    from tests.fixtures.llm import LLMClientStub
-
-    client_stub = DatabricksClientStub()
-    llm_stub = LLMClientStub()
-
-    # Set up test data for both catalogs
-    client_stub.add_catalog("config_catalog")
-    client_stub.add_schema("config_catalog", "config_schema")
-    client_stub.add_catalog("explicit_catalog")
-    client_stub.add_schema("explicit_catalog", "explicit_schema")
-    client_stub.add_table("explicit_catalog", "explicit_schema", "users")
-
-    llm_stub.set_response_content("[]")  # No PII found
-
-    with tempfile.NamedTemporaryFile() as tmp:
-        config_manager = ConfigManager(tmp.name)
-
-        # Set up active config values
-        config_manager.update(
-            active_catalog="config_catalog", active_schema="config_schema"
-        )
-
-        with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
-                # Test real parameter priority logic: explicit should override config
-                result = handle_command(
-                    client_stub,
-                    catalog_name="explicit_catalog",
-                    schema_name="explicit_schema",
-                )
-
-    # Should use explicit parameters, not config values (real priority logic)
-    assert result.success
-    assert "explicit_catalog.explicit_schema" in result.message
-
-
-def test_scan_with_partial_config_real_logic():
-    """Test scan with partially configured active context."""
-    # Use real client stubs (external boundaries)
-    from tests.fixtures.databricks import DatabricksClientStub
-    from tests.fixtures.llm import LLMClientStub
-
-    client_stub = DatabricksClientStub()
-    llm_stub = LLMClientStub()
+    # Setup test data
+    client_stub.add_catalog("callback_test_catalog")
+    client_stub.add_schema("callback_test_catalog", "callback_test_schema")
+    client_stub.add_table("callback_test_catalog", "callback_test_schema", "users")
 
     llm_stub.set_response_content("[]")
 
+    def failing_callback(tool_name, data):
+        raise Exception("Display system failure")
+
     with tempfile.NamedTemporaryFile() as tmp:
         config_manager = ConfigManager(tmp.name)
-
-        # Set only catalog, not schema - should fail validation
-        config_manager.update(active_catalog="test_catalog")
-        # active_schema is None/missing
 
         with patch("chuck_data.config._config_manager", config_manager):
             with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
-                # Test real validation logic with partial config
-                result = handle_command(client_stub)
+                # Note: scan-pii doesn't use tool_output_callback for reporting
+                # Progress is shown via console.print directly
+                result = handle_command(
+                    client_stub,
+                    catalog_name="callback_test_catalog",
+                    schema_name="callback_test_schema",
+                    tool_output_callback=failing_callback,
+                )
 
-    # Should fail with real validation logic
-    assert not result.success
-    assert "Catalog and schema must be specified" in result.message
-
-
-def test_scan_real_config_integration():
-    """Test scan command integration with real config system."""
-    with tempfile.NamedTemporaryFile() as tmp:
-        config_manager = ConfigManager(tmp.name)
-
-        # Test config updates and retrieval
-        config_manager.update(active_catalog="first_catalog")
-        config_manager.update(active_schema="first_schema")
-        config_manager.update(active_catalog="updated_catalog")  # Update catalog
-
-        with patch("chuck_data.config._config_manager", config_manager):
-            # Test real config state - should have updated catalog, original schema
-            result = handle_command(
-                None
-            )  # No client - should fail but with real config access
-
-    # Should fail due to missing client, but real config should be accessible
-    assert not result.success
-    assert "Client is required" in result.message
-
-
-class TestScanPIIInteractiveDisplay(unittest.TestCase):
-    """Tests for interactive display functionality in scan_pii command."""
-
-    def setUp(self):
-        """Set up common test fixtures."""
-        # Use real databricks client stub (external boundary)
-        from tests.fixtures import DatabricksClientStub
-
-        self.client_stub = DatabricksClientStub()
-
-    @patch("rich.console.Console")
-    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used
-    def test_interactive_display_with_real_business_logic(self, mock_console_class):
-        """Test interactive display using real business logic (following CLAUDE.md guidelines)."""
-        # Setup mock console (external boundary - UI/Terminal)
-        mock_console = MagicMock()
-        mock_console_class.return_value = mock_console
-
-        # Setup real databricks data using stub
-        self.client_stub.add_catalog("test_catalog")
-        self.client_stub.add_schema("test_catalog", "test_schema")
-        self.client_stub.add_table(
-            "test_catalog",
-            "test_schema",
-            "users",
-            columns=[
-                {"name": "email", "type_name": "string"},
-                {"name": "first_name", "type_name": "string"},
-                {"name": "signup_date", "type_name": "date"},
-            ],
-        )
-        self.client_stub.add_table(
-            "test_catalog",
-            "test_schema",
-            "products",
-            columns=[
-                {"name": "product_id", "type_name": "string"},
-                {"name": "description", "type_name": "string"},
-            ],
-        )
-
-        # Configure LLM client stub (external boundary - API calls)
-        pii_response = '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"},{"name":"signup_date","semantic":null}]'
-
-        # Mock the LLM class but use real LLM client stub
-        with patch("chuck_data.commands.scan_pii.LLMClient") as mock_llm_class:
-            from tests.fixtures import LLMClientStub
-
-            llm_stub = LLMClientStub()
-            # Set up responses for multiple tables
-            llm_stub.set_response_content(pii_response)
-            mock_llm_class.return_value = llm_stub
-
-            # Call real handle_command function (no mocking internal business logic)
-            result = handle_command(
-                self.client_stub, catalog_name="test_catalog", schema_name="test_schema"
-            )
-
-        # Verify results using real business logic
-        self.assertTrue(result.success)
-        self.assertIn("test_catalog.test_schema", result.message)
-        self.assertEqual(result.data["catalog"], "test_catalog")
-        self.assertEqual(result.data["schema"], "test_schema")
-
-        # Verify console progress messages are displayed
-        print_calls = [
-            call[0][0]
-            for call in mock_console.print.call_args_list
-            if mock_console.print.called
-        ]
-        expected_progress_messages = [
-            "[dim]Scanning test_catalog.test_schema.users...[/dim]",
-            "[dim]Scanning test_catalog.test_schema.products...[/dim]",
-        ]
-        for expected_msg in expected_progress_messages:
-            self.assertIn(expected_msg, print_calls)
-
-    @patch("rich.console.Console")
-    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used
-    def test_progress_can_be_disabled_with_real_logic(self, mock_console_class):
-        """Test that progress display can be disabled using real business logic."""
-        # Setup mock console (external boundary)
-        mock_console = MagicMock()
-        mock_console_class.return_value = mock_console
-
-        # Setup real databricks data
-        self.client_stub.add_catalog("test_catalog")
-        self.client_stub.add_schema("test_catalog", "test_schema")
-        self.client_stub.add_table(
-            "test_catalog",
-            "test_schema",
-            "users",
-            columns=[{"name": "email", "type_name": "string"}],
-        )
-
-        # Configure LLM stub
-        pii_response = '[{"name":"email","semantic":"email"}]'
-
-        with patch("chuck_data.commands.scan_pii.LLMClient") as mock_llm_class:
-            from tests.fixtures import LLMClientStub
-
-            llm_stub = LLMClientStub()
-            llm_stub.set_response_content(pii_response)
-            mock_llm_class.return_value = llm_stub
-
-            # Call with show_progress=False
-            result = handle_command(
-                self.client_stub,
-                catalog_name="test_catalog",
-                schema_name="test_schema",
-                show_progress=False,
-            )
-
-        # Verify results
-        self.assertTrue(result.success)
-
-        # Verify no progress messages when disabled
-        if mock_console.print.called:
-            print_calls = [call[0][0] for call in mock_console.print.call_args_list]
-            progress_messages = [
-                msg for msg in print_calls if "Scanning" in msg and "[dim]" in msg
-            ]
-            self.assertEqual(
-                len(progress_messages),
-                0,
-                "No progress messages should appear when show_progress=False",
-            )
-
-    def test_show_progress_parameter_in_definition(self):
-        """Test that show_progress parameter is properly defined in command definition."""
-        from chuck_data.commands.scan_pii import DEFINITION
-
-        # Verify the parameter is defined
-        self.assertIn("show_progress", DEFINITION.parameters)
-        self.assertEqual(DEFINITION.parameters["show_progress"]["type"], "boolean")
-        self.assertIn(
-            "progress", DEFINITION.parameters["show_progress"]["description"].lower()
-        )
+    # Should complete successfully since scan-pii doesn't depend on callback
+    assert result.success
+    assert "callback_test_catalog.callback_test_schema" in result.message
