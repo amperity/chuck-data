@@ -521,19 +521,28 @@ class ChuckTUI:
                     )
                 )
             elif (
-                (
-                    cmd.startswith("/getting-started")
-                    or cmd.startswith("/examples")
-                    or cmd.startswith("/tips")
-                )
-                and isinstance(result.data, dict)
-                and "getting_started_text" in result.data
+                cmd.startswith("/getting-started")
+                or cmd.startswith("/examples")
+                or cmd.startswith("/tips")
             ):
                 # Custom display for getting started tips with special formatting
                 self.console.print(
                     Panel(
                         result.data["getting_started_text"],
                         title="Getting Started with Chuck",
+                        border_style="cyan",
+                    )
+                )
+            elif (
+                (cmd.startswith("/support") or cmd.startswith("/help-me"))
+                and isinstance(result.data, dict)
+                and "support_text" in result.data
+            ):
+                # Custom display for support options with special formatting
+                self.console.print(
+                    Panel(
+                        result.data["support_text"],
+                        title="Chuck Support Options",
                         border_style="cyan",
                     )
                 )

@@ -53,6 +53,9 @@ from .getting_started import DEFINITION as getting_started_definition
 # Import discord community command
 from .discord import DEFINITION as discord_definition
 
+# Import support command
+from .support import DEFINITION as support_definition
+
 # List of all command definitions to register
 ALL_COMMAND_DEFINITIONS = [
     # Authentication & Workspace commands
@@ -96,6 +99,7 @@ ALL_COMMAND_DEFINITIONS = [
     bug_definition,
     getting_started_definition,
     discord_definition,
+    support_definition,
     # Agent command
     agent_definition,
 ]

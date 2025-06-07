@@ -95,6 +95,7 @@ def format_help_text(
             "help",
             "getting-started",
             "discord",
+            "support",
             "bug",
             "agent",
             "exit",
