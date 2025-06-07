@@ -123,3 +123,104 @@ class TestPIITools(unittest.TestCase):
             self.assertEqual(result["tables_successfully_processed"], 1)
             self.assertEqual(result["tables_with_pii"], 1)
             self.assertEqual(result["total_pii_columns"], 2)
+
+    @patch("concurrent.futures.ThreadPoolExecutor")
+    @patch("chuck_data.ui.tui.get_console")
+    def test_scan_schema_with_progress_display(self, mock_get_console, mock_executor):
+        """Test scanning a schema with progress display enabled."""
+        # Setup mocks
+        mock_console = MagicMock()
+        mock_get_console.return_value = mock_console
+        
+        # Set up test data using stub
+        self.client_stub.add_catalog("test_cat")
+        self.client_stub.add_schema("test_cat", "test_schema")
+        self.client_stub.add_table("test_cat", "test_schema", "users")
+        self.client_stub.add_table("test_cat", "test_schema", "orders")
+
+        # Mock the ThreadPoolExecutor
+        mock_future1 = MagicMock()
+        mock_future1.result.return_value = {
+            "table_name": "users",
+            "full_name": "test_cat.test_schema.users",
+            "pii_column_count": 2,
+            "has_pii": True,
+            "skipped": False,
+        }
+        
+        mock_future2 = MagicMock()
+        mock_future2.result.return_value = {
+            "table_name": "orders", 
+            "full_name": "test_cat.test_schema.orders",
+            "pii_column_count": 0,
+            "has_pii": False,
+            "skipped": False,
+        }
+
+        mock_context = MagicMock()
+        mock_context.__enter__.return_value = mock_context
+        mock_context.submit.side_effect = [mock_future1, mock_future2]
+        mock_executor.return_value = mock_context
+
+        # Mock concurrent.futures.as_completed to return futures
+        with patch("concurrent.futures.as_completed", return_value=[mock_future1, mock_future2]):
+            # Call function with progress display enabled
+            result = _helper_scan_schema_for_pii_logic(
+                self.client_stub, self.llm_client, "test_cat", "test_schema", show_progress=True
+            )
+
+            # Verify console.print was called for each table
+            expected_messages = [
+                "[dim]Scanning test_cat.test_schema.users...[/dim]",
+                "[dim]Scanning test_cat.test_schema.orders...[/dim]"
+            ]
+            
+            # Check that console.print was called with our expected messages
+            print_calls = [call[0][0] for call in mock_console.print.call_args_list]
+            for expected_msg in expected_messages:
+                self.assertIn(expected_msg, print_calls)
+
+            # Verify results
+            self.assertEqual(result["tables_scanned_attempted"], 2)
+            self.assertEqual(result["tables_successfully_processed"], 2)
+
+    @patch("concurrent.futures.ThreadPoolExecutor")
+    @patch("chuck_data.ui.tui.get_console")
+    def test_scan_schema_with_progress_disabled(self, mock_get_console, mock_executor):
+        """Test scanning a schema with progress display disabled."""
+        # Setup mocks
+        mock_console = MagicMock()
+        mock_get_console.return_value = mock_console
+        
+        # Set up test data
+        self.client_stub.add_catalog("test_cat")
+        self.client_stub.add_schema("test_cat", "test_schema")
+        self.client_stub.add_table("test_cat", "test_schema", "users")
+
+        # Mock the ThreadPoolExecutor
+        mock_future = MagicMock()
+        mock_future.result.return_value = {
+            "table_name": "users",
+            "full_name": "test_cat.test_schema.users",
+            "pii_column_count": 1,
+            "has_pii": True,
+            "skipped": False,
+        }
+
+        mock_context = MagicMock()
+        mock_context.__enter__.return_value = mock_context
+        mock_context.submit.return_value = mock_future
+        mock_executor.return_value = mock_context
+
+        with patch("concurrent.futures.as_completed", return_value=[mock_future]):
+            # Call function with progress display disabled
+            result = _helper_scan_schema_for_pii_logic(
+                self.client_stub, self.llm_client, "test_cat", "test_schema", show_progress=False
+            )
+
+            # Verify console.print was NOT called for progress messages
+            mock_console.print.assert_not_called()
+
+            # Verify results still work correctly
+            self.assertEqual(result["tables_scanned_attempted"], 1)
+            self.assertEqual(result["tables_successfully_processed"], 1)
