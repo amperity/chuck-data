@@ -225,8 +225,13 @@ def test_needs_setup_method(config_setup, clean_env):
     # Initially should need setup
     assert config_manager.needs_setup()
     
-    # After setting workspace URL, should not need setup
-    config_manager.update(workspace_url="test-workspace")
+    # After setting all critical configs, should not need setup
+    config_manager.update(
+        workspace_url="test-workspace",
+        amperity_token="test-amperity-token", 
+        databricks_token="test-databricks-token",
+        active_model="test-model"
+    )
     assert not config_manager.needs_setup()
     
     # Test with environment variable
