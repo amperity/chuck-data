@@ -4,7 +4,6 @@ Behavioral tests focused on command execution patterns, aligned with CLAUDE.MD.
 """
 
 from unittest.mock import patch
-import pytest  # Added for pytest.skip
 
 from chuck_data.commands.jobs import handle_launch_job, handle_job_status
 from chuck_data.commands.base import CommandResult
@@ -14,7 +13,9 @@ from chuck_data.commands.base import CommandResult
 try:
     from chuck_data.agent.tool_executor import execute_tool
 except ImportError:
-    execute_tool = None
+    execute_tool = (
+        None  # If execute_tool is None, tests will now fail if it's not found.
+    )
 
 # --- Parameter Validation Tests ---
 
@@ -350,8 +351,6 @@ def test_agent_tool_executor_launch_job_integration(
     """AGENT TEST: End-to-end integration for launching a job via execute_tool.
     Assumes 'launch-job' is the correct registered tool name.
     """
-    if not execute_tool:
-        pytest.skip("execute_tool not available, skipping integration test.")
     with patch("chuck_data.config._config_manager", temp_config):
         databricks_client_stub.submit_job_run = (
             lambda config_path, init_script_path, run_name=None: {"run_id": "789012"}
@@ -376,8 +375,6 @@ def test_agent_tool_executor_job_status_integration(
     """AGENT TEST: End-to-end integration for getting job status via execute_tool.
     Assumes 'job-status' is the correct registered tool name.
     """
-    if not execute_tool:
-        pytest.skip("execute_tool not available, skipping integration test.")
     with patch("chuck_data.config._config_manager", temp_config):
         databricks_client_stub.get_job_run_status = lambda run_id: {
             "run_id": int(run_id),
