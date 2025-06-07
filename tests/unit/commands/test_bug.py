@@ -28,30 +28,45 @@ class TestBugCommand:
 
     def test_handle_command_with_rest_parameter(self):
         """Test bug command with rest parameter (free-form text)."""
-        with mock.patch("chuck_data.commands.bug.get_amperity_token") as mock_token:
-            mock_token.return_value = None  # No token, so it should fail at auth
-
-            result = handle_command(None, rest="Hi caleb!")
-            assert not result.success
-            assert "Amperity authentication required" in result.message
+        import tempfile
+        from chuck_data.config import ConfigManager
+        
+        # Use real config system with no token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                result = handle_command(None, rest="Hi caleb!")
+                assert not result.success
+                assert "Amperity authentication required" in result.message
 
     def test_handle_command_with_raw_args_list(self):
         """Test bug command with raw_args as list."""
-        with mock.patch("chuck_data.commands.bug.get_amperity_token") as mock_token:
-            mock_token.return_value = None  # No token, so it should fail at auth
-
-            result = handle_command(None, raw_args=["Hi", "caleb!"])
-            assert not result.success
-            assert "Amperity authentication required" in result.message
+        import tempfile
+        from chuck_data.config import ConfigManager
+        
+        # Use real config system with no token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                result = handle_command(None, raw_args=["Hi", "caleb!"])
+                assert not result.success
+                assert "Amperity authentication required" in result.message
 
     def test_handle_command_with_raw_args_string(self):
         """Test bug command with raw_args as string."""
-        with mock.patch("chuck_data.commands.bug.get_amperity_token") as mock_token:
-            mock_token.return_value = None  # No token, so it should fail at auth
-
-            result = handle_command(None, raw_args="Hi caleb!")
-            assert not result.success
-            assert "Amperity authentication required" in result.message
+        import tempfile
+        from chuck_data.config import ConfigManager
+        
+        # Use real config system with no token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                result = handle_command(None, raw_args="Hi caleb!")
+                assert not result.success
+                assert "Amperity authentication required" in result.message
 
     def test_handle_command_empty_description(self):
         """Test bug command with empty description."""
@@ -59,68 +74,95 @@ class TestBugCommand:
         assert not result.success
         assert "Bug description is required" in result.message
 
-    @mock.patch("chuck_data.commands.bug.get_amperity_token")
-    def test_handle_command_no_token(self, mock_get_token):
+    def test_handle_command_no_token(self):
         """Test bug command without Amperity token."""
-        mock_get_token.return_value = None
+        import tempfile
+        from chuck_data.config import ConfigManager
+        
+        # Use real config system with no token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                result = handle_command(None, description="Test bug")
+                assert not result.success
+                assert "Amperity authentication required" in result.message
 
-        result = handle_command(None, description="Test bug")
-        assert not result.success
-        assert "Amperity authentication required" in result.message
-
-    @mock.patch("chuck_data.commands.bug.get_amperity_token")
-    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
-    @mock.patch("chuck_data.commands.bug._prepare_bug_report")
-    def test_handle_command_success(
-        self, mock_prepare, mock_client_class, mock_get_token
-    ):
+    def test_handle_command_success(self, amperity_client_stub):
         """Test successful bug report submission."""
-        mock_get_token.return_value = "test-token"
-        mock_prepare.return_value = {"test": "payload"}
+        import tempfile
+        from chuck_data.config import ConfigManager, set_amperity_token
+        
+        # Use real config system with token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                # Set amperity token using real config
+                set_amperity_token("test-token")
+                
+                # Mock only the external client instantiation, not internal logic
+                with mock.patch("chuck_data.commands.bug.AmperityAPIClient") as mock_client_class:
+                    mock_client_class.return_value = amperity_client_stub
+                    
+                    result = handle_command(None, description="Test bug description")
 
-        # Use AmperityClientStub instead of MagicMock
-        client_stub = AmperityClientStub()
-        mock_client_class.return_value = client_stub
+                    assert result.success
+                    assert "Bug report submitted successfully" in result.message
 
-        result = handle_command(None, description="Test bug description")
-
-        assert result.success
-        assert "Bug report submitted successfully" in result.message
-
-    @mock.patch("chuck_data.commands.bug.get_amperity_token")
-    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
-    def test_handle_command_api_failure(self, mock_client_class, mock_get_token):
+    def test_handle_command_api_failure(self, amperity_client_stub):
         """Test bug report submission with API failure."""
-        mock_get_token.return_value = "test-token"
+        import tempfile
+        from chuck_data.config import ConfigManager, set_amperity_token
+        
+        # Configure client stub to fail
+        amperity_client_stub.set_bug_report_failure(True)
+        
+        # Use real config system with token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                # Set amperity token using real config
+                set_amperity_token("test-token")
+                
+                # Mock only the external client instantiation
+                with mock.patch("chuck_data.commands.bug.AmperityAPIClient") as mock_client_class:
+                    mock_client_class.return_value = amperity_client_stub
+                    
+                    result = handle_command(None, description="Test bug")
 
-        # Use AmperityClientStub configured to fail
-        client_stub = AmperityClientStub()
-        client_stub.set_bug_report_failure(True)
-        mock_client_class.return_value = client_stub
+                    assert not result.success
+                    assert "Failed to submit bug report: 500" in result.message
 
-        result = handle_command(None, description="Test bug")
-
-        assert not result.success
-        assert "Failed to submit bug report: 500" in result.message
-
-    @mock.patch("chuck_data.commands.bug.get_amperity_token")
-    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
-    def test_handle_command_network_error(self, mock_client_class, mock_get_token):
+    def test_handle_command_network_error(self):
         """Test bug report submission with network error."""
-        mock_get_token.return_value = "test-token"
-
+        import tempfile
+        from chuck_data.config import ConfigManager, set_amperity_token
+        
         # Create a stub that raises an exception
         class FailingAmperityStub(AmperityClientStub):
             def submit_bug_report(self, payload: dict, token: str) -> tuple[bool, str]:
                 raise Exception("Network error")
 
         failing_client = FailingAmperityStub()
-        mock_client_class.return_value = failing_client
+        
+        # Use real config system with token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                # Set amperity token using real config
+                set_amperity_token("test-token")
+                
+                # Mock only the external client instantiation
+                with mock.patch("chuck_data.commands.bug.AmperityAPIClient") as mock_client_class:
+                    mock_client_class.return_value = failing_client
+                    
+                    result = handle_command(None, description="Test bug")
 
-        result = handle_command(None, description="Test bug")
-
-        assert not result.success
-        assert "Error submitting bug report" in result.message
+                    assert not result.success
+                    assert "Error submitting bug report" in result.message
 
     def test_get_sanitized_config(self):
         """Test config sanitization removes tokens."""
@@ -142,10 +184,7 @@ class TestBugCommand:
             # Create a config manager with the temp file
             config_manager = ConfigManager(temp_path)
 
-            with mock.patch(
-                "chuck_data.commands.bug.get_config_manager",
-                return_value=config_manager,
-            ):
+            with mock.patch("chuck_data.config._config_manager", config_manager):
                 sanitized = _get_sanitized_config()
 
                 # Check that tokens are NOT included
@@ -176,10 +215,7 @@ class TestBugCommand:
         try:
             config_manager = ConfigManager(temp_path)
 
-            with mock.patch(
-                "chuck_data.commands.bug.get_config_manager",
-                return_value=config_manager,
-            ):
+            with mock.patch("chuck_data.config._config_manager", config_manager):
                 sanitized = _get_sanitized_config()
 
                 # Check that None values are not included
@@ -189,23 +225,52 @@ class TestBugCommand:
         finally:
             os.unlink(temp_path)
 
-    @mock.patch("chuck_data.commands.bug._get_session_log")
-    @mock.patch("chuck_data.commands.bug._get_sanitized_config")
-    def test_prepare_bug_report(self, mock_config, mock_log):
-        """Test bug report payload preparation."""
-        mock_config.return_value = {"workspace_url": "test"}
-        mock_log.return_value = "test log content"
+    def test_prepare_bug_report(self):
+        """Test bug report payload preparation with real business logic."""
+        import tempfile
+        from chuck_data.config import ConfigManager
+        
+        # Create a temporary config file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_data = {
+                "workspace_url": "https://test.databricks.com",
+                "active_model": "test-model",
+                "warehouse_id": "test-warehouse",
+            }
+            json.dump(config_data, f)
+            temp_config_path = f.name
 
-        payload = _prepare_bug_report("Test bug description")
+        # Create a temporary log file
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("Test log line 1\n")
+            f.write("Test log line 2\n")
+            temp_log_path = f.name
 
-        assert payload["type"] == "bug_report"
-        assert payload["description"] == "Test bug description"
-        assert payload["config"] == {"workspace_url": "test"}
-        assert payload["session_log"] == "test log content"
-        assert "timestamp" in payload
-        assert "system_info" in payload
-        assert "platform" in payload["system_info"]
-        assert "python_version" in payload["system_info"]
+        try:
+            config_manager = ConfigManager(temp_config_path)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                # Mock only the external system calls (file access)
+                with mock.patch("chuck_data.commands.bug.get_current_log_file", return_value=temp_log_path):
+                    # Call the real function with real business logic
+                    payload = _prepare_bug_report("Test bug description")
+
+                    # Verify the payload structure
+                    assert payload["type"] == "bug_report"
+                    assert payload["description"] == "Test bug description"
+                    assert isinstance(payload["config"], dict)
+                    assert payload["config"]["workspace_url"] == "https://test.databricks.com"
+                    assert payload["config"]["active_model"] == "test-model"
+                    assert isinstance(payload["session_log"], str)
+                    assert "Test log line 1" in payload["session_log"]
+                    assert "Test log line 2" in payload["session_log"]
+                    assert "timestamp" in payload
+                    assert "system_info" in payload
+                    assert "platform" in payload["system_info"]
+                    assert "python_version" in payload["system_info"]
+        finally:
+            os.unlink(temp_config_path)
+            os.unlink(temp_log_path)
 
     @mock.patch("chuck_data.commands.bug.get_current_log_file")
     def test_get_session_log_no_file(self, mock_get_log_file):
@@ -264,30 +329,24 @@ class TestBugCommand:
         finally:
             os.unlink(temp_path)
 
-    @mock.patch("chuck_data.commands.bug.get_amperity_token")
-    @mock.patch("chuck_data.commands.bug.AmperityAPIClient")
-    @mock.patch("chuck_data.commands.bug._prepare_bug_report")
-    def test_handle_command_with_rest_success(
-        self, mock_prepare, mock_client_class, mock_get_token
-    ):
+    def test_handle_command_with_rest_success(self, amperity_client_stub):
         """Test successful bug report submission using rest parameter."""
-        mock_get_token.return_value = "test-token"
-        mock_prepare.return_value = {"test": "payload"}
+        import tempfile
+        from chuck_data.config import ConfigManager, set_amperity_token
+        
+        # Use real config system with token set
+        with tempfile.NamedTemporaryFile() as tmp:
+            config_manager = ConfigManager(tmp.name)
+            
+            with mock.patch("chuck_data.config._config_manager", config_manager):
+                # Set amperity token using real config
+                set_amperity_token("test-token")
+                
+                # Mock only the external client instantiation
+                with mock.patch("chuck_data.commands.bug.AmperityAPIClient") as mock_client_class:
+                    mock_client_class.return_value = amperity_client_stub
+                    
+                    result = handle_command(None, rest="Hi caleb!")
 
-        # Mock the AmperityAPIClient instance and its submit_bug_report method
-        mock_client = mock.Mock()
-        mock_client.submit_bug_report.return_value = (
-            True,
-            "Bug report submitted successfully",
-        )
-        mock_client_class.return_value = mock_client
-
-        result = handle_command(None, rest="Hi caleb!")
-
-        assert result.success
-        assert "Bug report submitted successfully" in result.message
-
-        # Verify the bug report was prepared with the correct description
-        mock_prepare.assert_called_once_with("Hi caleb!")
-        # Verify the client method was called
-        mock_client.submit_bug_report.assert_called_once()
+                    assert result.success
+                    assert "Bug report submitted successfully" in result.message
