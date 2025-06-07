@@ -552,18 +552,25 @@ class ChuckTUI:
                         border_style="cyan",
                     )
                 )
-                
+
                 # Prompt for browser opening
                 try:
                     response = input("> ").strip().lower()
                     if response in ["y", "yes"]:
                         discord_url = result.data["discord_url"]
-                        self.console.print(f"[{INFO_STYLE}]Opening Discord invite link in browser...[/{INFO_STYLE}]")
+                        self.console.print(
+                            f"[{INFO_STYLE}]Opening Discord invite link in browser...[/{INFO_STYLE}]"
+                        )
                         import webbrowser
+
                         webbrowser.open(discord_url)
                 except Exception as e:
-                    self.console.print(f"[{ERROR_STYLE}]Error opening browser: {str(e)}[/{ERROR_STYLE}]")
-                    logging.error(f"Error opening browser for Discord: {e}", exc_info=True)
+                    self.console.print(
+                        f"[{ERROR_STYLE}]Error opening browser: {str(e)}[/{ERROR_STYLE}]"
+                    )
+                    logging.error(
+                        f"Error opening browser for Discord: {e}", exc_info=True
+                    )
             elif (
                 cmd in ["/agent", "/ask"]
                 and isinstance(result.data, dict)
