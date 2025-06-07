@@ -5,7 +5,7 @@ This module provides standardized table formatting functions using Rich library
 to ensure consistent display of tabular data throughout the application.
 """
 
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -16,8 +16,8 @@ from chuck_data.ui.theme import TABLE_TITLE_STYLE, TABLE_BORDER_STYLE, HEADER_ST
 
 
 def create_table(
-    title: str = None,
-    headers: List[str] = None,
+    title: Optional[str] = None,
+    headers: Optional[List[str]] = None,
     show_header: bool = True,
     show_lines: bool = True,
     box_style: str = "ROUNDED",
@@ -26,6 +26,7 @@ def create_table(
     header_style: str = HEADER_STYLE,
     border_style: str = TABLE_BORDER_STYLE,
     expand: bool = False,
+    column_alignments: Optional[Dict[str, str]] = None,
 ) -> Table:
     """
     Create a Rich Table with consistent styling.
@@ -42,6 +43,7 @@ def create_table(
         border_style: Style for table borders
         expand: Whether the table should expand to fill available width.
             Defaults to False so the table width matches its content.
+        column_alignments: Optional dict mapping header names to alignment ("left", "center", "right")
 
     Returns:
         A configured Rich Table object
@@ -65,7 +67,17 @@ def create_table(
         # Add headers if provided
         if headers and show_header:
             for header in headers:
-                table.add_column(header, style=header_style)
+                # Get alignment for this column (default to left if not specified)
+                alignment = "left"
+                if column_alignments and header in column_alignments:
+                    requested_alignment = column_alignments[header]
+                    # Validate alignment value
+                    if requested_alignment in ["left", "center", "right", "full"]:
+                        alignment = requested_alignment
+
+                table.add_column(
+                    header, style=header_style, justify=cast(Any, alignment)
+                )
 
         return table
     except Exception as e:
@@ -89,7 +101,17 @@ def create_table(
         # Add headers if provided
         if headers and show_header:
             for header in headers:
-                table.add_column(header, style=header_style)
+                # Get alignment for this column (default to left if not specified)
+                alignment = "left"
+                if column_alignments and header in column_alignments:
+                    requested_alignment = column_alignments[header]
+                    # Validate alignment value
+                    if requested_alignment in ["left", "center", "right", "full"]:
+                        alignment = requested_alignment
+
+                table.add_column(
+                    header, style=header_style, justify=cast(Any, alignment)
+                )
 
         return table
 
@@ -131,7 +153,7 @@ def format_cell(value: Any, style: Any = None, none_display: str = "N/A") -> Tex
 def add_row_with_styles(
     table: Table,
     row_data: List[Any],
-    styles: List[str] = None,
+    styles: Optional[List[str]] = None,
 ) -> None:
     """
     Add a row to a table with optional styling per cell.
@@ -147,7 +169,7 @@ def add_row_with_styles(
 
     # Format each cell and add to table
     formatted_cells = [
-        format_cell(data, style=style) for data, style in zip(row_data, styles)
+        format_cell(data, style=style) for data, style in zip(row_data, styles or [])
     ]
 
     table.add_row(*formatted_cells)
@@ -157,7 +179,7 @@ def add_rows_from_data(
     table: Table,
     data: List[Dict[str, Any]],
     columns: List[str],
-    style_map: Dict[str, Any] = None,
+    style_map: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Add multiple rows from a list of dictionaries.
@@ -216,9 +238,9 @@ def display_table(
     console: Console,
     data: List[Dict[str, Any]],
     columns: List[str],
-    headers: List[str] = None,
-    title: str = None,
-    style_map: Dict[str, Any] = None,
+    headers: Optional[List[str]] = None,
+    title: Optional[str] = None,
+    style_map: Optional[Dict[str, Any]] = None,
     title_style: str = TABLE_TITLE_STYLE,
     header_style: str = HEADER_STYLE,
     border_style: str = TABLE_BORDER_STYLE,
@@ -227,6 +249,7 @@ def display_table(
     box_style: str = "ROUNDED",
     padding: Union[int, tuple] = (0, 1),
     expand: bool = False,
+    column_alignments: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Create, populate and display a table in one operation.
@@ -252,6 +275,7 @@ def display_table(
         padding: Cell padding as int or tuple
         expand: Whether the table should expand to fill available width. Defaults
             to False so the table width matches its content.
+        column_alignments: Optional dict mapping header names to alignment ("left", "center", "right")
     """
     try:
         # Use columns as headers if not provided
@@ -270,6 +294,7 @@ def display_table(
             box_style=box_style,
             padding=padding,
             expand=expand,
+            column_alignments=column_alignments,
         )
 
         # Handle empty data case

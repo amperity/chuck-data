@@ -909,6 +909,12 @@ class ChuckTUI:
             else "Available Tables"
         )
 
+        # Set up column alignments for numerical columns
+        column_alignments = {
+            "# Cols": "right",
+            "Rows": "right",
+        }
+
         # Display the table using our formatter
         display_table(
             console=self.console,
@@ -924,6 +930,7 @@ class ChuckTUI:
             headers=["Table Name", "Type", "# Cols", "Rows", "Created", "Last Updated"],
             title=title,
             style_map=style_map,
+            column_alignments=column_alignments,
             title_style=TABLE_TITLE_STYLE,
             show_lines=True,
         )

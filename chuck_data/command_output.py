@@ -287,6 +287,11 @@ class OutputFormatter:
             "updated": format_date,
         }
 
+        # Set up column alignments for numerical columns
+        column_alignments = {
+            "# Cols": "right",
+        }
+
         # Display the tables
         display_table(
             console=console,
@@ -295,6 +300,7 @@ class OutputFormatter:
             headers=["Table Name", "Type", "# Cols", "Created", "Last Updated"],
             title=f"Tables in {catalog_name}.{schema_name} ({total_count} total)",
             style_map=style_map,
+            column_alignments=column_alignments,
             title_style=TABLE_TITLE_STYLE,
             show_lines=True,
         )
@@ -392,6 +398,11 @@ class OutputFormatter:
             "state": style_state,
         }
 
+        # Set up column alignments for numerical columns
+        column_alignments = {
+            "Auto Stop": "right",
+        }
+
         # Display the warehouses
         display_table(
             console=console,
@@ -400,6 +411,7 @@ class OutputFormatter:
             headers=["Warehouse Name", "Size", "State", "Auto Stop", "Created By"],
             title="Available Warehouses",
             style_map=style_map,
+            column_alignments=column_alignments,
             title_style=TABLE_TITLE_STYLE,
             show_lines=False,
         )
