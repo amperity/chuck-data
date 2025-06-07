@@ -35,19 +35,60 @@ def test_direct_command_selects_existing_catalog(databricks_client_stub, temp_co
         assert get_active_catalog() == "production"
 
 
-def test_direct_command_failure_shows_no_progress_steps(
+def test_direct_command_failure_shows_limited_available_catalogs(
     databricks_client_stub, temp_config
 ):
-    """Direct command failure shows error with available catalogs, no progress steps."""
+    """Direct command failure shows error with limited available catalogs list."""
     with patch("chuck_data.config._config_manager", temp_config):
         databricks_client_stub.add_catalog("xyz", catalog_type="MANAGED")
 
         result = handle_command(databricks_client_stub, catalog="asdfkjasdf")
 
-        # Command fails with helpful message
+        # Command fails with helpful but limited catalog list
         assert not result.success
         assert "No catalog found matching 'asdfkjasdf'" in result.message
         assert "Available catalogs: xyz" in result.message
+
+
+def test_direct_command_failure_truncates_long_catalog_list(
+    databricks_client_stub, temp_config
+):
+    """Direct command failure truncates very long catalog lists with '... and X more'."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        # Add many catalogs to test truncation
+        for i in range(10):
+            databricks_client_stub.add_catalog(
+                f"catalog_{i:02d}", catalog_type="MANAGED"
+            )
+
+        result = handle_command(databricks_client_stub, catalog="nonexistent")
+
+        # Command fails with truncated catalog list
+        assert not result.success
+        assert "No catalog found matching 'nonexistent'" in result.message
+        assert "Available catalogs:" in result.message
+        assert "... and 5 more" in result.message
+
+
+def test_direct_command_failure_shows_all_catalogs_when_five_or_fewer(
+    databricks_client_stub, temp_config
+):
+    """Direct command failure shows all catalogs when 5 or fewer exist."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        # Add exactly 5 catalogs (boundary case)
+        for i in range(5):
+            databricks_client_stub.add_catalog(f"catalog_{i}", catalog_type="MANAGED")
+
+        result = handle_command(databricks_client_stub, catalog="nonexistent")
+
+        # Command fails with all catalogs shown (no truncation)
+        assert not result.success
+        assert "No catalog found matching 'nonexistent'" in result.message
+        assert (
+            "Available catalogs: catalog_0, catalog_1, catalog_2, catalog_3, catalog_4"
+            in result.message
+        )
+        assert "... and" not in result.message
 
 
 def test_direct_command_fuzzy_matching_works(databricks_client_stub, temp_config):
@@ -197,7 +238,7 @@ def test_agent_shows_search_progress_before_failure(
             tool_output_callback=capture_progress,
         )
 
-        # Command fails with helpful message
+        # Command fails with helpful but limited catalog list
         assert not result.success
         assert "No catalog found matching 'asdkfjasdfjaweef'" in result.message
         assert "Available catalogs: xyz" in result.message
