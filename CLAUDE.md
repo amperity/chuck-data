@@ -205,7 +205,7 @@ Databricks Client
 @patch('chuck_data.clients.databricks.DatabricksClient')
 
 # ✅ DO THIS:
-Use the fixture `Da:tabricksClientStub` to stub only the external API calls, while using the real command logic.
+Use the fixture `DatabricksClientStub` to stub only the external API calls, while using the real command logic. Fixtures for stubbing external API clients follow the naming convention `<ClientName>Stub`.
 
 LLM Client
 

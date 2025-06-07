@@ -25,9 +25,11 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         **kwargs:
             catalog_name (str, optional): Name of the catalog
             schema_name (str, optional): Name of the schema
+            show_progress (bool, optional): Show progress display. Defaults to True.
     """
     catalog_name_arg: Optional[str] = kwargs.get("catalog_name")
     schema_name_arg: Optional[str] = kwargs.get("schema_name")
+    show_progress: bool = kwargs.get("show_progress", True)
 
     if not client:
         return CommandResult(False, message="Client is required for bulk PII scan.")
@@ -46,7 +48,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         llm_client = LLMClient()
 
         scan_summary_data = _helper_scan_schema_for_pii_logic(
-            client, llm_client, effective_catalog, effective_schema
+            client, llm_client, effective_catalog, effective_schema, show_progress
         )
         if scan_summary_data.get("error"):
             return CommandResult(
@@ -79,9 +81,15 @@ DEFINITION = CommandDefinition(
             "type": "string",
             "description": "Optional: Name of the schema. If not provided, uses the active schema",
         },
+        "show_progress": {
+            "type": "boolean",
+            "description": "Optional: Show progress as tables are scanned. Default: true",
+        },
     },
     required_params=[],
     tui_aliases=["/scan-pii"],
+    agent_display="full",
+    condensed_action="Scanning for PII in schema",
     visible_to_user=True,
     visible_to_agent=True,
 )

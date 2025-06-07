@@ -626,7 +626,7 @@ class ChuckTUI:
             self._display_volumes(tool_result)
         elif tool_name in ["get_table_info", "table", "show_table"]:
             self._display_table_details(tool_result)
-        elif tool_name in ["scan_schema_for_pii", "scan_pii"]:
+        elif tool_name in ["scan-schema-for-pii", "scan_schema_for_pii", "scan_pii"]:
             self._display_pii_scan_results(tool_result)
         elif tool_name == "get_status":
             self._display_status(tool_result)
@@ -1692,27 +1692,26 @@ class ChuckTUI:
                 show_lines=True,
             )
 
-            # For each table with PII, display the PII columns
+            # For each table with PII, display all columns with PII indicators
             for table_result in results_detail:
                 if not table_result.get("skipped", False) and table_result.get(
                     "has_pii", False
                 ):
                     table_name = table_result.get("table_name", "")
-                    pii_columns = table_result.get("pii_columns", [])
+                    all_columns = table_result.get("columns", [])
 
-                    if pii_columns:
-                        self.console.print(
-                            f"\n[bold]PII Columns in {table_name}:[/bold]"
-                        )
+                    if all_columns:
+                        self.console.print(f"\n[bold]Columns in {table_name}:[/bold]")
 
-                        # Prepare column data
+                        # Prepare column data - show all columns with PII indicators
                         column_data = []
-                        for col in pii_columns:
+                        for col in all_columns:
+                            pii_type = col.get("semantic", "")
                             column_data.append(
                                 {
                                     "name": col.get("name", ""),
                                     "type": col.get("type", ""),
-                                    "semantic": col.get("semantic", ""),
+                                    "semantic": pii_type if pii_type else "",
                                 }
                             )
 

@@ -75,7 +75,7 @@ def handle_command(
         for catalog in catalogs:
             formatted_catalog = {
                 "name": catalog.get("name"),
-                "type": catalog.get("type", ""),
+                "type": catalog.get("catalog_type", ""),
                 "comment": catalog.get("comment", ""),
                 "provider": catalog.get("provider", {}).get("name", ""),
                 "created_at": catalog.get("created_at"),

@@ -113,9 +113,18 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
             target_catalog = _find_best_catalog_match(identifier, catalogs)
 
             if not target_catalog:
+                # Format available catalogs with truncation
+                catalog_names = [c.get("name", "Unknown") for c in catalogs]
+                if len(catalog_names) <= 5:
+                    available_text = ", ".join(catalog_names)
+                else:
+                    first_five = ", ".join(catalog_names[:5])
+                    remaining_count = len(catalog_names) - 5
+                    available_text = f"{first_five} ... and {remaining_count} more"
+
                 return CommandResult(
                     False,
-                    message=f"No catalog found matching '{identifier}'. Available catalogs: {', '.join([c.get('name', 'Unknown') for c in catalogs])}",
+                    message=f"No catalog found matching '{identifier}'. Available catalogs: {available_text}",
                 )
 
             # Report the selection
@@ -127,7 +136,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
         # Set the active catalog
         catalog_name_to_set = target_catalog.get("name")
-        catalog_type = target_catalog.get("type", "Unknown")
+        catalog_type = target_catalog.get("catalog_type", "Unknown")
         catalog_owner = target_catalog.get("owner", "Unknown")
 
         set_active_catalog(catalog_name_to_set)

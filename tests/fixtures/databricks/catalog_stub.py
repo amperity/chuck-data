@@ -24,6 +24,6 @@ class CatalogStubMixin:
 
     def add_catalog(self, name, catalog_type="MANAGED", **kwargs):
         """Add a catalog to the test data."""
-        catalog = {"name": name, "type": catalog_type, **kwargs}
+        catalog = {"name": name, "catalog_type": catalog_type, **kwargs}
         self.catalogs.append(catalog)
         return catalog

@@ -15,12 +15,12 @@ from chuck_data.catalogs import (
 def test_list_catalogs_no_params(databricks_client_stub):
     """Test listing catalogs with no parameters."""
     # Set up stub data
-    databricks_client_stub.add_catalog("catalog1", type="MANAGED")
-    databricks_client_stub.add_catalog("catalog2", type="EXTERNAL")
+    databricks_client_stub.add_catalog("catalog1", catalog_type="MANAGED")
+    databricks_client_stub.add_catalog("catalog2", catalog_type="EXTERNAL")
     expected_response = {
         "catalogs": [
-            {"name": "catalog1", "type": "MANAGED"},
-            {"name": "catalog2", "type": "EXTERNAL"},
+            {"name": "catalog1", "catalog_type": "MANAGED"},
+            {"name": "catalog2", "catalog_type": "EXTERNAL"},
         ]
     }
 
@@ -34,8 +34,8 @@ def test_list_catalogs_no_params(databricks_client_stub):
 def test_list_catalogs_with_params(databricks_client_stub):
     """Test listing catalogs with parameters."""
     # Set up stub data
-    databricks_client_stub.add_catalog("catalog1", type="MANAGED")
-    databricks_client_stub.add_catalog("catalog2", type="EXTERNAL")
+    databricks_client_stub.add_catalog("catalog1", catalog_type="MANAGED")
+    databricks_client_stub.add_catalog("catalog2", catalog_type="EXTERNAL")
 
     # Call the function with parameters
     result = list_catalogs(databricks_client_stub, include_browse=True, max_results=10)
@@ -54,7 +54,7 @@ def test_get_catalog(databricks_client_stub):
     """Test getting a specific catalog."""
     # Set up stub data
     databricks_client_stub.add_catalog(
-        "test_catalog", type="MANAGED", comment="Test catalog"
+        "test_catalog", catalog_type="MANAGED", comment="Test catalog"
     )
 
     # Call the function
@@ -62,7 +62,7 @@ def test_get_catalog(databricks_client_stub):
 
     # Verify the result
     assert result["name"] == "test_catalog"
-    assert result["type"] == "MANAGED"
+    assert result["catalog_type"] == "MANAGED"
     assert result["comment"] == "Test catalog"
 
 

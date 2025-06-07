@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.llm.client import LLMClient
+from chuck_data.ui.tui import get_console
 
 
 def _helper_tag_pii_columns_logic(
@@ -162,6 +163,7 @@ def _helper_scan_schema_for_pii_logic(
     llm_client_instance: LLMClient,
     catalog_name: str,
     schema_name: str,
+    show_progress: bool = True,
 ) -> Dict[str, Any]:
     """Internal logic for scanning all tables in a schema for PII."""
     if not catalog_name or not schema_name:
@@ -206,6 +208,13 @@ def _helper_scan_schema_for_pii_logic(
             table_name_only = table_summary_dict.get("name")
             if not table_name_only:
                 continue
+
+            # Display progress before submitting task
+            if show_progress:
+                console = get_console()
+                full_table_name = f"{catalog_name}.{schema_name}.{table_name_only}"
+                console.print(f"[dim]Scanning {full_table_name}...[/dim]")
+
             # Pass client and context to the helper
             futures_map[
                 executor.submit(
