@@ -27,6 +27,16 @@ class ValidationResult:
 class InputValidator:
     """Handles validation of user inputs for wizard steps."""
 
+    def __init__(self, databricks_client_factory=None):
+        """Initialize validator with optional client factory for dependency injection.
+
+        Args:
+            databricks_client_factory: Optional factory function that takes (workspace_url, token)
+                                     and returns a Databricks client instance. If None, creates
+                                     real DatabricksAPIClient instances.
+        """
+        self.databricks_client_factory = databricks_client_factory
+
     def validate_workspace_url(self, url_input: str) -> ValidationResult:
         """Validate and process workspace URL input."""
         if not url_input or not url_input.strip():
@@ -73,10 +83,15 @@ class InputValidator:
         token = token.strip()
 
         try:
-            # Validate token with Databricks API using the provided workspace URL
-            from chuck_data.clients.databricks import DatabricksAPIClient
+            # Create client using factory if provided, otherwise use real client
+            if self.databricks_client_factory:
+                client = self.databricks_client_factory(workspace_url, token)
+            else:
+                # Validate token with Databricks API using the provided workspace URL
+                from chuck_data.clients.databricks import DatabricksAPIClient
 
-            client = DatabricksAPIClient(workspace_url, token)
+                client = DatabricksAPIClient(workspace_url, token)
+
             is_valid = client.validate_token()
 
             if not is_valid:

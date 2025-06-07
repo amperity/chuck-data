@@ -103,161 +103,182 @@ tests/
 - Stitch integration for data pipeline setup
 
 ### Test Mocking Guidelines
-  Core Principle
+Core Principle
 
-  Mock external boundaries only. Use real objects for all internal business logic to catch integration bugs.
+Mock external boundaries only. Use real objects for all internal business logic to catch integration bugs.
 
-  ✅ ALWAYS Mock These (External Boundaries)
+✅ ALWAYS Mock These (External Boundaries)
 
-  HTTP/Network Calls
+HTTP/Network Calls
 
-  # Databricks SDK and API calls
-  @patch('databricks.sdk.WorkspaceClient')
-  @patch('requests.get')
-  @patch('requests.post')
+# Databricks SDK and API calls
+@patch('databricks.sdk.WorkspaceClient')
+@patch('requests.get')
+@patch('requests.post')
 
-  # Amperity API calls
-  @patch('chuck_data.clients.amperity.AmperityAPIClient')
-  # OR use AmperityClientStub fixture
+# OpenAI/LLM API calls
+@patch('openai.OpenAI')
+# OR use LLMClientStub fixture
 
-  # OpenAI/LLM API calls
-  @patch('openai.OpenAI')
-  # OR use LLMClientStub fixture
+File System Operations
 
-  File System Operations
+# Only when testing file I/O behavior
+@patch('builtins.open')
+@patch('os.path.exists')
+@patch('os.makedirs')
+@patch('tempfile.TemporaryDirectory')
 
-  # Only when testing file I/O behavior
-  @patch('builtins.open')
-  @patch('os.path.exists')
-  @patch('os.makedirs')
-  @patch('tempfile.TemporaryDirectory')
+# Log file operations
+@patch('chuck_data.logger.setup_file_logging')
 
-  # Log file operations
-  @patch('chuck_data.logger.setup_file_logging')
+System/Environment
 
-  System/Environment
+# Environment variables (when testing env behavior)
+@patch.dict('os.environ', {'CHUCK_TOKEN': 'test'})
 
-  # Environment variables (when testing env behavior)
-  @patch.dict('os.environ', {'CHUCK_TOKEN': 'test'})
+# System calls
+@patch('subprocess.run')
+@patch('datetime.datetime.now')  # for deterministic timestamps
 
-  # System calls
-  @patch('subprocess.run')
-  @patch('datetime.datetime.now')  # for deterministic timestamps
+User Input/Terminal
 
-  User Input/Terminal
+# Interactive prompts
+@patch('prompt_toolkit.prompt')
+@patch('readchar.readkey')
+@patch('sys.stdout.write')  # when testing specific output
 
-  # Interactive prompts
-  @patch('prompt_toolkit.prompt')
-  @patch('readchar.readkey')
-  @patch('sys.stdout.write')  # when testing specific output
+❌ NEVER Mock These (Internal Logic)
 
-  ❌ NEVER Mock These (Internal Logic)
+Configuration Objects
 
-  Configuration Objects
+# ❌ DON'T DO THIS:
+@patch('chuck_data.config.ConfigManager')
 
-  # ❌ DON'T DO THIS:
-  @patch('chuck_data.config.ConfigManager')
+# ✅ DO THIS:
+config_manager = ConfigManager('/tmp/test_config.json')
 
-  # ✅ DO THIS:
-  config_manager = ConfigManager('/tmp/test_config.json')
+Business Logic Classes
 
-  Business Logic Classes
+# ❌ DON'T DO THIS:
+@patch('chuck_data.service.ChuckService')
 
-  # ❌ DON'T DO THIS:
-  @patch('chuck_data.service.ChuckService')
+# ✅ DO THIS:
+service = ChuckService(client=mocked_databricks_client)
 
-  # ✅ DO THIS:
-  service = ChuckService(client=mocked_databricks_client)
+Data Objects
 
-  Data Objects
+# ❌ DON'T DO THIS:
+@patch('chuck_data.commands.base.CommandResult')
 
-  # ❌ DON'T DO THIS:
-  @patch('chuck_data.commands.base.CommandResult')
+# ✅ DO THIS:
+result = CommandResult(success=True, data="test")
 
-  # ✅ DO THIS:
-  result = CommandResult(success=True, data="test")
+Utility Functions
 
-  Utility Functions
+# ❌ DON'T DO THIS:
+@patch('chuck_data.utils.normalize_workspace_url')
 
-  # ❌ DON'T DO THIS:
-  @patch('chuck_data.utils.normalize_workspace_url')
+# ✅ DO THIS:
+from chuck_data.utils import normalize_workspace_url
+normalized = normalize_workspace_url("https://test.databricks.com")
 
-  # ✅ DO THIS:
-  from chuck_data.utils import normalize_workspace_url
-  normalized = normalize_workspace_url("https://test.databricks.com")
+Command Registry/Routing
 
-  Command Registry/Routing
+# ❌ DON'T DO THIS:
+@patch('chuck_data.command_registry.get_command')
 
-  # ❌ DON'T DO THIS:
-  @patch('chuck_data.command_registry.get_command')
+# ✅ DO THIS:
+from chuck_data.command_registry import get_command
+command_def = get_command('/status')  # Test real routing
 
-  # ✅ DO THIS:
-  from chuck_data.command_registry import get_command
-  command_def = get_command('/status')  # Test real routing
+Amperity Client
 
-  🎯 Approved Test Patterns
+# ❌ DON'T DO THIS:
+@patch('chuck_data.clients.amperity.AmperityClient')
 
-  Pattern 1: External Client + Real Internal Logic
+# ✅ DO THIS:
+Use the fixture `AmperityClientStub` to stub only the external API calls, while using the real command logic.
 
-  def test_list_catalogs_command():
-      # Mock external boundary
-      mock_client = DatabricksClientStub()
-      mock_client.add_catalog("test_catalog")
+Databricks Client
 
-      # Use real service
-      service = ChuckService(client=mock_client)
+# ❌ DON'T DO THIS:
+@patch('chuck_data.clients.databricks.DatabricksClient')
 
-      # Test real command execution
-      result = service.execute_command("/list_catalogs")
+# ✅ DO THIS:
+Use the fixture `DatabricksClientStub` to stub only the external API calls, while using the real command logic.
 
-      assert result.success
-      assert "test_catalog" in result.data
+LLM Client
 
-  Pattern 2: Real Config with Temporary Files
+# ❌ DON'T DO THIS:
+@patch('chuck_data.clients.llm.LLMClient')
 
-  def test_config_update():
-      with tempfile.NamedTemporaryFile() as tmp:
-          # Use real config manager
-          config_manager = ConfigManager(tmp.name)
+# ✅ DO THIS:
+Use the fixture `LLMClientStub` to stub only the external API calls, while using the real command logic.
 
-          # Test real config logic
-          config_manager.update(workspace_url="https://test.databricks.com")
 
-          # Verify real file operations
-          reloaded = ConfigManager(tmp.name)
-          assert reloaded.get_config().workspace_url == "https://test.databricks.com"
+🎯 Approved Test Patterns
 
-  Pattern 3: Stub Only External APIs
+Pattern 1: External Client + Real Internal Logic
 
-  def test_auth_flow():
-      # Stub external API
-      amperity_stub = AmperityClientStub()
-      amperity_stub.set_auth_completion_failure(True)
+def test_list_catalogs_command():
+  # Mock external boundary
+  mock_client = DatabricksClientStub()
+  mock_client.add_catalog("test_catalog")
 
-      # Use real command logic
-      result = handle_amperity_login(amperity_stub)
+  # Use real service
+  service = ChuckService(client=mock_client)
 
-      # Test real error handling
-      assert not result.success
-      assert "Authentication failed" in result.message
+  # Test real command execution
+  result = service.execute_command("/list_catalogs")
 
-  🚫 Red Flags (Stop and Reconsider)
+  assert result.success
+  assert "test_catalog" in result.data
 
-  - @patch('chuck_data.config.*')
-  - @patch('chuck_data.commands.*.handle_*')
-  - @patch('chuck_data.service.*')
-  - @patch('chuck_data.utils.*')
-  - @patch('chuck_data.models.*')
-  - Any patch of internal business logic functions
+Pattern 2: Real Config with Temporary Files
 
-  ✅ Quick Decision Tree
+def test_config_update():
+  with tempfile.NamedTemporaryFile() as tmp:
+      # Use real config manager
+      config_manager = ConfigManager(tmp.name)
 
-  Before mocking anything, ask:
+      # Test real config logic
+      config_manager.update(workspace_url="https://test.databricks.com")
 
-  1. Does this cross a process boundary? (network, file, subprocess) → Mock it
-  2. Is this user input or system interaction? → Mock it
-  3. Is this internal business logic? → Use real object
-  4. Is this a data transformation? → Use real function
-  5. When in doubt → Use real object
+      # Verify real file operations
+      reloaded = ConfigManager(tmp.name)
+      assert reloaded.get_config().workspace_url == "https://test.databricks.com"
 
-  Exception: Only mock internal logic when testing error conditions that are impossible to trigger naturally.
+Pattern 3: Stub Only External APIs
+
+def test_auth_flow():
+  # Stub external API
+  amperity_stub = AmperityClientStub()
+  amperity_stub.set_auth_completion_failure(True)
+
+  # Use real command logic
+  result = handle_amperity_login(amperity_stub)
+
+  # Test real error handling
+  assert not result.success
+  assert "Authentication failed" in result.message
+
+🚫 Red Flags (Stop and Reconsider)
+
+- @patch('chuck_data.config.*')
+- @patch('chuck_data.commands.*.handle_*')
+- @patch('chuck_data.service.*')
+- @patch('chuck_data.utils.*')
+- @patch('chuck_data.models.*')
+- Any patch of internal business logic functions
+
+✅ Quick Decision Tree
+
+Before mocking anything, ask:
+
+1. Does this cross a process boundary? (network, file, subprocess) → Mock it
+2. Is this user input or system interaction? → Mock it
+3. Is this internal business logic? → Use real object
+4. Is this a data transformation? → Use real function
+5. When in doubt → Use real object
+
+Exception: Only mock internal logic when testing error conditions that are impossible to trigger naturally.
