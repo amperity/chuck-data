@@ -1,146 +1,173 @@
-"""Unit tests for the Databricks auth utilities."""
+"""
+Unit tests for the Databricks auth utilities.
+
+Following approved testing patterns:
+- Mock external boundaries only (os.getenv, API calls)
+- Use real config system with temporary files
+- Test end-to-end auth behavior with real business logic
+"""
 
 import pytest
-import os
-from unittest.mock import patch, MagicMock
+import tempfile
+from unittest.mock import patch
+
 from chuck_data.databricks_auth import get_databricks_token, validate_databricks_token
+from chuck_data.config import ConfigManager
 
 
-@patch("os.getenv", return_value="mock_env_token")
-@patch("chuck_data.databricks_auth.get_token_from_config", return_value=None)
-@patch("logging.info")
-def test_get_databricks_token_from_env(mock_log, mock_config_token, mock_getenv):
-    """
-    Test that the token is retrieved from environment when not in config.
-
-    This validates the fallback to environment variable when config doesn't have a token.
-    """
-    token = get_databricks_token()
-    assert token == "mock_env_token"
-    mock_config_token.assert_called_once()
-    mock_getenv.assert_called_once_with("DATABRICKS_TOKEN")
-    mock_log.assert_called_once()
-
-
-@patch("os.getenv", return_value="mock_env_token")
-@patch(
-    "chuck_data.databricks_auth.get_token_from_config",
-    return_value="mock_config_token",
-)
-def test_get_databricks_token_from_config(mock_config_token, mock_getenv):
-    """
-    Test that the token is retrieved from config first when available.
-
-    This validates that config is prioritized over environment variable.
-    """
-    token = get_databricks_token()
-    assert token == "mock_config_token"
-    mock_config_token.assert_called_once()
-    # Environment variable should not be checked when config has token
-    mock_getenv.assert_not_called()
+def test_get_databricks_token_from_config_real_logic():
+    """Test that the token is retrieved from real config first when available."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        
+        # Set up real config with token
+        config_manager.update(databricks_token="config_token")
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Mock os.getenv to return None for environment checks (config should have priority)
+            with patch("os.getenv", return_value=None):
+                # Test real config token retrieval
+                token = get_databricks_token()
+                
+                # Should get token from real config, not environment
+                assert token == "config_token"
 
 
-@patch("os.getenv", return_value=None)
-@patch("chuck_data.databricks_auth.get_token_from_config", return_value=None)
-def test_get_databricks_token_missing(mock_config_token, mock_getenv):
-    """
-    Test behavior when token is not available in config or environment.
-
-    This validates error handling when the required token is missing from both sources.
-    """
-    with pytest.raises(EnvironmentError) as excinfo:
-        get_databricks_token()
-    assert "Databricks token not found" in str(excinfo.value)
-    mock_config_token.assert_called_once()
-    mock_getenv.assert_called_once_with("DATABRICKS_TOKEN")
-
-
-@patch("chuck_data.clients.databricks.DatabricksAPIClient.validate_token")
-@patch(
-    "chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace"
-)
-def test_validate_databricks_token_success(mock_workspace_url, mock_validate):
-    """
-    Test successful validation of a Databricks token.
-
-    This validates the API call structure and successful response handling.
-    """
-    mock_validate.return_value = True
-
-    result = validate_databricks_token("mock_token")
-
-    assert result
-    mock_validate.assert_called_once()
+def test_get_databricks_token_from_env_real_logic():
+    """Test that the token falls back to environment when not in real config.""" 
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        # Don't set databricks_token in config - should be None
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("os.getenv", return_value="env_token"):
+                # Test real config fallback to environment
+                token = get_databricks_token()
+                
+                assert token == "env_token"
 
 
-def test_workspace_url_defined():
-    """
-    Test that the workspace URL can be retrieved from the configuration.
-
-    This is more of a smoke test to ensure the function exists and returns a value.
-    """
-    from chuck_data.config import get_workspace_url, _config_manager
-
-    # Patch the config manager to provide a workspace URL
-    mock_config = MagicMock()
-    mock_config.workspace_url = "test-workspace"
-    with patch.object(_config_manager, "get_config", return_value=mock_config):
-        workspace_url = get_workspace_url()
-        assert workspace_url == "test-workspace"
-
-
-@patch("chuck_data.clients.databricks.DatabricksAPIClient.validate_token")
-@patch(
-    "chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace"
-)
-@patch("logging.error")
-def test_validate_databricks_token_failure(mock_log, mock_workspace_url, mock_validate):
-    """
-    Test failed validation of a Databricks token.
-
-    This validates error handling for invalid or expired tokens.
-    """
-    mock_validate.return_value = False
-
-    result = validate_databricks_token("mock_token")
-
-    assert not result
-    mock_validate.assert_called_once()
+def test_get_databricks_token_missing_real_logic():
+    """Test behavior when token is not available in real config or environment."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        # No token in config
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("os.getenv", return_value=None):
+                # Test real error handling when no token available
+                with pytest.raises(EnvironmentError) as excinfo:
+                    get_databricks_token()
+                
+                assert "Databricks token not found" in str(excinfo.value)
 
 
-@patch("chuck_data.clients.databricks.DatabricksAPIClient.validate_token")
-@patch(
-    "chuck_data.databricks_auth.get_workspace_url", return_value="test-workspace"
-)
-@patch("logging.error")
-def test_validate_databricks_token_connection_error(
-    mock_log, mock_workspace_url, mock_validate
-):
-    """
-    Test failed validation due to connection error.
-
-    This validates network error handling during token validation.
-    """
-    mock_validate.side_effect = ConnectionError("Connection Error")
-
-    # The function should still raise ConnectionError for connection errors
-    with pytest.raises(ConnectionError) as excinfo:
-        validate_databricks_token("mock_token")
-
-    assert "Connection Error" in str(excinfo.value)
-    # Verify errors were logged - may be multiple logs for connection errors
-    assert mock_log.call_count >= 1, "Error logging was expected"
+def test_validate_databricks_token_success_real_logic(databricks_client_stub):
+    """Test successful validation of a Databricks token with real config."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(workspace_url="https://test.databricks.com")
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Mock only the external API boundary (client creation and validation)
+            with patch("chuck_data.databricks_auth.DatabricksAPIClient") as mock_client_class:
+                mock_client = mock_client_class.return_value
+                mock_client.validate_token.return_value = True
+                
+                # Test real validation logic with external API mock
+                result = validate_databricks_token("test_token")
+                
+                assert result is True
+                mock_client_class.assert_called_once_with("https://test.databricks.com", "test_token")
+                mock_client.validate_token.assert_called_once()
 
 
-@patch("chuck_data.databricks_auth.get_token_from_config", return_value=None)
-@patch("logging.info")
-def test_get_databricks_token_from_real_env(mock_log, mock_config_token, mock_databricks_env):
-    """
-    Test retrieving token from actual environment variable when not in config.
+def test_validate_databricks_token_failure_real_logic():
+    """Test failed validation of a Databricks token with real config."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(workspace_url="https://test.databricks.com")
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Mock external API to return validation failure
+            with patch("chuck_data.databricks_auth.DatabricksAPIClient") as mock_client_class:
+                mock_client = mock_client_class.return_value
+                mock_client.validate_token.return_value = False
+                
+                # Test real error handling with API failure
+                result = validate_databricks_token("invalid_token")
+                
+                assert result is False
 
-    This test checks actual environment integration rather than mocked calls.
-    """
-    token = get_databricks_token()
-    # mock_databricks_env fixture sets DATABRICKS_TOKEN to "test_token"
-    assert token == "test_token"
-    mock_config_token.assert_called_once()
+
+def test_validate_databricks_token_connection_error_real_logic():
+    """Test validation with connection error using real config."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(workspace_url="https://test.databricks.com")
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Mock external API to raise connection error
+            with patch("chuck_data.databricks_auth.DatabricksAPIClient") as mock_client_class:
+                mock_client = mock_client_class.return_value
+                mock_client.validate_token.side_effect = ConnectionError("Network error")
+                
+                # Test real error handling with connection failure
+                with pytest.raises(ConnectionError) as excinfo:
+                    validate_databricks_token("test_token")
+                
+                assert "Network error" in str(excinfo.value)
+
+
+def test_get_databricks_token_with_real_env(mock_databricks_env):
+    """Test retrieving token from actual environment variable with real config."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        # No token in config, should fall back to real environment
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Test real config + real environment integration
+            token = get_databricks_token()
+            
+            # mock_databricks_env fixture sets DATABRICKS_TOKEN to "test_token"
+            assert token == "test_token"
+
+
+def test_token_priority_real_logic():
+    """Test that config token takes priority over environment token."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(databricks_token="config_priority_token")
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            # Even with environment variable set, config should take priority
+            with patch("os.getenv") as mock_getenv:
+                def side_effect(key):
+                    if key == "DATABRICKS_TOKEN":
+                        return "env_fallback_token"
+                    return None  # Return None for other env vars during config loading
+                mock_getenv.side_effect = side_effect
+                
+                # Test real priority logic: config should override environment
+                token = get_databricks_token()
+                
+                assert token == "config_priority_token"
+
+
+def test_workspace_url_integration_real_logic():
+    """Test workspace URL integration with real config system."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(workspace_url="https://custom.databricks.com")
+        
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch("chuck_data.databricks_auth.DatabricksAPIClient") as mock_client_class:
+                mock_client = mock_client_class.return_value
+                mock_client.validate_token.return_value = True
+                
+                # Test real workspace URL retrieval
+                result = validate_databricks_token("test_token")
+                
+                # Should use real config workspace URL
+                mock_client_class.assert_called_once_with("https://custom.databricks.com", "test_token")
+                assert result is True
