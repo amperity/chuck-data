@@ -132,15 +132,15 @@ def test_validate_databricks_token_connection_error(
     assert mock_log.call_count >= 1, "Error logging was expected"
 
 
-@patch.dict(os.environ, {"DATABRICKS_TOKEN": "test_env_token"})
 @patch("chuck_data.databricks_auth.get_token_from_config", return_value=None)
 @patch("logging.info")
-def test_get_databricks_token_from_real_env(mock_log, mock_config_token):
+def test_get_databricks_token_from_real_env(mock_log, mock_config_token, mock_databricks_env):
     """
     Test retrieving token from actual environment variable when not in config.
 
     This test checks actual environment integration rather than mocked calls.
     """
     token = get_databricks_token()
-    assert token == "test_env_token"
+    # mock_databricks_env fixture sets DATABRICKS_TOKEN to "test_token"
+    assert token == "test_token"
     mock_config_token.assert_called_once()

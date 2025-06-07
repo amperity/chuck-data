@@ -11,6 +11,15 @@ from tests.fixtures.llm import LLMClientStub
 from tests.fixtures.collectors import MetricsCollectorStub
 from chuck_data.config import ConfigManager
 
+# Import environment fixtures to make them available globally
+from tests.fixtures.environment import (
+    clean_env,
+    mock_databricks_env, 
+    no_color_env,
+    no_color_true_env,
+    chuck_env_vars
+)
+
 
 @pytest.fixture
 def databricks_client_stub():
