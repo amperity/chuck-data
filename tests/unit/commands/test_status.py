@@ -21,7 +21,7 @@ def test_handle_status_with_valid_connection(
 ):
     """Test status command with valid connection."""
     client = MagicMock()
-    
+
     # Setup mocks
     mock_get_url.return_value = "test-workspace"
     mock_get_catalog.return_value = "test-catalog"
@@ -65,7 +65,9 @@ def test_handle_status_with_no_client(
     assert result.data["active_catalog"] == "test-catalog"
     assert result.data["active_schema"] == "test-schema"
     assert result.data["active_model"] == "test-model"
-    assert result.data["connection_status"] == "Client not available or not initialized."
+    assert (
+        result.data["connection_status"] == "Client not available or not initialized."
+    )
 
 
 @patch("chuck_data.commands.status.get_workspace_url")
@@ -84,7 +86,7 @@ def test_handle_status_with_exception(
 ):
     """Test status command when an exception occurs."""
     client = MagicMock()
-    
+
     # Setup mock to raise exception
     mock_get_url.side_effect = ValueError("Config error")
 

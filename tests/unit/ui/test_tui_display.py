@@ -13,12 +13,13 @@ def tui():
     tui_instance.console = MagicMock()
     return tui_instance
 
+
 def test_no_color_mode_initialization():
     """Test that TUI initializes properly with no_color=True."""
     tui_no_color = ChuckTUI(no_color=True)
     assert tui_no_color.no_color
     # Check that console was created with no color
-    assert tui_no_color.console._force_terminal == False
+    assert not tui_no_color.console._force_terminal
 
 
 def test_color_mode_initialization():
@@ -26,7 +27,8 @@ def test_color_mode_initialization():
     tui_default = ChuckTUI()
     assert not tui_default.no_color
     # Check that console was created with colors enabled
-    assert tui_default.console._force_terminal == True
+    assert tui_default.console._force_terminal
+
 
 def test_prompt_styling_respects_no_color():
     """Test that prompt styling is disabled in no-color mode."""

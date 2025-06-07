@@ -7,7 +7,6 @@ from unittest.mock import patch, MagicMock
 from chuck_data.service import ChuckService
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.commands.base import CommandResult
-from tests.fixtures.fixtures import DatabricksClientStub
 
 
 def test_service_initialization():

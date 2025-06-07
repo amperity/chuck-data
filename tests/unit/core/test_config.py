@@ -35,13 +35,14 @@ def config_setup():
 
     # Mock the global config manager
     patcher = patch("chuck_data.config._config_manager", config_manager)
-    mock_manager = patcher.start()
+    patcher.start()
 
     yield config_manager, config_path, temp_dir
 
     # Cleanup
     patcher.stop()
     temp_dir.cleanup()
+
 
 def test_default_config(config_setup):
     """Test default configuration values."""
@@ -54,10 +55,11 @@ def test_default_config(config_setup):
     assert config.active_catalog is None
     assert config.active_schema is None
 
+
 def test_config_update(config_setup):
     """Test updating configuration values."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Mock out environment variables that could interfere
     with patch.dict(os.environ, {}, clear=True):
         # Update values

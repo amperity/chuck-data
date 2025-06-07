@@ -31,6 +31,7 @@ def client_and_config():
     patcher.stop()
     temp_dir.cleanup()
 
+
 def test_no_client():
     """Test handling when no client is provided."""
     result = handle_command(None)
@@ -41,7 +42,7 @@ def test_no_client():
 def test_successful_list_catalogs(client_and_config):
     """Test successful list catalogs."""
     client_stub, config_manager = client_and_config
-    
+
     # Set up test data using stub - this simulates external API
     client_stub.add_catalog(
         "catalog1",
@@ -66,7 +67,7 @@ def test_successful_list_catalogs(client_and_config):
     assert len(result.data["catalogs"]) == 2
     assert result.data["total_count"] == 2
     assert "Found 2 catalog(s)." in result.message
-    assert result.data.get("display", True) == False  # Should default to False
+    assert not result.data.get("display", True)  # Should default to False
     assert "current_catalog" in result.data
 
     # Verify catalog data
