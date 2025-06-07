@@ -981,12 +981,13 @@ class ChuckTUI:
 
         # Define styling function for the name to highlight active model
         def name_style(name):
-            return "bold green" if name == active_model else None
+            if active_model and (name == active_model or name.startswith(active_model + " ")):
+                return "bold green"
+            return None
 
         # Process model names to add recommended tag
         for model in processed_models:
             if model["name"] in [
-                "databricks-meta-llama-3-3-70b-instruct",
                 "databricks-claude-3-7-sonnet",
             ]:
                 model["name"] = f"{model['name']} (recommended)"
@@ -1071,6 +1072,13 @@ class ChuckTUI:
             # Add to our list
             processed_models.append(processed)
 
+        # Process model names to add recommended tag
+        for model in processed_models:
+            if model["name"] in [
+                "databricks-claude-3-7-sonnet",
+            ]:
+                model["name"] = f"{model['name']} (recommended)"
+
         # Define column styling functions
         def status_style(status):
             if status == "READY":
@@ -1083,7 +1091,7 @@ class ChuckTUI:
 
         # Define styling function for the name to highlight active model
         def name_style(name):
-            if name == active_model:
+            if active_model and (name == active_model or name.startswith(active_model + " ")):
                 return "bold green"
             return "cyan"
 
