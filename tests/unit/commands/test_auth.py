@@ -23,7 +23,6 @@ def test_amperity_login_success(mock_auth_client_class, amperity_client_stub):
     assert result.message == "Authentication completed successfully."
 
 
-
 @patch("chuck_data.commands.auth.AmperityAPIClient")
 def test_amperity_login_start_failure(mock_auth_client_class, amperity_client_stub):
     """Test failure during start of Amperity login flow."""
@@ -39,9 +38,10 @@ def test_amperity_login_start_failure(mock_auth_client_class, amperity_client_st
     assert result.message == "Login failed: Failed to start auth: 500 - Server Error"
 
 
-
 @patch("chuck_data.commands.auth.AmperityAPIClient")
-def test_amperity_login_completion_failure(mock_auth_client_class, amperity_client_stub):
+def test_amperity_login_completion_failure(
+    mock_auth_client_class, amperity_client_stub
+):
     """Test failure during completion of Amperity login flow."""
     # Use AmperityClientStub configured to fail at completion
     amperity_client_stub.set_auth_completion_failure(True)
@@ -53,7 +53,6 @@ def test_amperity_login_completion_failure(mock_auth_client_class, amperity_clie
     # Verify
     assert not result.success
     assert result.message == "Login failed: Authentication failed: error"
-
 
 
 @patch("chuck_data.commands.auth.set_databricks_token")
@@ -72,7 +71,6 @@ def test_databricks_login_success(mock_set_token):
     mock_set_token.assert_called_with(test_token)
 
 
-
 def test_databricks_login_missing_token():
     """Test error when token is missing."""
     # Execute
@@ -81,7 +79,6 @@ def test_databricks_login_missing_token():
     # Verify
     assert not result.success
     assert result.message == "Token parameter is required"
-
 
 
 @patch("chuck_data.commands.auth.set_databricks_token")
@@ -99,7 +96,6 @@ def test_logout_databricks(mock_set_db_token):
     mock_set_db_token.assert_called_with("")
 
 
-
 @patch("chuck_data.config.set_amperity_token")
 def test_logout_amperity(mock_set_amp_token):
     """Test logout from Amperity."""
@@ -113,7 +109,6 @@ def test_logout_amperity(mock_set_amp_token):
     assert result.success
     assert result.message == "Successfully logged out from amperity"
     mock_set_amp_token.assert_called_with("")
-
 
 
 @patch("chuck_data.config.set_amperity_token")
@@ -131,7 +126,6 @@ def test_logout_default(mock_set_db_token, mock_set_amp_token):
     assert result.message == "Successfully logged out from amperity"
     mock_set_amp_token.assert_called_with("")
     mock_set_db_token.assert_not_called()
-
 
 
 @patch("chuck_data.commands.auth.set_databricks_token")

@@ -60,9 +60,7 @@ def test_execute_sql_statement_success(mock_sleep):
     }
 
     # Execute the function
-    result = execute_sql_statement(
-        mock_client, "warehouse-123", "SELECT * FROM table"
-    )
+    result = execute_sql_statement(mock_client, "warehouse-123", "SELECT * FROM table")
 
     # Verify interactions
     mock_client.post.assert_called_once()

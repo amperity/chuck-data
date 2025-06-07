@@ -25,7 +25,7 @@ def test_handle_launch_job_no_run_id(databricks_client_stub, temp_config):
         # Configure stub to return response without run_id
         def submit_no_run_id(config_path, init_script_path, run_name=None):
             return {}  # No run_id in response
-        
+
         databricks_client_stub.submit_job_run = submit_no_run_id
 
         # Use kwargs format
@@ -46,7 +46,7 @@ def test_handle_launch_job_http_error(databricks_client_stub, temp_config):
         # Configure stub to raise an HTTP error
         def submit_failing(config_path, init_script_path, run_name=None):
             raise Exception("Bad Request")
-        
+
         databricks_client_stub.submit_job_run = submit_failing
 
         # Use kwargs format
@@ -101,7 +101,7 @@ def test_handle_job_status_http_error(databricks_client_stub, temp_config):
         # Configure stub to raise an HTTP error
         def get_status_failing(run_id):
             raise Exception("Not Found")
-        
+
         databricks_client_stub.get_job_run_status = get_status_failing
 
         # Use kwargs format

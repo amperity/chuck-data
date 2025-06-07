@@ -31,7 +31,9 @@ def test_invalid_table_path_format(databricks_client_stub):
 
 
 @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
-def test_successful_report_creation(mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub):
+def test_successful_report_creation(
+    mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub
+):
     """Test successful stitch report notebook creation."""
     # Setup mocks
     mock_get_metrics_collector.return_value = metrics_collector_stub
@@ -62,7 +64,9 @@ def test_successful_report_creation(mock_get_metrics_collector, databricks_clien
 
 
 @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
-def test_report_creation_with_custom_name(mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub):
+def test_report_creation_with_custom_name(
+    mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub
+):
     """Test stitch report creation with custom notebook name."""
     # Setup mocks
     mock_get_metrics_collector.return_value = metrics_collector_stub
@@ -76,7 +80,9 @@ def test_report_creation_with_custom_name(mock_get_metrics_collector, databricks
 
     # Call function
     result = handle_command(
-        databricks_client_stub, table_path="catalog.schema.table", name="My Custom Report"
+        databricks_client_stub,
+        table_path="catalog.schema.table",
+        name="My Custom Report",
     )
 
     # Verify results
@@ -89,7 +95,9 @@ def test_report_creation_with_custom_name(mock_get_metrics_collector, databricks
 
 
 @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
-def test_report_creation_with_rest_args(mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub):
+def test_report_creation_with_rest_args(
+    mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub
+):
     """Test stitch report creation with rest arguments as notebook name."""
     # Setup mocks
     mock_get_metrics_collector.return_value = metrics_collector_stub
@@ -103,7 +111,9 @@ def test_report_creation_with_rest_args(mock_get_metrics_collector, databricks_c
 
     # Call function with rest parameter
     result = handle_command(
-        databricks_client_stub, table_path="catalog.schema.table", rest="Multi Word Name"
+        databricks_client_stub,
+        table_path="catalog.schema.table",
+        rest="Multi Word Name",
     )
 
     # Verify results
@@ -116,7 +126,9 @@ def test_report_creation_with_rest_args(mock_get_metrics_collector, databricks_c
 
 
 @patch("chuck_data.commands.add_stitch_report.get_metrics_collector")
-def test_report_creation_api_error(mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub):
+def test_report_creation_api_error(
+    mock_get_metrics_collector, databricks_client_stub, metrics_collector_stub
+):
     """Test handling when API call to create notebook fails."""
     # Setup mocks
     mock_get_metrics_collector.return_value = metrics_collector_stub

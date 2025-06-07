@@ -9,6 +9,7 @@ from unittest.mock import patch
 from chuck_data.commands.catalog_selection import handle_command
 from chuck_data.config import get_active_catalog
 
+
 def test_missing_catalog_name(databricks_client_stub, temp_config):
     """Test handling when catalog parameter is not provided."""
     with patch("chuck_data.config._config_manager", temp_config):
@@ -37,14 +38,18 @@ def test_successful_catalog_selection(databricks_client_stub, temp_config):
         assert get_active_catalog() == "test_catalog"
 
 
-def test_catalog_selection_with_verification_failure(databricks_client_stub, temp_config):
+def test_catalog_selection_with_verification_failure(
+    databricks_client_stub, temp_config
+):
     """Test catalog selection when verification fails."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Add some catalogs but not the one we're looking for (make sure names are very different)
         databricks_client_stub.add_catalog("xyz", catalog_type="MANAGED")
 
         # Call function with nonexistent catalog that won't fuzzy match
-        result = handle_command(databricks_client_stub, catalog="completely_different_name")
+        result = handle_command(
+            databricks_client_stub, catalog="completely_different_name"
+        )
 
         # Verify results - should fail since catalog doesn't exist and no fuzzy match
         assert not result.success
@@ -58,7 +63,7 @@ def test_catalog_selection_exception(databricks_client_stub, temp_config):
         # Configure stub to fail on get_catalog
         def get_catalog_failing(catalog_name):
             raise Exception("Failed to set catalog")
-        
+
         databricks_client_stub.get_catalog = get_catalog_failing
 
         # This should trigger the exception in the catalog verification
@@ -83,7 +88,9 @@ def test_select_catalog_by_name(databricks_client_stub, temp_config):
 def test_select_catalog_fuzzy_matching(databricks_client_stub, temp_config):
     """Test catalog selection with fuzzy matching."""
     with patch("chuck_data.config._config_manager", temp_config):
-        databricks_client_stub.add_catalog("Test Catalog Long Name", catalog_type="MANAGED")
+        databricks_client_stub.add_catalog(
+            "Test Catalog Long Name", catalog_type="MANAGED"
+        )
 
         result = handle_command(databricks_client_stub, catalog="Test")
 

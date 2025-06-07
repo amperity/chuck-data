@@ -27,7 +27,7 @@ class DatabricksClientStub(
     FileStubMixin,
 ):
     """Comprehensive stub for DatabricksAPIClient with predictable responses.
-    
+
     This stub combines all functionality mixins to provide a complete test double
     for the Databricks API client.
     """
@@ -58,7 +58,7 @@ class DatabricksClientStub(
         self.permissions = {}
         self.sql_results = {}
         self.pii_scan_results = {}
-        
+
         # Reset call tracking
         self.create_stitch_notebook_calls = []
         self.list_catalogs_calls = []

@@ -53,7 +53,9 @@ def test_list_catalogs_with_params(databricks_client_stub):
 def test_get_catalog(databricks_client_stub):
     """Test getting a specific catalog."""
     # Set up stub data
-    databricks_client_stub.add_catalog("test_catalog", type="MANAGED", comment="Test catalog")
+    databricks_client_stub.add_catalog(
+        "test_catalog", type="MANAGED", comment="Test catalog"
+    )
 
     # Call the function
     result = get_catalog(databricks_client_stub, "test_catalog")
@@ -90,11 +92,11 @@ def test_list_schemas_all_params(databricks_client_stub):
 
     # Call the function with all parameters
     list_schemas(
-        databricks_client_stub, 
-        "test_catalog", 
-        include_browse=True, 
-        max_results=5, 
-        page_token="token123"
+        databricks_client_stub,
+        "test_catalog",
+        include_browse=True,
+        max_results=5,
+        page_token="token123",
     )
 
     # Verify the call was made with parameters
@@ -107,7 +109,9 @@ def test_get_schema(databricks_client_stub):
     """Test getting a specific schema."""
     # Set up stub data
     databricks_client_stub.add_catalog("test_catalog")
-    databricks_client_stub.add_schema("test_catalog", "test_schema", comment="Test schema")
+    databricks_client_stub.add_schema(
+        "test_catalog", "test_schema", comment="Test schema"
+    )
 
     # Call the function
     result = get_schema(databricks_client_stub, "test_catalog.test_schema")
@@ -156,15 +160,23 @@ def test_list_tables_all_params(databricks_client_stub):
         omit_properties=True,
         omit_username=True,
         include_browse=True,
-        include_manifest_capabilities=True
+        include_manifest_capabilities=True,
     )
 
     # Verify the call was made with parameters
     assert len(databricks_client_stub.list_tables_calls) == 1
     call_args = databricks_client_stub.list_tables_calls[0]
     expected_args = (
-        "test_catalog", "test_schema", 10, "token123", 
-        True, True, True, True, True, True
+        "test_catalog",
+        "test_schema",
+        10,
+        "token123",
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
     )
     assert call_args == expected_args
 
@@ -174,7 +186,9 @@ def test_get_table_basic(databricks_client_stub):
     # Set up stub data
     databricks_client_stub.add_catalog("test_catalog")
     databricks_client_stub.add_schema("test_catalog", "test_schema")
-    databricks_client_stub.add_table("test_catalog", "test_schema", "test_table", comment="Test table")
+    databricks_client_stub.add_table(
+        "test_catalog", "test_schema", "test_table", comment="Test table"
+    )
 
     # Call the function
     result = get_table(databricks_client_stub, "test_catalog.test_schema.test_table")
@@ -199,7 +213,7 @@ def test_get_table_all_params(databricks_client_stub):
         "test_catalog.test_schema.test_table",
         include_delta_metadata=True,
         include_browse=True,
-        include_manifest_capabilities=True
+        include_manifest_capabilities=True,
     )
 
     # Verify the call was made with parameters

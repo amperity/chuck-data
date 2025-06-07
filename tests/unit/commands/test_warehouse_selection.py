@@ -44,7 +44,9 @@ def test_successful_warehouse_selection_by_id(databricks_client_stub, temp_confi
         assert get_warehouse_id() == warehouse_id
 
 
-def test_warehouse_selection_with_verification_failure(databricks_client_stub, temp_config):
+def test_warehouse_selection_with_verification_failure(
+    databricks_client_stub, temp_config
+):
     """Test warehouse selection when verification fails."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Add a warehouse to stub but call with different ID - will cause verification failure
@@ -59,7 +61,10 @@ def test_warehouse_selection_with_verification_failure(databricks_client_stub, t
 
         # Verify results - should now fail when warehouse is not found
         assert not result.success
-        assert "No warehouse found matching 'xyz-completely-different-name'" in result.message
+        assert (
+            "No warehouse found matching 'xyz-completely-different-name'"
+            in result.message
+        )
 
 
 def test_warehouse_selection_no_client(temp_config):
@@ -76,7 +81,7 @@ def test_warehouse_selection_no_client(temp_config):
 def test_warehouse_selection_exception(temp_config):
     """Test warehouse selection with unexpected exception."""
     from tests.fixtures.databricks.client import DatabricksClientStub
-    
+
     with patch("chuck_data.config._config_manager", temp_config):
         # Create a stub that raises an exception during warehouse verification
         class FailingStub(DatabricksClientStub):
@@ -126,5 +131,7 @@ def test_warehouse_selection_fuzzy_matching(databricks_client_stub, temp_config)
 
         # Verify results
         assert result.success
-        assert "Active SQL warehouse is now set to 'Starter Warehouse'" in result.message
+        assert (
+            "Active SQL warehouse is now set to 'Starter Warehouse'" in result.message
+        )
         assert result.data["warehouse_name"] == "Starter Warehouse"

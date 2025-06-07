@@ -27,112 +27,111 @@ def llm_client():
 def mock_pii_scan_results():
     """Mock successful PII scan result fixture."""
     return {
-            "tables_successfully_processed": 5,
-            "tables_with_pii": 3,
-            "total_pii_columns": 8,
-            "results_detail": [
-                {
-                    "full_name": "test_catalog.test_schema.customers",
-                    "has_pii": True,
-                    "skipped": False,
-                    "columns": [
-                        {"name": "id", "type": "int", "semantic": None},
-                        {"name": "name", "type": "string", "semantic": "full-name"},
-                        {"name": "email", "type": "string", "semantic": "email"},
-                    ],
-                },
-                {
-                    "full_name": "test_catalog.test_schema.orders",
-                    "has_pii": True,
-                    "skipped": False,
-                    "columns": [
-                        {"name": "id", "type": "int", "semantic": None},
-                        {"name": "customer_id", "type": "int", "semantic": None},
-                        {
-                            "name": "shipping_address",
-                            "type": "string",
-                            "semantic": "address",
-                        },
-                    ],
-                },
-                {
-                    "full_name": "test_catalog.test_schema.metrics",
-                    "has_pii": False,
-                    "skipped": False,
-                    "columns": [
-                        {"name": "id", "type": "int", "semantic": None},
-                        {"name": "date", "type": "date", "semantic": None},
-                    ],
-                },
-            ],
-        }
+        "tables_successfully_processed": 5,
+        "tables_with_pii": 3,
+        "total_pii_columns": 8,
+        "results_detail": [
+            {
+                "full_name": "test_catalog.test_schema.customers",
+                "has_pii": True,
+                "skipped": False,
+                "columns": [
+                    {"name": "id", "type": "int", "semantic": None},
+                    {"name": "name", "type": "string", "semantic": "full-name"},
+                    {"name": "email", "type": "string", "semantic": "email"},
+                ],
+            },
+            {
+                "full_name": "test_catalog.test_schema.orders",
+                "has_pii": True,
+                "skipped": False,
+                "columns": [
+                    {"name": "id", "type": "int", "semantic": None},
+                    {"name": "customer_id", "type": "int", "semantic": None},
+                    {
+                        "name": "shipping_address",
+                        "type": "string",
+                        "semantic": "address",
+                    },
+                ],
+            },
+            {
+                "full_name": "test_catalog.test_schema.metrics",
+                "has_pii": False,
+                "skipped": False,
+                "columns": [
+                    {"name": "id", "type": "int", "semantic": None},
+                    {"name": "date", "type": "date", "semantic": None},
+                ],
+            },
+        ],
+    }
 
 
 @pytest.fixture
 def mock_pii_scan_results_with_unsupported():
     """Mock PII scan results with unsupported types fixture."""
     return {
-            "tables_successfully_processed": 2,
-            "tables_with_pii": 2,
-            "total_pii_columns": 4,
-            "results_detail": [
-                {
-                    "full_name": "test_catalog.test_schema.customers",
-                    "has_pii": True,
-                    "skipped": False,
-                    "columns": [
-                        {"name": "id", "type": "int", "semantic": None},
-                        {"name": "name", "type": "string", "semantic": "full-name"},
-                        {
-                            "name": "metadata",
-                            "type": "STRUCT",
-                            "semantic": None,
-                        },  # Unsupported
-                        {
-                            "name": "tags",
-                            "type": "ARRAY",
-                            "semantic": None,
-                        },  # Unsupported
-                    ],
-                },
-                {
-                    "full_name": "test_catalog.test_schema.geo_data",
-                    "has_pii": True,
-                    "skipped": False,
-                    "columns": [
-                        {
-                            "name": "location",
-                            "type": "GEOGRAPHY",
-                            "semantic": "address",
-                        },  # Unsupported
-                        {
-                            "name": "geometry",
-                            "type": "GEOMETRY",
-                            "semantic": None,
-                        },  # Unsupported
-                        {
-                            "name": "properties",
-                            "type": "MAP",
-                            "semantic": None,
-                        },  # Unsupported
-                        {
-                            "name": "description",
-                            "type": "string",
-                            "semantic": "full-name",
-                        },
-                    ],
-                },
-            ],
-        }
+        "tables_successfully_processed": 2,
+        "tables_with_pii": 2,
+        "total_pii_columns": 4,
+        "results_detail": [
+            {
+                "full_name": "test_catalog.test_schema.customers",
+                "has_pii": True,
+                "skipped": False,
+                "columns": [
+                    {"name": "id", "type": "int", "semantic": None},
+                    {"name": "name", "type": "string", "semantic": "full-name"},
+                    {
+                        "name": "metadata",
+                        "type": "STRUCT",
+                        "semantic": None,
+                    },  # Unsupported
+                    {
+                        "name": "tags",
+                        "type": "ARRAY",
+                        "semantic": None,
+                    },  # Unsupported
+                ],
+            },
+            {
+                "full_name": "test_catalog.test_schema.geo_data",
+                "has_pii": True,
+                "skipped": False,
+                "columns": [
+                    {
+                        "name": "location",
+                        "type": "GEOGRAPHY",
+                        "semantic": "address",
+                    },  # Unsupported
+                    {
+                        "name": "geometry",
+                        "type": "GEOMETRY",
+                        "semantic": None,
+                    },  # Unsupported
+                    {
+                        "name": "properties",
+                        "type": "MAP",
+                        "semantic": None,
+                    },  # Unsupported
+                    {
+                        "name": "description",
+                        "type": "string",
+                        "semantic": "full-name",
+                    },
+                ],
+            },
+        ],
+    }
 
 
 def test_missing_params(client, llm_client):
     """Test handling when parameters are missing."""
-    result = _helper_setup_stitch_logic(
-        client, llm_client, "", "test_schema"
-    )
+    result = _helper_setup_stitch_logic(client, llm_client, "", "test_schema")
     assert "error" in result
     assert "Target catalog and schema are required" in result["error"]
+
 
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 def test_pii_scan_error(mock_scan_pii, client, llm_client):
@@ -149,6 +148,7 @@ def test_pii_scan_error(mock_scan_pii, client, llm_client):
     assert "error" in result
     assert "PII Scan failed during Stitch setup" in result["error"]
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 def test_volume_list_error(mock_scan_pii, client, llm_client, mock_pii_scan_results):
     """Test handling when listing volumes fails."""
@@ -164,6 +164,7 @@ def test_volume_list_error(mock_scan_pii, client, llm_client, mock_pii_scan_resu
     # Verify results
     assert "error" in result
     assert "Failed to list volumes" in result["error"]
+
 
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 def test_volume_create_error(mock_scan_pii, client, llm_client, mock_pii_scan_results):
@@ -184,6 +185,7 @@ def test_volume_create_error(mock_scan_pii, client, llm_client, mock_pii_scan_re
     assert "error" in result
     assert "Failed to create volume 'chuck'" in result["error"]
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 def test_no_tables_with_pii(mock_scan_pii, client, llm_client, mock_pii_scan_results):
     """Test handling when no tables with PII are found."""
@@ -199,9 +201,7 @@ def test_no_tables_with_pii(mock_scan_pii, client, llm_client, mock_pii_scan_res
         }
     ]
     mock_scan_pii.return_value = no_pii_results
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
 
     # Call function
     result = _helper_setup_stitch_logic(
@@ -212,15 +212,16 @@ def test_no_tables_with_pii(mock_scan_pii, client, llm_client, mock_pii_scan_res
     assert "error" in result
     assert "No tables with PII found" in result["error"]
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 @patch("chuck_data.commands.stitch_tools.get_amperity_token")
-def test_missing_amperity_token(mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results):
+def test_missing_amperity_token(
+    mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results
+):
     """Test handling when Amperity token is missing."""
     # Setup mocks
     mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
     client.upload_file.return_value = True  # Config file upload successful
     mock_get_amperity_token.return_value = None  # No token
 
@@ -233,15 +234,16 @@ def test_missing_amperity_token(mock_get_amperity_token, mock_scan_pii, client, 
     assert "error" in result
     assert "Amperity token not found" in result["error"]
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 @patch("chuck_data.commands.stitch_tools.get_amperity_token")
-def test_amperity_init_script_error(mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results):
+def test_amperity_init_script_error(
+    mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results
+):
     """Test handling when fetching Amperity init script fails."""
     # Setup mocks
     mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
     client.upload_file.return_value = True  # Config file upload successful
     mock_get_amperity_token.return_value = "fake_token"
     client.fetch_amperity_job_init.side_effect = Exception("API Error")
@@ -255,26 +257,26 @@ def test_amperity_init_script_error(mock_get_amperity_token, mock_scan_pii, clie
     assert "error" in result
     assert "Error fetching Amperity init script" in result["error"]
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 @patch("chuck_data.commands.stitch_tools.get_amperity_token")
 @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
 def test_versioned_init_script_upload_error(
-    mock_upload_init, mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results
+    mock_upload_init,
+    mock_get_amperity_token,
+    mock_scan_pii,
+    client,
+    llm_client,
+    mock_pii_scan_results,
 ):
     """Test handling when versioned init script upload fails."""
     # Setup mocks
     mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
     mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.return_value = {
-        "cluster-init": "echo 'init script'"
-    }
+    client.fetch_amperity_job_init.return_value = {"cluster-init": "echo 'init script'"}
     # Mock versioned init script upload failure
-    mock_upload_init.return_value = {
-        "error": "Failed to upload versioned init script"
-    }
+    mock_upload_init.return_value = {"error": "Failed to upload versioned init script"}
 
     # Call function
     result = _helper_setup_stitch_logic(
@@ -285,23 +287,25 @@ def test_versioned_init_script_upload_error(
     assert "error" in result
     assert result["error"] == "Failed to upload versioned init script"
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 @patch("chuck_data.commands.stitch_tools.get_amperity_token")
 @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
 def test_successful_setup(
-    mock_upload_init, mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results
+    mock_upload_init,
+    mock_get_amperity_token,
+    mock_scan_pii,
+    client,
+    llm_client,
+    mock_pii_scan_results,
 ):
     """Test successful Stitch integration setup with versioned init script."""
     # Setup mocks
     mock_scan_pii.return_value = mock_pii_scan_results
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
     client.upload_file.return_value = True  # File uploads successful
     mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.return_value = {
-        "cluster-init": "echo 'init script'"
-    }
+    client.fetch_amperity_job_init.return_value = {"cluster-init": "echo 'init script'"}
     # Mock versioned init script upload
     mock_upload_init.return_value = {
         "success": True,
@@ -341,23 +345,25 @@ def test_successful_setup(
     assert len(metadata["unsupported_columns"]) == 0
     assert "Note: Some columns were excluded" not in result.get("message", "")
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 @patch("chuck_data.commands.stitch_tools.get_amperity_token")
 @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
 def test_unsupported_types_filtered(
-    mock_upload_init, mock_get_amperity_token, mock_scan_pii, client, llm_client, mock_pii_scan_results_with_unsupported
+    mock_upload_init,
+    mock_get_amperity_token,
+    mock_scan_pii,
+    client,
+    llm_client,
+    mock_pii_scan_results_with_unsupported,
 ):
     """Test that unsupported column types are filtered out from Stitch config."""
     # Setup mocks
     mock_scan_pii.return_value = mock_pii_scan_results_with_unsupported
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
     client.upload_file.return_value = True  # File uploads successful
     mock_get_amperity_token.return_value = "fake_token"
-    client.fetch_amperity_job_init.return_value = {
-        "cluster-init": "echo 'init script'"
-    }
+    client.fetch_amperity_job_init.return_value = {"cluster-init": "echo 'init script'"}
     # Mock versioned init script upload
     mock_upload_init.return_value = {
         "success": True,
@@ -418,6 +424,7 @@ def test_unsupported_types_filtered(
     # Verify warning message includes unsupported columns info in metadata
     assert "unsupported_columns" in metadata
 
+
 @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
 @patch("chuck_data.commands.stitch_tools.get_amperity_token")
 def test_all_columns_unsupported_types(
@@ -443,9 +450,7 @@ def test_all_columns_unsupported_types(
         ],
     }
     mock_scan_pii.return_value = all_unsupported_results
-    client.list_volumes.return_value = {
-        "volumes": [{"name": "chuck"}]
-    }  # Volume exists
+    client.list_volumes.return_value = {"volumes": [{"name": "chuck"}]}  # Volume exists
     mock_get_amperity_token.return_value = "fake_token"  # Add token mock
 
     # Call function

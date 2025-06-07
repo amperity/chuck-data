@@ -30,7 +30,13 @@ def configured_llm_client(llm_client_stub):
 
 
 @patch("chuck_data.commands.pii_tools.json.loads")
-def test_tag_pii_columns_logic_success(mock_json_loads, databricks_client_stub, configured_llm_client, mock_columns, temp_config):
+def test_tag_pii_columns_logic_success(
+    mock_json_loads,
+    databricks_client_stub,
+    configured_llm_client,
+    mock_columns,
+    temp_config,
+):
     """Test successful tagging of PII columns."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Set up test data using stub
@@ -69,7 +75,9 @@ def test_tag_pii_columns_logic_success(mock_json_loads, databricks_client_stub, 
 
 
 @patch("concurrent.futures.ThreadPoolExecutor")
-def test_scan_schema_for_pii_logic(mock_executor, databricks_client_stub, configured_llm_client, temp_config):
+def test_scan_schema_for_pii_logic(
+    mock_executor, databricks_client_stub, configured_llm_client, temp_config
+):
     """Test scanning a schema for PII."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Set up test data using stub

@@ -40,16 +40,16 @@ def mock_callback():
 @pytest.fixture
 def agent_manager_setup(mock_api_client, llm_client_stub):
     """Set up AgentManager with mocked dependencies."""
-    with patch(
-        "chuck_data.agent.manager.LLMClient", return_value=llm_client_stub
-    ) as mock_llm_client, patch(
-        "chuck_data.agent.manager.get_tool_schemas"
-    ) as mock_get_schemas, patch(
-        "chuck_data.agent.manager.execute_tool"
-    ) as mock_execute_tool:
-        
+    with (
+        patch(
+            "chuck_data.agent.manager.LLMClient", return_value=llm_client_stub
+        ) as mock_llm_client,
+        patch("chuck_data.agent.manager.get_tool_schemas") as mock_get_schemas,
+        patch("chuck_data.agent.manager.execute_tool") as mock_execute_tool,
+    ):
+
         agent_manager = AgentManager(mock_api_client, model="test-model")
-        
+
         return {
             "agent_manager": agent_manager,
             "mock_api_client": mock_api_client,
@@ -59,6 +59,7 @@ def agent_manager_setup(mock_api_client, llm_client_stub):
             "mock_execute_tool": mock_execute_tool,
         }
 
+
 def test_agent_manager_initialization(agent_manager_setup):
     """Test that AgentManager initializes correctly."""
     setup = agent_manager_setup
@@ -66,7 +67,7 @@ def test_agent_manager_initialization(agent_manager_setup):
     mock_api_client = setup["mock_api_client"]
     llm_client_stub = setup["llm_client_stub"]
     mock_llm_client = setup["mock_llm_client"]
-    
+
     mock_llm_client.assert_called_once()  # Check LLMClient was instantiated
     assert agent_manager.api_client == mock_api_client
     assert agent_manager.model == "test-model"
@@ -80,7 +81,10 @@ def test_agent_manager_initialization(agent_manager_setup):
     assert agent_manager.conversation_history == expected_history
     assert agent_manager.llm_client is llm_client_stub
 
-def test_agent_manager_initialization_with_callback(mock_api_client, mock_callback, llm_client_stub):
+
+def test_agent_manager_initialization_with_callback(
+    mock_api_client, mock_callback, llm_client_stub
+):
     """Test that AgentManager initializes correctly with a callback."""
     with patch("chuck_data.agent.manager.LLMClient", return_value=llm_client_stub):
         agent_with_callback = AgentManager(
@@ -91,6 +95,7 @@ def test_agent_manager_initialization_with_callback(mock_api_client, mock_callba
         assert agent_with_callback.api_client == mock_api_client
         assert agent_with_callback.model == "test-model"
         assert agent_with_callback.tool_output_callback == mock_callback
+
 
 def test_add_user_message(agent_manager_setup):
     """Test adding a user message."""
@@ -108,6 +113,7 @@ def test_add_user_message(agent_manager_setup):
     expected_history.append({"role": "user", "content": "Another message."})
     assert agent_manager.conversation_history == expected_history
 
+
 def test_add_assistant_message(agent_manager_setup):
     """Test adding an assistant message."""
     agent_manager = agent_manager_setup["agent_manager"]
@@ -124,19 +130,19 @@ def test_add_assistant_message(agent_manager_setup):
     expected_history.append({"role": "assistant", "content": "How can I help?"})
     assert agent_manager.conversation_history == expected_history
 
+
 def test_add_system_message_new(agent_manager_setup):
     """Test adding a system message when none exists."""
     agent_manager = agent_manager_setup["agent_manager"]
     agent_manager.add_system_message("You are a helpful assistant.")
-    expected_history = [
-        {"role": "system", "content": "You are a helpful assistant."}
-    ]
+    expected_history = [{"role": "system", "content": "You are a helpful assistant."}]
     assert agent_manager.conversation_history == expected_history
 
     # Add another message to ensure system message stays at the start
     agent_manager.add_user_message("User query")
     expected_history.append({"role": "user", "content": "User query"})
     assert agent_manager.conversation_history == expected_history
+
 
 def test_add_system_message_replace(agent_manager_setup):
     """Test adding a system message replaces an existing one."""
@@ -153,11 +159,12 @@ def test_add_system_message_replace(agent_manager_setup):
 
     # --- Tests for process_with_tools ---
 
+
 def test_process_with_tools_no_tool_calls(agent_manager_setup):
     """Test processing when the LLM responds with content only."""
     agent_manager = agent_manager_setup["agent_manager"]
     llm_client_stub = agent_manager_setup["llm_client_stub"]
-    
+
     # Setup
     mock_tools = [{"type": "function", "function": {"name": "dummy_tool"}}]
 
@@ -177,12 +184,13 @@ def test_process_with_tools_no_tool_calls(agent_manager_setup):
     # Assertions
     assert result == "Final answer."
 
+
 def test_process_with_tools_iteration_limit(agent_manager_setup):
     """Ensure process_with_tools stops after the max iteration limit."""
     agent_manager = agent_manager_setup["agent_manager"]
     llm_client_stub = agent_manager_setup["llm_client_stub"]
     mock_execute_tool = agent_manager_setup["mock_execute_tool"]
-    
+
     mock_tools = [{"type": "function", "function": {"name": "dummy_tool"}}]
 
     tool_call = MagicMock()
@@ -203,19 +211,21 @@ def test_process_with_tools_iteration_limit(agent_manager_setup):
 
     assert result == "Error: maximum iterations reached."
 
+
 def test_process_pii_detection(agent_manager_setup):
     """Test process_pii_detection sets up context and calls process_with_tools."""
     agent_manager = agent_manager_setup["agent_manager"]
-    
-    with patch.object(agent_manager, 'process_with_tools', return_value="PII analysis complete.") as mock_process:
+
+    with patch.object(
+        agent_manager, "process_with_tools", return_value="PII analysis complete."
+    ) as mock_process:
         result = agent_manager.process_pii_detection("my_table")
 
         assert result == "PII analysis complete."
         # Check system message
         assert agent_manager.conversation_history[0]["role"] == "system"
         assert (
-            agent_manager.conversation_history[0]["content"]
-            == PII_AGENT_SYSTEM_MESSAGE
+            agent_manager.conversation_history[0]["content"] == PII_AGENT_SYSTEM_MESSAGE
         )
         # Check user message
         assert agent_manager.conversation_history[1]["role"] == "user"
@@ -230,11 +240,14 @@ def test_process_pii_detection(agent_manager_setup):
         assert isinstance(call_args, list)
         assert len(call_args) > 0  # Should have at least some tools
 
+
 def test_process_bulk_pii_scan(agent_manager_setup):
     """Test process_bulk_pii_scan sets up context and calls process_with_tools."""
     agent_manager = agent_manager_setup["agent_manager"]
-    
-    with patch.object(agent_manager, 'process_with_tools', return_value="Bulk PII scan complete.") as mock_process:
+
+    with patch.object(
+        agent_manager, "process_with_tools", return_value="Bulk PII scan complete."
+    ) as mock_process:
         result = agent_manager.process_bulk_pii_scan(
             catalog_name="cat", schema_name="sch"
         )
@@ -259,11 +272,14 @@ def test_process_bulk_pii_scan(agent_manager_setup):
         assert isinstance(call_args, list)
         assert len(call_args) > 0  # Should have at least some tools
 
+
 def test_process_setup_stitch(agent_manager_setup):
     """Test process_setup_stitch sets up context and calls process_with_tools."""
     agent_manager = agent_manager_setup["agent_manager"]
-    
-    with patch.object(agent_manager, 'process_with_tools', return_value="Stitch setup complete.") as mock_process:
+
+    with patch.object(
+        agent_manager, "process_with_tools", return_value="Stitch setup complete."
+    ) as mock_process:
         result = agent_manager.process_setup_stitch(
             catalog_name="cat", schema_name="sch"
         )
@@ -288,25 +304,27 @@ def test_process_setup_stitch(agent_manager_setup):
         assert isinstance(call_args, list)
         assert len(call_args) > 0  # Should have at least some tools
 
+
 def test_process_query(agent_manager_setup):
     """Test process_query adds user message and calls process_with_tools."""
     agent_manager = agent_manager_setup["agent_manager"]
-    
+
     # Reset the conversation history to a clean state for this test
     agent_manager.conversation_history = []
     agent_manager.add_system_message("General assistant.")
     agent_manager.add_user_message("Previous question.")
     agent_manager.add_assistant_message("Previous answer.")
 
-    with patch.object(agent_manager, 'process_with_tools', return_value="Query processed.") as mock_process:
+    with patch.object(
+        agent_manager, "process_with_tools", return_value="Query processed."
+    ) as mock_process:
         result = agent_manager.process_query("What is the weather?")
 
         assert result == "Query processed."
         # Check latest user message
         assert agent_manager.conversation_history[-1]["role"] == "user"
         assert (
-            agent_manager.conversation_history[-1]["content"]
-            == "What is the weather?"
+            agent_manager.conversation_history[-1]["content"] == "What is the weather?"
         )
         # Check call to process_with_tools
         mock_process.assert_called_once()

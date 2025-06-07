@@ -225,4 +225,7 @@ def test_query_llm(client):
 
     # Verify API call
     client.post.assert_called_once()
-    assert client.post.call_args[0][0] == "/api/2.0/serving-endpoints/test-model/invocations"
+    assert (
+        client.post.call_args[0][0]
+        == "/api/2.0/serving-endpoints/test-model/invocations"
+    )

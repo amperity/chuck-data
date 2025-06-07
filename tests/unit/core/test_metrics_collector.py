@@ -14,7 +14,7 @@ def metrics_collector_with_stubs(amperity_client_stub):
     """Create a MetricsCollector with stubbed dependencies."""
     config_manager_stub = ConfigManagerStub()
     config_stub = config_manager_stub.config
-    
+
     # Create the metrics collector with mocked config and AmperityClientStub
     with patch(
         "chuck_data.metrics_collector.get_config_manager",
@@ -25,7 +25,7 @@ def metrics_collector_with_stubs(amperity_client_stub):
             return_value=amperity_client_stub,
         ):
             metrics_collector = MetricsCollector()
-    
+
     return metrics_collector, config_stub, amperity_client_stub
 
 
@@ -81,7 +81,9 @@ def test_track_event_no_consent(mock_get_token, metrics_collector_with_stubs):
 
 @patch("chuck_data.metrics_collector.get_amperity_token", return_value="test-token")
 @patch("chuck_data.metrics_collector.MetricsCollector.send_metric")
-def test_track_event_with_all_fields(mock_send_metric, mock_get_token, metrics_collector_with_stubs):
+def test_track_event_with_all_fields(
+    mock_send_metric, mock_get_token, metrics_collector_with_stubs
+):
     """Test tracking with all fields provided."""
     metrics_collector, config_stub, _ = metrics_collector_with_stubs
     config_stub.usage_tracking_consent = True
@@ -137,7 +139,7 @@ def test_send_metric_successful(mock_get_token, metrics_collector_with_stubs):
 def test_send_metric_failure(mock_get_token, metrics_collector_with_stubs):
     """Test handling of metrics sending failure."""
     metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
-    
+
     # Configure stub to simulate failure
     amperity_client_stub.should_fail_metrics = True
     amperity_client_stub.metrics_calls = []
@@ -155,7 +157,7 @@ def test_send_metric_failure(mock_get_token, metrics_collector_with_stubs):
 def test_send_metric_exception(mock_get_token, metrics_collector_with_stubs):
     """Test handling of exceptions during metrics sending."""
     metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
-    
+
     # Configure stub to raise exception
     amperity_client_stub.should_raise_exception = True
     amperity_client_stub.metrics_calls = []
@@ -173,7 +175,7 @@ def test_send_metric_exception(mock_get_token, metrics_collector_with_stubs):
 def test_send_metric_no_token(mock_get_token, metrics_collector_with_stubs):
     """Test that metrics are not sent when no token is available."""
     metrics_collector, _, amperity_client_stub = metrics_collector_with_stubs
-    
+
     # Reset stub metrics call count
     amperity_client_stub.metrics_calls = []
 

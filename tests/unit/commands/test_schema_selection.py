@@ -53,13 +53,17 @@ def test_successful_schema_selection(databricks_client_stub, temp_config):
         assert get_active_schema() == "test_schema"
 
 
-def test_schema_selection_with_verification_failure(databricks_client_stub, temp_config):
+def test_schema_selection_with_verification_failure(
+    databricks_client_stub, temp_config
+):
     """Test schema selection when no matching schema exists."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Set up active catalog but don't add the schema to stub
         set_active_catalog("test_catalog")
         databricks_client_stub.add_catalog("test_catalog")
-        databricks_client_stub.add_schema("test_catalog", "completely_different_schema_name")
+        databricks_client_stub.add_schema(
+            "test_catalog", "completely_different_schema_name"
+        )
 
         # Call function with non-existent schema that won't match via fuzzy matching
         result = handle_command(databricks_client_stub, schema="xyz_nonexistent_abc")
@@ -73,7 +77,7 @@ def test_schema_selection_with_verification_failure(databricks_client_stub, temp
 def test_schema_selection_exception(temp_config):
     """Test schema selection with list_schemas exception."""
     from tests.fixtures.databricks.client import DatabricksClientStub
-    
+
     with patch("chuck_data.config._config_manager", temp_config):
         # Set up active catalog
         set_active_catalog("test_catalog")

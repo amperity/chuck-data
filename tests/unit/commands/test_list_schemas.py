@@ -138,7 +138,9 @@ def test_select_schema_tool_output_callback(databricks_client_stub, temp_config)
             callback_calls.append((tool_name, data))
 
         result = select_schema_handler(
-            databricks_client_stub, schema="callback", tool_output_callback=mock_callback
+            databricks_client_stub,
+            schema="callback",
+            tool_output_callback=mock_callback,
         )
 
         assert result.success

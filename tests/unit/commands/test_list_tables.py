@@ -10,11 +10,13 @@ from unittest.mock import patch
 from chuck_data.commands.list_tables import handle_command
 from tests.fixtures.databricks.client import DatabricksClientStub
 
+
 def test_no_client():
     """Test handling when no client is provided."""
     result = handle_command(None)
     assert not result.success
     assert "No Databricks client available" in result.message
+
 
 def test_no_active_catalog(temp_config):
     """Test handling when no catalog is provided and no active catalog is set."""
@@ -25,6 +27,7 @@ def test_no_active_catalog(temp_config):
         result = handle_command(client_stub)
         assert not result.success
         assert "No catalog specified and no active catalog selected" in result.message
+
 
 def test_no_active_schema(temp_config):
     """Test handling when no schema is provided and no active schema is set."""
@@ -38,6 +41,7 @@ def test_no_active_schema(temp_config):
         result = handle_command(client_stub)
         assert not result.success
         assert "No schema specified and no active schema selected" in result.message
+
 
 def test_successful_list_tables_with_parameters(temp_config):
     """Test successful list tables with all parameters specified."""
@@ -85,6 +89,7 @@ def test_successful_list_tables_with_parameters(temp_config):
         assert "table1" in table_names
         assert "table2" in table_names
 
+
 def test_successful_list_tables_with_defaults(temp_config):
     """Test successful list tables using default active catalog and schema."""
     with patch("chuck_data.config._config_manager", temp_config):
@@ -110,6 +115,7 @@ def test_successful_list_tables_with_defaults(temp_config):
         assert result.data["schema_name"] == "active_schema"
         assert result.data["tables"][0]["name"] == "table1"
 
+
 def test_empty_table_list(temp_config):
     """Test handling when no tables are found."""
     with patch("chuck_data.config._config_manager", temp_config):
@@ -127,6 +133,7 @@ def test_empty_table_list(temp_config):
         # Verify results
         assert result.success
         assert "No tables found in schema 'test_catalog.test_schema'" in result.message
+
 
 def test_list_tables_exception(temp_config):
     """Test list_tables with unexpected exception."""
@@ -148,6 +155,7 @@ def test_list_tables_exception(temp_config):
         assert "Failed to list tables" in result.message
         assert str(result.error) == "API error"
 
+
 def test_list_tables_with_display_true(temp_config):
     """Test list tables with display=true shows table."""
     with patch("chuck_data.config._config_manager", temp_config):
@@ -167,6 +175,7 @@ def test_list_tables_with_display_true(temp_config):
         assert result.success
         assert result.data.get("display")
         assert len(result.data.get("tables", [])) == 1
+
 
 def test_list_tables_with_display_false(temp_config):
     """Test list tables with display=false returns data without display."""

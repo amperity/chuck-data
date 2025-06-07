@@ -87,6 +87,7 @@ def test_successful_list_warehouses(databricks_client_stub):
     assert regular_warehouse["creator_name"] == "another.user@example.com"
     assert regular_warehouse["auto_stop_mins"] == 60
 
+
 def test_empty_warehouse_list(databricks_client_stub):
     """Test handling when no warehouses are found."""
     # Don't add any warehouses to the stub
@@ -101,10 +102,11 @@ def test_empty_warehouse_list(databricks_client_stub):
 
 def test_list_warehouses_exception(databricks_client_stub):
     """Test list_warehouses with unexpected exception."""
+
     # Configure stub to raise an exception for list_warehouses
     def list_warehouses_failing(**kwargs):
         raise Exception("API connection error")
-    
+
     databricks_client_stub.list_warehouses = list_warehouses_failing
 
     # Call the function
@@ -155,7 +157,9 @@ def test_warehouse_data_integrity(databricks_client_stub):
         "enable_serverless_compute",
     ]
     for field in required_fields:
-        assert field in warehouse, f"Required field '{field}' missing from warehouse data"
+        assert (
+            field in warehouse
+        ), f"Required field '{field}' missing from warehouse data"
 
     # Verify field values
     assert warehouse["id"] == "warehouse-complete"
@@ -230,7 +234,9 @@ def test_various_warehouse_states(databricks_client_stub):
     warehouses = result.data["warehouses"]
     returned_states = [w["state"] for w in warehouses]
     for state in states:
-        assert state in returned_states, f"State {state} not found in returned warehouses"
+        assert (
+            state in returned_states
+        ), f"State {state} not found in returned warehouses"
 
 
 def test_serverless_compute_boolean_handling(databricks_client_stub):

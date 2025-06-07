@@ -96,7 +96,7 @@ def test_config_update(config_setup, clean_env):
 def test_config_load_save_cycle(config_setup, clean_env):
     """Test loading and saving configuration."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Set test values
     test_url = "https://test-workspace.cloud.databricks.com"  # Need valid URL string
     test_model = "test-model"
@@ -122,7 +122,7 @@ def test_config_load_save_cycle(config_setup, clean_env):
 def test_api_functions(config_setup, clean_env):
     """Test compatibility API functions."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Set values using API functions
     set_workspace_url("api-workspace")
     set_active_model("api-model")
@@ -141,7 +141,7 @@ def test_api_functions(config_setup, clean_env):
 def test_environment_override(config_setup, chuck_env_vars):
     """Test environment variable override for all config values."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # First set config values with clean environment
     with patch.dict(os.environ, {}, clear=True):
         set_workspace_url("config-workspace")
@@ -152,7 +152,7 @@ def test_environment_override(config_setup, chuck_env_vars):
 
     # Now test that CHUCK_ environment variables take precedence
     # (chuck_env_vars fixture provides the env vars)
-    
+
     # Create a new config manager to reload with environment overrides
     fresh_manager = ConfigManager(config_path)
     config = fresh_manager.get_config()
@@ -161,21 +161,21 @@ def test_environment_override(config_setup, chuck_env_vars):
     assert config.workspace_url == "env-workspace"
     assert config.active_model == "env-model"
     assert config.warehouse_id == "env-warehouse"
-    assert config.active_catalog == "env-catalog" 
+    assert config.active_catalog == "env-catalog"
     assert config.active_schema == "env-schema"
 
 
 def test_graceful_validation(config_setup, clean_env):
     """Test that invalid configuration values are handled gracefully."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Write invalid JSON to config file
     with open(config_path, "w") as f:
         f.write("{ invalid json }")
 
     # Should still create a config with defaults instead of crashing
     config = config_manager.get_config()
-    
+
     # Should get default values
     assert config.active_model is None
     assert config.warehouse_id is None
@@ -184,14 +184,14 @@ def test_graceful_validation(config_setup, clean_env):
 def test_singleton_pattern(config_setup, clean_env):
     """Test that ConfigManager behaves as singleton."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Create multiple instances with same path
     manager1 = ConfigManager(config_path)
     manager2 = ConfigManager(config_path)
-    
+
     # Set value through one manager
     manager1.update(active_model="singleton-test")
-    
+
     # Should be visible through other manager (testing cached behavior)
     # Note: In temp dir, config is not cached, so we need to test regular behavior
     if not config_path.startswith(tempfile.gettempdir()):
@@ -202,12 +202,12 @@ def test_singleton_pattern(config_setup, clean_env):
 def test_databricks_token(config_setup, clean_env):
     """Test databricks token handling."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Test setting token through config
     set_databricks_token("config-token")
-    
+
     assert get_databricks_token() == "config-token"
-    
+
     # Test environment variable override
     with patch.dict(os.environ, {"CHUCK_DATABRICKS_TOKEN": "env-token"}):
         # Create fresh manager to pick up env var
@@ -221,19 +221,19 @@ def test_databricks_token(config_setup, clean_env):
 def test_needs_setup_method(config_setup, clean_env):
     """Test needs_setup method returns correct values."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Initially should need setup
     assert config_manager.needs_setup()
-    
+
     # After setting all critical configs, should not need setup
     config_manager.update(
         workspace_url="test-workspace",
-        amperity_token="test-amperity-token", 
+        amperity_token="test-amperity-token",
         databricks_token="test-databricks-token",
-        active_model="test-model"
+        active_model="test-model",
     )
     assert not config_manager.needs_setup()
-    
+
     # Test with environment variable
     with patch.dict(os.environ, {"CHUCK_WORKSPACE_URL": "env-workspace"}):
         fresh_manager = ConfigManager(config_path)
@@ -244,9 +244,9 @@ def test_needs_setup_method(config_setup, clean_env):
 def test_set_active_model_clears_history(mock_clear_history, config_setup, clean_env):
     """Test that setting active model clears agent history."""
     config_manager, config_path, temp_dir = config_setup
-    
+
     # Set active model
     set_active_model("test-model")
-    
+
     # Should have called clear_agent_history
     mock_clear_history.assert_called_once()

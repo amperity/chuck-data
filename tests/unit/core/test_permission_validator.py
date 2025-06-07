@@ -33,9 +33,7 @@ def test_validate_all_permissions(client):
             "chuck_data.databricks.permission_validator.check_sql_warehouse"
         ) as mock_warehouse,
         patch("chuck_data.databricks.permission_validator.check_jobs") as mock_jobs,
-        patch(
-            "chuck_data.databricks.permission_validator.check_models"
-        ) as mock_models,
+        patch("chuck_data.databricks.permission_validator.check_models") as mock_models,
         patch(
             "chuck_data.databricks.permission_validator.check_volumes"
         ) as mock_volumes,
@@ -121,9 +119,7 @@ def test_check_unity_catalog_success(mock_debug, client):
     result = check_unity_catalog(client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with(
-        "/api/2.1/unity-catalog/catalogs?max_results=1"
-    )
+    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
 
     # Verify the result
     assert result["authorized"]
@@ -144,9 +140,7 @@ def test_check_unity_catalog_empty(mock_debug, client):
     result = check_unity_catalog(client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with(
-        "/api/2.1/unity-catalog/catalogs?max_results=1"
-    )
+    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
 
     # Verify the result
     assert result["authorized"]
@@ -167,9 +161,7 @@ def test_check_unity_catalog_error(mock_debug, client):
     result = check_unity_catalog(client)
 
     # Verify the API was called correctly
-    client.get.assert_called_once_with(
-        "/api/2.1/unity-catalog/catalogs?max_results=1"
-    )
+    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
 
     # Verify the result
     assert not result["authorized"]
@@ -331,9 +323,7 @@ def test_check_volumes_success_full_path(mock_debug, client):
     # Verify the API calls were made correctly
     expected_calls = [
         call("/api/2.1/unity-catalog/catalogs?max_results=1"),
-        call(
-            "/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1"
-        ),
+        call("/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1"),
         call(
             "/api/2.1/unity-catalog/volumes?catalog_name=test_catalog&schema_name=test_schema"
         ),
@@ -342,7 +332,10 @@ def test_check_volumes_success_full_path(mock_debug, client):
 
     # Verify the result
     assert result["authorized"]
-    assert result["details"] == "Volumes access granted in test_catalog.test_schema (1 volumes visible)"
+    assert (
+        result["details"]
+        == "Volumes access granted in test_catalog.test_schema (1 volumes visible)"
+    )
     assert result["api_path"] == "/api/2.1/unity-catalog/volumes"
 
     # Verify logging occurred
@@ -359,9 +352,7 @@ def test_check_volumes_no_catalogs(mock_debug, client):
     result = check_volumes(client)
 
     # Verify only the catalogs API was called
-    client.get.assert_called_once_with(
-        "/api/2.1/unity-catalog/catalogs?max_results=1"
-    )
+    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
 
     # Verify the result
     assert not result["authorized"]
@@ -388,15 +379,16 @@ def test_check_volumes_no_schemas(mock_debug, client):
     # Verify the APIs were called
     expected_calls = [
         call("/api/2.1/unity-catalog/catalogs?max_results=1"),
-        call(
-            "/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1"
-        ),
+        call("/api/2.1/unity-catalog/schemas?catalog_name=test_catalog&max_results=1"),
     ]
     assert client.get.call_args_list == expected_calls
 
     # Verify the result
     assert not result["authorized"]
-    assert result["error"] == "No schemas available in catalog 'test_catalog' to check volumes access"
+    assert (
+        result["error"]
+        == "No schemas available in catalog 'test_catalog' to check volumes access"
+    )
     assert result["api_path"] == "/api/2.1/unity-catalog/volumes"
 
     # Verify logging occurred
@@ -413,9 +405,7 @@ def test_check_volumes_error(mock_debug, client):
     result = check_volumes(client)
 
     # Verify the API was called
-    client.get.assert_called_once_with(
-        "/api/2.1/unity-catalog/catalogs?max_results=1"
-    )
+    client.get.assert_called_once_with("/api/2.1/unity-catalog/catalogs?max_results=1")
 
     # Verify the result
     assert not result["authorized"]

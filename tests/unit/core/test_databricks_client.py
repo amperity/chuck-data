@@ -13,6 +13,7 @@ def client():
     token = "fake-token"
     return DatabricksAPIClient(workspace_url, token)
 
+
 def test_normalize_workspace_url(client):
     """Test URL normalization."""
     test_cases = [
@@ -39,6 +40,7 @@ def test_normalize_workspace_url(client):
         result = client._normalize_workspace_url(input_url)
         assert result == expected_url
 
+
 def test_azure_client_url_construction():
     """Test that Azure client constructs URLs with correct domain."""
     azure_client = DatabricksAPIClient(
@@ -50,6 +52,7 @@ def test_azure_client_url_construction():
     assert azure_client.base_domain == "azuredatabricks.net"
     assert azure_client.workspace_url == "adb-3856707039489412.12"
 
+
 def test_base_domain_map():
     """Ensure _get_base_domain uses the shared domain map."""
     from chuck_data.databricks.url_utils import DATABRICKS_DOMAIN_MAP
@@ -58,6 +61,7 @@ def test_base_domain_map():
         client = DatabricksAPIClient("workspace", "token")
         client.cloud_provider = provider
         assert client._get_base_domain() == domain
+
 
 @patch("requests.get")
 def test_azure_get_request_url(mock_get):
@@ -79,6 +83,7 @@ def test_azure_get_request_url(mock_get):
         },
     )
 
+
 def test_compute_node_types():
     """Test that appropriate compute node types are returned for each cloud provider."""
     test_cases = [
@@ -92,6 +97,7 @@ def test_compute_node_types():
         client = DatabricksAPIClient(url, "token")
         assert client.cloud_provider == expected_provider
         assert client.get_compute_node_type() == expected_node_type
+
 
 def test_cloud_attributes():
     """Test that appropriate cloud attributes are returned for each provider."""
@@ -113,6 +119,7 @@ def test_cloud_attributes():
     assert "gcp_attributes" in gcp_attrs
     assert gcp_attrs["gcp_attributes"]["use_preemptible_executors"]
 
+
 @patch.object(DatabricksAPIClient, "post")
 def test_job_submission_uses_correct_node_type(mock_post):
     """Test that job submission uses the correct node type for Azure."""
@@ -133,11 +140,11 @@ def test_job_submission_uses_correct_node_type(mock_post):
     # Check that Azure attributes are present
     assert "azure_attributes" in cluster_config
     assert (
-        cluster_config["azure_attributes"]["availability"]
-        == "SPOT_WITH_FALLBACK_AZURE"
+        cluster_config["azure_attributes"]["availability"] == "SPOT_WITH_FALLBACK_AZURE"
     )
 
     # Base API request tests
+
 
 @patch("requests.get")
 def test_get_success(mock_get, client):
@@ -156,6 +163,7 @@ def test_get_success(mock_get, client):
         },
     )
 
+
 @patch("requests.get")
 def test_get_http_error(mock_get, client):
     """Test GET request with HTTP error."""
@@ -172,6 +180,7 @@ def test_get_http_error(mock_get, client):
     assert "HTTP error occurred" in str(exc_info.value)
     assert "Not Found" in str(exc_info.value)
 
+
 @patch("requests.get")
 def test_get_connection_error(mock_get, client):
     """Test GET request with connection error."""
@@ -181,6 +190,7 @@ def test_get_connection_error(mock_get, client):
         client.get("/test-endpoint")
 
     assert "Connection error occurred" in str(exc_info.value)
+
 
 @patch("requests.post")
 def test_post_success(mock_post, client):
@@ -200,6 +210,7 @@ def test_post_success(mock_post, client):
         json={"data": "test"},
     )
 
+
 @patch("requests.post")
 def test_post_http_error(mock_post, client):
     """Test POST request with HTTP error."""
@@ -216,6 +227,7 @@ def test_post_http_error(mock_post, client):
     assert "HTTP error occurred" in str(exc_info.value)
     assert "Bad Request" in str(exc_info.value)
 
+
 @patch("requests.post")
 def test_post_connection_error(mock_post, client):
     """Test POST request with connection error."""
@@ -228,6 +240,7 @@ def test_post_connection_error(mock_post, client):
 
     # Authentication method tests
 
+
 @patch.object(DatabricksAPIClient, "get")
 def test_validate_token_success(mock_get, client):
     """Test successful token validation."""
@@ -237,6 +250,7 @@ def test_validate_token_success(mock_get, client):
 
     assert result
     mock_get.assert_called_once_with("/api/2.0/preview/scim/v2/Me")
+
 
 @patch.object(DatabricksAPIClient, "get")
 def test_validate_token_failure(mock_get, client):
@@ -249,6 +263,7 @@ def test_validate_token_failure(mock_get, client):
     mock_get.assert_called_once_with("/api/2.0/preview/scim/v2/Me")
 
     # Unity Catalog method tests
+
 
 @patch.object(DatabricksAPIClient, "get")
 @patch.object(DatabricksAPIClient, "get_with_params")
@@ -269,6 +284,7 @@ def test_list_catalogs(mock_get_with_params, mock_get, client):
         {"include_browse": "true", "max_results": "10"},
     )
 
+
 @patch.object(DatabricksAPIClient, "get")
 def test_get_catalog(mock_get, client):
     """Test get_catalog method."""
@@ -280,6 +296,7 @@ def test_get_catalog(mock_get, client):
     mock_get.assert_called_once_with("/api/2.1/unity-catalog/catalogs/test_catalog")
 
     # File system method tests
+
 
 @patch("requests.put")
 def test_upload_file_with_content(mock_put, client):
@@ -302,6 +319,7 @@ def test_upload_file_with_content(mock_put, client):
     # Check that content was encoded to bytes
     assert call_args[1]["data"] == b"Test content"
 
+
 @patch("builtins.open", new_callable=mock_open, read_data=b"file content")
 @patch("requests.put")
 def test_upload_file_with_file_path(mock_put, mock_file, client):
@@ -319,13 +337,12 @@ def test_upload_file_with_file_path(mock_put, mock_file, client):
     call_args = mock_put.call_args
     assert call_args[1]["data"] == b"file content"
 
+
 def test_upload_file_invalid_args(client):
     """Test upload_file with invalid arguments."""
     # Test when both file_path and content are provided
     with pytest.raises(ValueError) as exc_info:
-        client.upload_file(
-            "/test/path.txt", file_path="/local.txt", content="content"
-        )
+        client.upload_file("/test/path.txt", file_path="/local.txt", content="content")
     assert "Exactly one of file_path or content must be provided" in str(exc_info.value)
 
     # Test when neither file_path nor content is provided
@@ -334,6 +351,7 @@ def test_upload_file_invalid_args(client):
     assert "Exactly one of file_path or content must be provided" in str(exc_info.value)
 
     # Model serving tests
+
 
 @patch.object(DatabricksAPIClient, "get")
 def test_list_models(mock_get, client):
@@ -346,6 +364,7 @@ def test_list_models(mock_get, client):
     assert result == [{"name": "model1"}, {"name": "model2"}]
     mock_get.assert_called_once_with("/api/2.0/serving-endpoints")
 
+
 @patch.object(DatabricksAPIClient, "get")
 def test_get_model(mock_get, client):
     """Test get_model method."""
@@ -356,6 +375,7 @@ def test_get_model(mock_get, client):
 
     assert result == {"name": "model1", "status": "ready"}
     mock_get.assert_called_once_with("/api/2.0/serving-endpoints/model1")
+
 
 @patch.object(DatabricksAPIClient, "get")
 def test_get_model_not_found(mock_get, client):
@@ -369,6 +389,7 @@ def test_get_model_not_found(mock_get, client):
 
     # SQL warehouse tests
 
+
 @patch.object(DatabricksAPIClient, "get")
 def test_list_warehouses(mock_get, client):
     """Test list_warehouses method."""
@@ -379,6 +400,7 @@ def test_list_warehouses(mock_get, client):
 
     assert result == [{"id": "123"}, {"id": "456"}]
     mock_get.assert_called_once_with("/api/2.0/sql/warehouses")
+
 
 @patch.object(DatabricksAPIClient, "get")
 def test_get_warehouse(mock_get, client):

@@ -21,9 +21,7 @@ def integration_setup():
     config_manager = ConfigManager(config_path=test_config_path)
 
     # Replace the global config manager with our test instance
-    config_manager_patcher = patch(
-        "chuck_data.config._config_manager", config_manager
-    )
+    config_manager_patcher = patch("chuck_data.config._config_manager", config_manager)
     mock_config_manager = config_manager_patcher.start()
 
     # Mock environment for authentication
@@ -52,10 +50,11 @@ def integration_setup():
     config_manager_patcher.stop()
     env_patcher.stop()
 
+
 def test_config_operations(integration_setup):
     """Test that config operations work properly."""
     test_config_path = integration_setup["test_config_path"]
-    
+
     # Test writing and reading config
     set_active_model("test-model")
 
@@ -69,10 +68,11 @@ def test_config_operations(integration_setup):
     active_model = get_active_model()
     assert active_model == "test-model"
 
+
 def test_catalog_config_operations(integration_setup):
     """Test catalog config operations."""
     test_config_path = integration_setup["test_config_path"]
-    
+
     # Test writing and reading catalog config
     from chuck_data.config import set_active_catalog, get_active_catalog
 
@@ -88,10 +88,11 @@ def test_catalog_config_operations(integration_setup):
     active_catalog = get_active_catalog()
     assert active_catalog == test_catalog
 
+
 def test_schema_config_operations(integration_setup):
     """Test schema config operations."""
     test_config_path = integration_setup["test_config_path"]
-    
+
     # Test writing and reading schema config
     from chuck_data.config import set_active_schema, get_active_schema
 

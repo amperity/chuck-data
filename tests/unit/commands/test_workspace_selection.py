@@ -76,9 +76,7 @@ def test_workspace_url_exception(mock_validate_workspace_url):
     mock_validate_workspace_url.side_effect = Exception("Validation error")
 
     # Call function
-    result = handle_command(
-        None, workspace_url="https://dbc-example.databricks.com"
-    )
+    result = handle_command(None, workspace_url="https://dbc-example.databricks.com")
 
     # Verify results
     assert not result.success

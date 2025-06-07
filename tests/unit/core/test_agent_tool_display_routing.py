@@ -17,6 +17,7 @@ def tui():
     """Create a ChuckTUI instance for testing."""
     return ChuckTUI()
 
+
 def test_agent_list_commands_display_tables_not_raw_json(tui):
     """
     End-to-end test: Agent tool calls should display formatted tables, not raw JSON.
@@ -111,9 +112,7 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
             from chuck_data.exceptions import PaginationCancelled
 
             with pytest.raises(PaginationCancelled):
-                tui.display_tool_output(
-                    case["tool_name"], test_data_with_display
-                )
+                tui.display_tool_output(case["tool_name"], test_data_with_display)
         else:
             # Other commands use full display
             assert (
@@ -123,9 +122,7 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
             from chuck_data.exceptions import PaginationCancelled
 
             with pytest.raises(PaginationCancelled):
-                tui.display_tool_output(
-                    case["tool_name"], case["test_data"]
-                )
+                tui.display_tool_output(case["tool_name"], case["test_data"])
 
         # Verify console.print was called (indicates table display, not raw JSON)
         mock_console.print.assert_called()
@@ -145,9 +142,7 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
                     table_objects_found = True
                 # Check if we're printing raw JSON strings (bad)
                 elif isinstance(arg, str) and (
-                    '"schemas":' in arg
-                    or '"catalogs":' in arg
-                    or '"tables":' in arg
+                    '"schemas":' in arg or '"catalogs":' in arg or '"tables":' in arg
                 ):
                     raw_json_found = True
 
@@ -159,6 +154,7 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
             not raw_json_found
         ), f"Raw JSON strings found in {case['tool_name']} output - this indicates the regression"
 
+
 def test_unknown_tool_falls_back_to_generic_display(tui):
     """Test that unknown tools fall back to generic display."""
     test_data = {"some": "data"}
@@ -169,6 +165,7 @@ def test_unknown_tool_falls_back_to_generic_display(tui):
     tui._display_full_tool_output("unknown-tool", test_data)
     # Should create a generic panel
     mock_console.print.assert_called()
+
 
 def test_command_name_mapping_prevents_regression(tui):
     """
@@ -202,15 +199,14 @@ def test_command_name_mapping_prevents_regression(tui):
                 ]  # This will be passed to _display_models
             elif tool_name == "detailed-models":
                 # For detailed-models, it expects "models" key in the dict
-                test_data = {
-                    "models": [{"name": "test_model", "creator": "test"}]
-                }
+                test_data = {"models": [{"name": "test_model", "creator": "test"}]}
             else:
                 test_data = {"test": "data"}
             tui._display_full_tool_output(tool_name, test_data)
 
             # Verify the correct method was called
             mock_method.assert_called_once_with(test_data)
+
 
 def test_agent_display_setting_validation(tui):
     """
@@ -270,6 +266,7 @@ def test_agent_display_setting_validation(tui):
             assert (
                 cmd_def.agent_display == "full"
             ), f"Command {cmd_name} must have agent_display='full' for table display"
+
 
 def test_end_to_end_agent_tool_execution_with_table_display(tui):
     """
@@ -359,6 +356,7 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
             assert (
                 not raw_json_found
             ), "Raw JSON strings found - this indicates the regression"
+
 
 def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
     """

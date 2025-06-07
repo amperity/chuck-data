@@ -54,10 +54,11 @@ def test_successful_list_catalogs(databricks_client_stub, temp_config):
     assert "catalog1" in catalog_names
     assert "catalog2" in catalog_names
 
+
 def test_successful_list_catalogs_with_pagination(databricks_client_stub):
     """Test successful list catalogs with pagination."""
     from tests.fixtures.databricks.client import DatabricksClientStub
-    
+
     # For pagination testing, we need to modify the stub to return pagination token
     class PaginatingClientStub(DatabricksClientStub):
         def list_catalogs(

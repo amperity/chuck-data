@@ -13,6 +13,7 @@ def databricks_api_client():
     token = "fake-token"
     return DatabricksAPIClient(workspace_url, token)
 
+
 def test_workspace_url_normalization():
     """Test that workspace URLs are normalized correctly."""
     test_cases = [
@@ -41,6 +42,7 @@ def test_workspace_url_normalization():
             client.workspace_url == expected_url
         ), f"URL should be normalized: {input_url} -> {expected_url}"
 
+
 def test_azure_domain_detection_and_url_construction():
     """Test that Azure domains are detected correctly and URLs are constructed properly."""
     azure_client = DatabricksAPIClient(
@@ -52,6 +54,7 @@ def test_azure_domain_detection_and_url_construction():
     assert azure_client.base_domain == "azuredatabricks.net"
     assert azure_client.workspace_url == "adb-3856707039489412.12"
 
+
 def test_gcp_domain_detection_and_url_construction():
     """Test that GCP domains are detected correctly and URLs are constructed properly."""
     gcp_client = DatabricksAPIClient("workspace.gcp.databricks.com", "token")
@@ -60,6 +63,7 @@ def test_gcp_domain_detection_and_url_construction():
     assert gcp_client.cloud_provider == "GCP"
     assert gcp_client.base_domain == "gcp.databricks.com"
     assert gcp_client.workspace_url == "workspace"
+
 
 @patch("chuck_data.clients.databricks.requests.get")
 def test_get_success(mock_get, databricks_api_client):
@@ -78,6 +82,7 @@ def test_get_success(mock_get, databricks_api_client):
         },
     )
 
+
 @patch("chuck_data.clients.databricks.requests.get")
 def test_get_http_error(mock_get, databricks_api_client):
     """Test GET request with HTTP error."""
@@ -94,6 +99,7 @@ def test_get_http_error(mock_get, databricks_api_client):
     assert "HTTP error occurred" in str(exc_info.value)
     assert "Not Found" in str(exc_info.value)
 
+
 @patch("chuck_data.clients.databricks.requests.get")
 def test_get_connection_error(mock_get, databricks_api_client):
     """Test GET request with connection error."""
@@ -103,6 +109,7 @@ def test_get_connection_error(mock_get, databricks_api_client):
         databricks_api_client.get("/test-endpoint")
 
     assert "Connection error occurred" in str(exc_info.value)
+
 
 @patch("chuck_data.clients.databricks.requests.post")
 def test_post_success(mock_post, databricks_api_client):
@@ -122,6 +129,7 @@ def test_post_success(mock_post, databricks_api_client):
         json={"data": "test"},
     )
 
+
 @patch("chuck_data.clients.databricks.requests.post")
 def test_post_http_error(mock_post, databricks_api_client):
     """Test POST request with HTTP error."""
@@ -138,6 +146,7 @@ def test_post_http_error(mock_post, databricks_api_client):
     assert "HTTP error occurred" in str(exc_info.value)
     assert "Bad Request" in str(exc_info.value)
 
+
 @patch("chuck_data.clients.databricks.requests.post")
 def test_post_connection_error(mock_post, databricks_api_client):
     """Test POST request with connection error."""
@@ -147,6 +156,7 @@ def test_post_connection_error(mock_post, databricks_api_client):
         databricks_api_client.post("/test-endpoint", {"data": "test"})
 
     assert "Connection error occurred" in str(exc_info.value)
+
 
 @patch("chuck_data.clients.databricks.requests.post")
 def test_fetch_amperity_job_init_http_error(mock_post, databricks_api_client):

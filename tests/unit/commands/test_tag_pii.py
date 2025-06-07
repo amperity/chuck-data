@@ -13,9 +13,7 @@ from chuck_data.config import (
 
 def test_missing_table_name():
     """Test that missing table_name parameter is handled correctly."""
-    result = handle_command(
-        None, pii_columns=[{"name": "test", "semantic": "email"}]
-    )
+    result = handle_command(None, pii_columns=[{"name": "test", "semantic": "email"}])
 
     assert isinstance(result, CommandResult)
     assert not result.success
@@ -68,7 +66,9 @@ def test_missing_warehouse_id(databricks_client_stub, temp_config):
         assert "No warehouse ID configured" in result.message
 
 
-def test_missing_catalog_schema_for_simple_table_name(databricks_client_stub, temp_config):
+def test_missing_catalog_schema_for_simple_table_name(
+    databricks_client_stub, temp_config
+):
     """Test that missing catalog/schema for simple table name is handled."""
     with patch("chuck_data.config._config_manager", temp_config):
         set_warehouse_id("warehouse123")
@@ -149,6 +149,7 @@ def test_apply_semantic_tags_missing_data(databricks_client_stub):
 
 def test_apply_semantic_tags_sql_failure(databricks_client_stub):
     """Test handling of SQL execution failures."""
+
     # Configure stub to return SQL failure
     def failing_sql_submit(sql_text=None, sql=None, **kwargs):
         return {
@@ -157,10 +158,10 @@ def test_apply_semantic_tags_sql_failure(databricks_client_stub):
                 "error": {"message": "SQL execution failed"},
             }
         }
-    
+
     # Mock the submit_sql_statement method on the specific instance
     databricks_client_stub.submit_sql_statement = failing_sql_submit
-    
+
     pii_columns = [{"name": "email_col", "semantic": "email"}]
 
     results = apply_semantic_tags(
