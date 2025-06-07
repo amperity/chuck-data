@@ -11,6 +11,7 @@ from .job_stub import JobStubMixin
 from .pii_stub import PIIStubMixin
 from .connection_stub import ConnectionStubMixin
 from .file_stub import FileStubMixin
+from .http_stub import HTTPStubMixin
 
 
 class DatabricksClientStub(
@@ -25,6 +26,7 @@ class DatabricksClientStub(
     PIIStubMixin,
     ConnectionStubMixin,
     FileStubMixin,
+    HTTPStubMixin,
 ):
     """Comprehensive stub for DatabricksAPIClient with predictable responses.
 
@@ -45,6 +47,7 @@ class DatabricksClientStub(
         PIIStubMixin.__init__(self)
         ConnectionStubMixin.__init__(self)
         FileStubMixin.__init__(self)
+        HTTPStubMixin.__init__(self)
 
     def reset(self):
         """Reset all data to initial state."""
