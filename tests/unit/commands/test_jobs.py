@@ -157,7 +157,6 @@ def test_handle_job_status_missing_url(temp_config):
 def test_agent_launch_job_success_shows_progress_steps(databricks_client_stub, temp_config):
     """
     AGENT TEST (TEMPLATE): Launching a job successfully shows expected progress steps.
-    NOTE: Adjust assertions based on actual progress messages and steps.
     """
     with patch("chuck_data.config._config_manager", temp_config):
         progress_steps = []
@@ -171,13 +170,13 @@ def test_agent_launch_job_success_shows_progress_steps(databricks_client_stub, t
             tool_output_callback=capture_progress
         )
         assert result.success is True
-        assert "123456" in result.message
-        assert len(progress_steps) == 0, "Expected no progress steps for this agent scenario, or update assertions."
+        assert "123456" in result.message # Assuming databricks_client_stub still returns this
+        assert len(progress_steps) == 1, "Expected one progress step."
+        assert progress_steps[0] == "Attempting to submit job."
 
 def test_agent_launch_job_callback_errors_bubble_up(databricks_client_stub, temp_config):
     """
     AGENT TEST (TEMPLATE): Errors from tool_output_callback should result in a failed CommandResult.
-    This test currently FAILS if the handler does not correctly set success=False.
     """
     with patch("chuck_data.config._config_manager", temp_config):
         def failing_callback(tool_name, data):
@@ -199,7 +198,6 @@ def test_agent_launch_job_callback_errors_bubble_up(databricks_client_stub, temp
 def test_agent_job_status_success_shows_progress_steps(databricks_client_stub, temp_config):
     """
     AGENT TEST (TEMPLATE): Getting job status successfully shows expected progress steps.
-    NOTE: Adjust assertions. Most status commands are direct and may not have progress steps.
     """
     with patch("chuck_data.config._config_manager", temp_config):
         progress_steps = []
@@ -212,12 +210,12 @@ def test_agent_job_status_success_shows_progress_steps(databricks_client_stub, t
         )
         assert result.success is True
         assert result.data["state"]["life_cycle_state"] == "RUNNING"
-        assert len(progress_steps) == 0, "Expected no progress steps for job_status, or update assertions."
+        assert len(progress_steps) == 1, "Expected one progress step."
+        assert progress_steps[0] == "Attempting to get status for run ID 123456."
 
 def test_agent_job_status_callback_errors_bubble_up(databricks_client_stub, temp_config):
     """
     AGENT TEST (TEMPLATE): Errors from tool_output_callback should result in a failed CommandResult for job status.
-    This test currently FAILS if the handler does not correctly set success=False.
     """
     with patch("chuck_data.config._config_manager", temp_config):
         def failing_callback(tool_name, data):
