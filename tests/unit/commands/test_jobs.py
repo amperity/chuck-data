@@ -237,7 +237,7 @@ def test_agent_job_status_callback_errors_bubble_up(databricks_client_stub, temp
 
 def test_agent_tool_executor_launch_job_integration(databricks_client_stub, temp_config):
     """AGENT TEST: End-to-end integration for launching a job via execute_tool.
-    This test currently FAILS if '/launch_job' is not the correct registered tool name.
+    Assumes 'launch-job' is the correct registered tool name.
     """
     if not execute_tool:
         pytest.skip("execute_tool not available, skipping integration test.")
@@ -252,7 +252,7 @@ def test_agent_tool_executor_launch_job_integration(databricks_client_stub, temp
         }
         agent_result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="/launch_job",
+            tool_name="launch-job",
             tool_args=tool_args
         )
         assert agent_result is not None
@@ -260,7 +260,7 @@ def test_agent_tool_executor_launch_job_integration(databricks_client_stub, temp
 
 def test_agent_tool_executor_job_status_integration(databricks_client_stub, temp_config):
     """AGENT TEST: End-to-end integration for getting job status via execute_tool.
-    This test currently FAILS if '/job_status' is not the correct registered tool name.
+    Assumes 'job-status' is the correct registered tool name.
     """
     if not execute_tool:
         pytest.skip("execute_tool not available, skipping integration test.")
@@ -274,9 +274,9 @@ def test_agent_tool_executor_job_status_integration(databricks_client_stub, temp
         tool_args = {"run_id": "777888"}
         agent_result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="/job_status",
+            tool_name="job-status",
             tool_args=tool_args
         )
         assert agent_result is not None
         assert agent_result.get("run_id") == 777888
-        assert agent_result.get("state", {}).get("life_cycle_state") == "TERMINATED"
+        assert agent_result.get("state") == "TERMINATED"
