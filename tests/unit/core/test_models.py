@@ -1,121 +1,112 @@
 """Unit tests for the models module."""
 
-import unittest
+import pytest
 from chuck_data.models import list_models, get_model
-from tests.fixtures.fixtures import (
-    EXPECTED_MODEL_LIST,
-    DatabricksClientStub,
-)
 
 
-class TestModels(unittest.TestCase):
-    """Test cases for the models module."""
+def test_list_models_success(databricks_client_stub):
+    """Test successful retrieval of model list."""
+    # Configure stub to return expected model list
+    expected_models = [
+        {"name": "model1", "state": "READY", "creation_timestamp": 1234567890},
+        {"name": "model2", "state": "READY", "creation_timestamp": 1234567891},
+    ]
+    databricks_client_stub.models = expected_models
 
-    def test_list_models_success(self):
-        """Test successful retrieval of model list."""
-        # Create a client stub
-        client_stub = DatabricksClientStub()
-        # Configure stub to return expected model list
-        client_stub.models = EXPECTED_MODEL_LIST
+    models = list_models(databricks_client_stub)
 
-        models = list_models(client_stub)
+    assert models == expected_models
 
-        self.assertEqual(models, EXPECTED_MODEL_LIST)
 
-    def test_list_models_empty(self):
-        """Test retrieval with empty model list."""
-        # Create a client stub
-        client_stub = DatabricksClientStub()
-        # Configure stub to return empty list
-        client_stub.models = []
+def test_list_models_empty(databricks_client_stub):
+    """Test retrieval with empty model list."""
+    # Configure stub to return empty list
+    databricks_client_stub.models = []
 
-        models = list_models(client_stub)
-        self.assertEqual(models, [])
+    models = list_models(databricks_client_stub)
+    assert models == []
 
-    def test_list_models_http_error(self):
-        """Test failure with HTTP error."""
-        # Create a client stub
-        client_stub = DatabricksClientStub()
-        # Configure stub to raise ValueError
-        client_stub.set_list_models_error(
-            ValueError("HTTP error occurred: 404 Not Found")
-        )
 
-        with self.assertRaises(ValueError) as context:
-            list_models(client_stub)
-        self.assertIn("Model serving API error", str(context.exception))
+def test_list_models_http_error(databricks_client_stub):
+    """Test failure with HTTP error."""
+    # Configure stub to raise ValueError
+    databricks_client_stub.set_list_models_error(
+        ValueError("HTTP error occurred: 404 Not Found")
+    )
 
-    def test_list_models_connection_error(self):
-        """Test failure due to connection error."""
-        # Create a client stub
-        client_stub = DatabricksClientStub()
-        # Configure stub to raise ConnectionError
-        client_stub.set_list_models_error(ConnectionError("Connection failed"))
+    with pytest.raises(ValueError) as excinfo:
+        list_models(databricks_client_stub)
+    assert "Model serving API error" in str(excinfo.value)
 
-        with self.assertRaises(ConnectionError) as context:
-            list_models(client_stub)
-        self.assertIn("Failed to connect to serving endpoint", str(context.exception))
 
-    def test_get_model_success(self):
-        """Test successful retrieval of a specific model."""
-        # Create client stub and configure model detail
-        client_stub = DatabricksClientStub()
-        model_detail = {
-            "name": "databricks-llama-4-maverick",
-            "creator": "user@example.com",
-            "creation_timestamp": 1645123456789,
-            "state": "READY",
-        }
-        client_stub.add_model(
-            "databricks-llama-4-maverick",
-            status="READY",
-            creator="user@example.com",
-            creation_timestamp=1645123456789,
-        )
+def test_list_models_connection_error(databricks_client_stub):
+    """Test failure due to connection error."""
+    # Configure stub to raise ConnectionError
+    databricks_client_stub.set_list_models_error(ConnectionError("Connection failed"))
 
-        # Call the function
-        result = get_model(client_stub, "databricks-llama-4-maverick")
+    with pytest.raises(ConnectionError) as excinfo:
+        list_models(databricks_client_stub)
+    assert "Failed to connect to serving endpoint" in str(excinfo.value)
 
-        # Verify results
-        self.assertEqual(result["name"], model_detail["name"])
-        self.assertEqual(result["creator"], model_detail["creator"])
 
-    def test_get_model_not_found(self):
-        """Test retrieval of a non-existent model."""
-        # Create client stub that returns None for not found models
-        client_stub = DatabricksClientStub()
-        # No model added, so get_model will return None
+def test_get_model_success(databricks_client_stub):
+    """Test successful retrieval of a specific model."""
+    # Configure model detail
+    model_detail = {
+        "name": "databricks-llama-4-maverick",
+        "creator": "user@example.com",
+        "creation_timestamp": 1645123456789,
+        "state": "READY",
+    }
+    databricks_client_stub.add_model(
+        "databricks-llama-4-maverick",
+        status="READY",
+        creator="user@example.com",
+        creation_timestamp=1645123456789,
+    )
 
-        # Call the function
-        result = get_model(client_stub, "nonexistent-model")
+    # Call the function
+    result = get_model(databricks_client_stub, "databricks-llama-4-maverick")
 
-        # Verify result is None
-        self.assertIsNone(result)
+    # Verify results
+    assert result["name"] == model_detail["name"]
+    assert result["creator"] == model_detail["creator"]
 
-    def test_get_model_error(self):
-        """Test retrieval with a non-404 error."""
-        # Create client stub that raises a 500 error
-        client_stub = DatabricksClientStub()
-        client_stub.set_get_model_error(
-            ValueError("HTTP error occurred: 500 Internal Server Error")
-        )
 
-        # Call the function and expect an exception
-        with self.assertRaises(ValueError) as context:
-            get_model(client_stub, "error-model")
+def test_get_model_not_found(databricks_client_stub):
+    """Test retrieval of a non-existent model."""
+    # No model added, so get_model will return None
 
-        # Verify error handling
-        self.assertIn("Model serving API error", str(context.exception))
+    # Call the function
+    result = get_model(databricks_client_stub, "nonexistent-model")
 
-    def test_get_model_connection_error(self):
-        """Test retrieval with connection error."""
-        # Create client stub that raises a connection error
-        client_stub = DatabricksClientStub()
-        client_stub.set_get_model_error(ConnectionError("Connection failed"))
+    # Verify result is None
+    assert result is None
 
-        # Call the function and expect an exception
-        with self.assertRaises(ConnectionError) as context:
-            get_model(client_stub, "network-error-model")
 
-        # Verify error handling
-        self.assertIn("Failed to connect to serving endpoint", str(context.exception))
+def test_get_model_error(databricks_client_stub):
+    """Test retrieval with a non-404 error."""
+    # Configure stub to raise a 500 error
+    databricks_client_stub.set_get_model_error(
+        ValueError("HTTP error occurred: 500 Internal Server Error")
+    )
+
+    # Call the function and expect an exception
+    with pytest.raises(ValueError) as excinfo:
+        get_model(databricks_client_stub, "error-model")
+
+    # Verify error handling
+    assert "Model serving API error" in str(excinfo.value)
+
+
+def test_get_model_connection_error(databricks_client_stub):
+    """Test retrieval with connection error."""
+    # Configure stub to raise a connection error
+    databricks_client_stub.set_get_model_error(ConnectionError("Connection failed"))
+
+    # Call the function and expect an exception
+    with pytest.raises(ConnectionError) as excinfo:
+        get_model(databricks_client_stub, "network-error-model")
+
+    # Verify error handling
+    assert "Failed to connect to serving endpoint" in str(excinfo.value)
