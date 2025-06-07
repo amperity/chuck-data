@@ -47,6 +47,9 @@ from .table import DEFINITION as table_definition
 # Import bug report command
 from .bug import DEFINITION as bug_definition
 
+# Import getting started command
+from .getting_started import DEFINITION as getting_started_definition
+
 # List of all command definitions to register
 ALL_COMMAND_DEFINITIONS = [
     # Authentication & Workspace commands
@@ -88,6 +91,7 @@ ALL_COMMAND_DEFINITIONS = [
     help_definition,
     status_definition,
     bug_definition,
+    getting_started_definition,
     # Agent command
     agent_definition,
 ]

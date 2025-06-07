@@ -93,6 +93,7 @@ def format_help_text(
         ],
         "Utilities": [
             "help",
+            "getting-started",
             "bug",
             "agent",
             "exit",
@@ -158,9 +159,9 @@ def format_help_text(
         elif cmd_name == "agent" or cmd.name == "agent":
             alias = f"{alias} <query>"
         elif cmd_name == "scan-schema-for-pii" or cmd.name == "scan-schema-for-pii":
-            alias = f"{alias} <table_name>"
+            alias = f"{alias} [--catalog_name <catalog>] [--schema_name <schema>]"
         elif cmd_name == "tag-pii-columns" or cmd.name == "tag-pii-columns":
-            alias = f"{alias} <table_name>"
+            alias = f"{alias} [--table name <table-name> --pii_columns <pii-columns>]"
         elif cmd_name == "create-volume" or cmd.name == "create-volume":
             alias = f"{alias} --name <volume_name> [--catalog_name <catalog>] [--schema_name <schema>] [--volume_type MANAGED|EXTERNAL]"
         elif cmd_name == "upload-file" or cmd.name == "upload-file":

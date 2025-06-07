@@ -507,18 +507,17 @@ class ChuckTUI:
                 # For the usage command, we just display the message
                 if result.message:
                     self._display_usage(result.message)
-            elif (
-                cmd == "/help"
-                and isinstance(result.data, dict)
-                and "help_text" in result.data
-            ):
-                self.console.print(
-                    Panel(
+            elif cmd.startswith("/help") and isinstance(result.data, dict) and "help_text" in result.data:
+                # Custom display for help text with special formatting
+                self.console.print(Panel(
                         result.data["help_text"],
                         title="CHUCK AI Help",
                         border_style="cyan",
-                    )
-                )
+                    ))
+            elif (cmd.startswith("/getting-started") or cmd.startswith("/examples") or cmd.startswith("/tips")) \
+                    and isinstance(result.data, dict) and "getting_started_text" in result.data:
+                # Custom display for getting started tips with special formatting
+                self.console.print(Panel(result.data["getting_started_text"], title="Getting Started with Chuck", border_style="cyan"))
             elif (
                 cmd in ["/agent", "/ask"]
                 and isinstance(result.data, dict)
