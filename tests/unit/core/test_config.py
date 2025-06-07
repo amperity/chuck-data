@@ -1,6 +1,6 @@
 """Tests for the configuration functionality in Chuck."""
 
-import unittest
+import pytest
 import os
 import json
 import tempfile
@@ -23,70 +23,72 @@ from chuck_data.config import (
 )
 
 
-class TestPydanticConfig(unittest.TestCase):
-    """Test cases for Pydantic-based configuration."""
+@pytest.fixture
+def config_setup():
+    """Set up test configuration with temp file and patched global manager."""
+    # Create a temporary file for testing
+    temp_dir = tempfile.TemporaryDirectory()
+    config_path = os.path.join(temp_dir.name, "test_config.json")
 
-    def setUp(self):
-        """Set up the test environment."""
-        # Create a temporary file for testing
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.config_path = os.path.join(self.temp_dir.name, "test_config.json")
+    # Create a test-specific config manager
+    config_manager = ConfigManager(config_path)
 
-        # Create a test-specific config manager
-        self.config_manager = ConfigManager(self.config_path)
+    # Mock the global config manager
+    patcher = patch("chuck_data.config._config_manager", config_manager)
+    mock_manager = patcher.start()
 
-        # Mock the global config manager
-        self.patcher = patch("chuck_data.config._config_manager", self.config_manager)
-        self.mock_manager = self.patcher.start()
+    yield config_manager, config_path, temp_dir
 
-    def tearDown(self):
-        """Clean up after tests."""
-        self.patcher.stop()
-        self.temp_dir.cleanup()
+    # Cleanup
+    patcher.stop()
+    temp_dir.cleanup()
 
-    def test_default_config(self):
-        """Test default configuration values."""
-        config = self.config_manager.get_config()
-        # No longer expecting a specific default workspace URL since we now preserve full URLs
-        # and the default might be None until explicitly set
-        self.assertIsNone(config.active_model)
-        self.assertIsNone(config.warehouse_id)
-        self.assertIsNone(config.active_catalog)
-        self.assertIsNone(config.active_schema)
+def test_default_config(config_setup):
+    """Test default configuration values."""
+    config_manager, config_path, temp_dir = config_setup
+    config = config_manager.get_config()
+    # No longer expecting a specific default workspace URL since we now preserve full URLs
+    # and the default might be None until explicitly set
+    assert config.active_model is None
+    assert config.warehouse_id is None
+    assert config.active_catalog is None
+    assert config.active_schema is None
 
-    def test_config_update(self):
-        """Test updating configuration values."""
-        # Mock out environment variables that could interfere
-        with patch.dict(os.environ, {}, clear=True):
-            # Update values
-            self.config_manager.update(
-                workspace_url="test-workspace",
-                active_model="test-model",
-                warehouse_id="test-warehouse",
-                active_catalog="test-catalog",
-                active_schema="test-schema",
-            )
+def test_config_update(config_setup):
+    """Test updating configuration values."""
+    config_manager, config_path, temp_dir = config_setup
+    
+    # Mock out environment variables that could interfere
+    with patch.dict(os.environ, {}, clear=True):
+        # Update values
+        config_manager.update(
+            workspace_url="test-workspace",
+            active_model="test-model",
+            warehouse_id="test-warehouse",
+            active_catalog="test-catalog",
+            active_schema="test-schema",
+        )
 
-            # Check values were updated in memory
-            config = self.config_manager.get_config()
-            self.assertEqual(config.workspace_url, "test-workspace")
-            self.assertEqual(config.active_model, "test-model")
-            self.assertEqual(config.warehouse_id, "test-warehouse")
-            self.assertEqual(config.active_catalog, "test-catalog")
-            self.assertEqual(config.active_schema, "test-schema")
+        # Check values were updated in memory
+        config = config_manager.get_config()
+        assert config.workspace_url == "test-workspace"
+        assert config.active_model == "test-model"
+        assert config.warehouse_id == "test-warehouse"
+        assert config.active_catalog == "test-catalog"
+        assert config.active_schema == "test-schema"
 
-            # Check file was created
-            self.assertTrue(os.path.exists(self.config_path))
+        # Check file was created
+        assert os.path.exists(config_path)
 
-            # Check file contents
-            with open(self.config_path, "r") as f:
-                saved_config = json.load(f)
+        # Check file contents
+        with open(config_path, "r") as f:
+            saved_config = json.load(f)
 
-            self.assertEqual(saved_config["workspace_url"], "test-workspace")
-            self.assertEqual(saved_config["active_model"], "test-model")
-            self.assertEqual(saved_config["warehouse_id"], "test-warehouse")
-            self.assertEqual(saved_config["active_catalog"], "test-catalog")
-            self.assertEqual(saved_config["active_schema"], "test-schema")
+        assert saved_config["workspace_url"] == "test-workspace"
+        assert saved_config["active_model"] == "test-model"
+        assert saved_config["warehouse_id"] == "test-warehouse"
+        assert saved_config["active_catalog"] == "test-catalog"
+        assert saved_config["active_schema"] == "test-schema"
 
     def test_config_load_save_cycle(self):
         """Test loading and saving configuration."""
