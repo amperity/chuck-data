@@ -136,7 +136,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
         # Set the active catalog
         catalog_name_to_set = target_catalog.get("name")
-        catalog_type = target_catalog.get("type", "Unknown")
+        catalog_type = target_catalog.get("catalog_type", "Unknown")
         catalog_owner = target_catalog.get("owner", "Unknown")
 
         set_active_catalog(catalog_name_to_set)

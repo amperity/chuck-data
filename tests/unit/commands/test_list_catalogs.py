@@ -21,10 +21,12 @@ def test_direct_command_lists_available_catalogs(databricks_client_stub, temp_co
     """Direct command lists available catalogs successfully."""
     with patch("chuck_data.config._config_manager", temp_config):
         databricks_client_stub.add_catalog(
-            "production", catalog_type="MANAGED", comment="Production data"
+            "production", catalog_type="MANAGED_CATALOG", comment="Production data"
         )
         databricks_client_stub.add_catalog(
-            "development", catalog_type="EXTERNAL", comment="Dev environment"
+            "development",
+            catalog_type="DELTASHARING_CATALOG",
+            comment="Dev environment",
         )
 
         result = handle_command(databricks_client_stub)
@@ -39,6 +41,16 @@ def test_direct_command_lists_available_catalogs(databricks_client_stub, temp_co
         catalog_names = [c["name"] for c in result.data["catalogs"]]
         assert "production" in catalog_names
         assert "development" in catalog_names
+
+        # Catalog types are properly mapped from catalog_type field
+        prod_catalog = next(
+            c for c in result.data["catalogs"] if c["name"] == "production"
+        )
+        dev_catalog = next(
+            c for c in result.data["catalogs"] if c["name"] == "development"
+        )
+        assert prod_catalog["type"] == "MANAGED_CATALOG"
+        assert dev_catalog["type"] == "DELTASHARING_CATALOG"
 
         # Default behavior: no table display
         assert not result.data.get("display", True)
@@ -99,6 +111,50 @@ def test_direct_command_handles_pagination():
     assert (
         "More catalogs available with page token: next_page_token_123" in result.message
     )
+
+
+def test_catalog_type_mapping_from_databricks_api():
+    """Catalog types are correctly mapped from Databricks API catalog_type field."""
+    from tests.fixtures.databricks.client import DatabricksClientStub
+
+    # Create a stub that returns data in the same format as real Databricks API
+    class RealApiFormatStub(DatabricksClientStub):
+        def list_catalogs(
+            self, include_browse=False, max_results=None, page_token=None
+        ):
+            # Return data like real Databricks API (with catalog_type instead of type)
+            return {
+                "catalogs": [
+                    {
+                        "name": "internal_catalog",
+                        "catalog_type": "INTERNAL_CATALOG",
+                        "owner": "system",
+                    },
+                    {
+                        "name": "managed_catalog",
+                        "catalog_type": "MANAGED_CATALOG",
+                        "owner": "admin",
+                    },
+                    {
+                        "name": "sharing_catalog",
+                        "catalog_type": "DELTASHARING_CATALOG",
+                        "owner": "user",
+                    },
+                ]
+            }
+
+    real_format_stub = RealApiFormatStub()
+    result = handle_command(real_format_stub)
+
+    # Command succeeds
+    assert result.success
+    assert len(result.data["catalogs"]) == 3
+
+    # Catalog types are correctly mapped from API response catalog_type field
+    catalogs_by_name = {c["name"]: c for c in result.data["catalogs"]}
+    assert catalogs_by_name["internal_catalog"]["type"] == "INTERNAL_CATALOG"
+    assert catalogs_by_name["managed_catalog"]["type"] == "MANAGED_CATALOG"
+    assert catalogs_by_name["sharing_catalog"]["type"] == "DELTASHARING_CATALOG"
 
 
 def test_databricks_api_errors_handled_gracefully():
