@@ -289,7 +289,6 @@ class ModelSelectionStep(SetupStep):
 
         # Sort models the same way as display (recommended first)
         recommended_models = [
-            "databricks-meta-llama-3-3-70b-instruct",
             "databricks-claude-3-7-sonnet",
         ]
 

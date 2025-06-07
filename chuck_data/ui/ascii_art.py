@@ -101,9 +101,11 @@ Welcome to the Chuck Data agentic data engineering research preview!
 
 Chuck is an agent for building amazing customer centric data models and workflows in your Databricks account.
 
-Enter prompts to ask Chuck for help.
+Work with Chuck via natural language prompts or direct commands.
 
-Try asking chuck "What customer data do I have?" or "Build an identity keychain."
+Check us out on discord by running /discord!
+
+Try out /help or /tips to get started, or just ask Chuck a question!
 """
 
 
