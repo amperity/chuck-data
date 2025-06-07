@@ -55,7 +55,9 @@ Type [bold]/discord[/bold] to join our discord community and ask experts!
         return CommandResult(True, data={"getting_started_text": getting_started_text})
     except Exception as e:
         logging.error(f"Error generating getting started tips: {e}", exc_info=True)
-        return CommandResult(False, error=e, message="Error generating tips and examples.")
+        return CommandResult(
+            False, error=e, message="Error generating tips and examples."
+        )
 
 
 DEFINITION = CommandDefinition(
