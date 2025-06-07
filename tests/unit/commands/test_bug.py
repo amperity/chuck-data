@@ -14,7 +14,7 @@ from chuck_data.commands.bug import (
     _get_session_log,
 )
 from chuck_data.config import ConfigManager
-from tests.fixtures import AmperityClientStub
+from tests.fixtures.fixtures import AmperityClientStub
 
 
 class TestBugCommand:

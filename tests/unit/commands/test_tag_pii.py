@@ -12,7 +12,7 @@ from chuck_data.config import (
     set_active_catalog,
     set_active_schema,
 )
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestTagPiiCommand:

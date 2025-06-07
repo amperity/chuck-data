@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from chuck_data.metrics_collector import MetricsCollector, get_metrics_collector
-from tests.fixtures import AmperityClientStub, ConfigManagerStub
+from tests.fixtures.fixtures import AmperityClientStub, ConfigManagerStub
 
 
 class TestMetricsCollector(unittest.TestCase):

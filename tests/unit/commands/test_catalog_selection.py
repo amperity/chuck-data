@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from chuck_data.commands.catalog_selection import handle_command
 from chuck_data.config import ConfigManager, get_active_catalog
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestCatalogSelection(unittest.TestCase):

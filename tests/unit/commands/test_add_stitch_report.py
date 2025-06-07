@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from chuck_data.commands.add_stitch_report import handle_command
-from tests.fixtures import DatabricksClientStub, MetricsCollectorStub
+from tests.fixtures.fixtures import DatabricksClientStub, MetricsCollectorStub
 
 
 class TestAddStitchReport(unittest.TestCase):

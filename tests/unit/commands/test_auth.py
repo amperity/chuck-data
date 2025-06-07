@@ -8,7 +8,7 @@ from chuck_data.commands.auth import (
     handle_databricks_login,
     handle_logout,
 )
-from tests.fixtures import AmperityClientStub
+from tests.fixtures.fixtures import AmperityClientStub
 
 
 class TestAuthCommands(unittest.TestCase):

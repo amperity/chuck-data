@@ -11,7 +11,7 @@ from chuck_data.catalogs import (
     list_tables,
     get_table,
 )
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestCatalogs(unittest.TestCase):

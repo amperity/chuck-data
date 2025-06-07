@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from chuck_data.commands.list_tables import handle_command
 from chuck_data.config import ConfigManager
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestListTables(unittest.TestCase):

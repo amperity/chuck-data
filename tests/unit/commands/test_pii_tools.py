@@ -12,7 +12,7 @@ from chuck_data.commands.pii_tools import (
     _helper_scan_schema_for_pii_logic,
 )
 from chuck_data.config import ConfigManager
-from tests.fixtures import DatabricksClientStub, LLMClientStub
+from tests.fixtures.fixtures import DatabricksClientStub, LLMClientStub
 
 
 class TestPIITools(unittest.TestCase):

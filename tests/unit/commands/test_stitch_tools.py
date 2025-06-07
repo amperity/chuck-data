@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from chuck_data.commands.stitch_tools import _helper_setup_stitch_logic
-from tests.fixtures import LLMClientStub
+from tests.fixtures.fixtures import LLMClientStub
 
 
 class TestStitchTools(unittest.TestCase):

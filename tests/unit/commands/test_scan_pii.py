@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from chuck_data.commands.scan_pii import handle_command
-from tests.fixtures import LLMClientStub
+from tests.fixtures.fixtures import LLMClientStub
 
 
 class TestScanPII(unittest.TestCase):

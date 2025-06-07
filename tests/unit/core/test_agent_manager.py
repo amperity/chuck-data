@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 sys.modules.setdefault("openai", MagicMock())
 
 from chuck_data.agent import AgentManager  # noqa: E402
-from tests.fixtures import LLMClientStub, MockToolCall  # noqa: E402
+from tests.fixtures.fixtures import LLMClientStub, MockToolCall  # noqa: E402
 from chuck_data.agent.prompts import (  # noqa: E402
     PII_AGENT_SYSTEM_MESSAGE,
     BULK_PII_AGENT_SYSTEM_MESSAGE,

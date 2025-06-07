@@ -7,7 +7,7 @@ This module contains tests for the list_warehouses command handler.
 import unittest
 
 from chuck_data.commands.list_warehouses import handle_command
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestListWarehouses(unittest.TestCase):

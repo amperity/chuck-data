@@ -2,7 +2,7 @@
 
 import unittest
 from chuck_data.models import list_models, get_model
-from tests.fixtures import (
+from tests.fixtures.fixtures import (
     EXPECTED_MODEL_LIST,
     DatabricksClientStub,
 )

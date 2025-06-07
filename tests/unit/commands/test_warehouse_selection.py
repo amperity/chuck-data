@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from chuck_data.commands.warehouse_selection import handle_command
 from chuck_data.config import ConfigManager, get_warehouse_id
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestWarehouseSelection(unittest.TestCase):

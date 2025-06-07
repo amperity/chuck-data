@@ -6,7 +6,7 @@ from unittest.mock import patch
 from chuck_data.commands.jobs import handle_launch_job, handle_job_status
 from chuck_data.commands.base import CommandResult
 from chuck_data.config import ConfigManager
-from tests.fixtures import DatabricksClientStub
+from tests.fixtures.fixtures import DatabricksClientStub
 
 
 class TestJobs(unittest.TestCase):
