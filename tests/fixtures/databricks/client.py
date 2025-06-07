@@ -56,6 +56,7 @@ class DatabricksClientStub(
         self.volumes = {}
         self.connection_status = "connected"
         self.permissions = {}
+        self.token_validation_result = True
         self.sql_results = {}
         self.pii_scan_results = {}
 

@@ -7,6 +7,7 @@ class ConnectionStubMixin:
     def __init__(self):
         self.connection_status = "connected"
         self.permissions = {}
+        self.token_validation_result = True
 
     def test_connection(self):
         """Test the connection."""
@@ -22,3 +23,22 @@ class ConnectionStubMixin:
     def set_connection_status(self, status):
         """Set the connection status for testing."""
         self.connection_status = status
+
+    def validate_token(self):
+        """Validate the token."""
+        if self.token_validation_result is True:
+            return True
+        elif self.token_validation_result is False:
+            return False
+        else:
+            # If it's an exception, raise it
+            raise self.token_validation_result
+
+    def set_token_validation_result(self, result):
+        """Set the token validation result for testing.
+        
+        Args:
+            result: True for valid token, False for invalid token, 
+                   or Exception instance to raise an exception
+        """
+        self.token_validation_result = result

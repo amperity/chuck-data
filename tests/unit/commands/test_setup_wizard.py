@@ -6,7 +6,7 @@ Comprehensive tests for the setup wizard command covering:
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from io import StringIO
 from tests.fixtures.amperity import AmperityClientStub
 
@@ -150,9 +150,15 @@ class TestWizardComponents:
             assert not result.is_valid, f"Input '{invalid_input}' should be invalid"
             assert "Please enter 'yes' or 'no'" in result.message
 
-    def test_input_validator_edge_cases(self):
+    def test_input_validator_edge_cases(self, databricks_client_stub):
         """Test input validator edge cases."""
-        validator = InputValidator()
+        # Create client factory that returns our stub configured for failure
+        databricks_client_stub.set_token_validation_result(Exception("Connection failed"))
+        
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
+            
+        validator = InputValidator(databricks_client_factory=client_factory)
 
         # Test whitespace handling in usage consent
         result = validator.validate_usage_consent("  yes  ")
@@ -165,14 +171,12 @@ class TestWizardComponents:
         assert result.is_valid
         assert result.processed_value == "Test-Model"
 
-        # Test token validation with invalid workspace
-        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
-            mock_client.side_effect = Exception("Connection failed")
-            result = validator.validate_token(
-                "some-token", "https://invalid-workspace.com"
-            )
-            assert not result.is_valid
-            assert "Error validating token" in result.message
+        # Test token validation with invalid workspace - uses injected stub
+        result = validator.validate_token(
+            "some-token", "https://invalid-workspace.com"
+        )
+        assert not result.is_valid
+        assert "Error validating token" in result.message
 
 
 class TestStepHandlers:
@@ -528,46 +532,53 @@ class TestErrorFlowIntegration:
     """Test complete error flows end-to-end."""
 
     @patch("chuck_data.commands.wizard.steps.get_amperity_token")
-    @patch("chuck_data.commands.wizard.steps.AmperityAPIClient")
-    @patch("chuck_data.clients.databricks.DatabricksAPIClient")
     def test_complete_error_recovery_flow(
-        self, mock_databricks_client, mock_amperity_client, mock_get_token
+        self, mock_get_token, databricks_client_stub, amperity_client_stub
     ):
         """Test a complete error recovery flow."""
-        # Setup stub for external dependencies only
+        # Setup external dependencies with stubs
         mock_get_token.return_value = None
-        amperity_stub = AmperityClientStub()
-        mock_amperity_client.return_value = amperity_stub
+        
+        # Configure databricks stub for token validation failure
+        databricks_client_stub.set_token_validation_result(False)
+        
+        # Setup client factory for dependency injection
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
+        
+        # Mock AmperityAPIClient to return our stub
+        with patch("chuck_data.commands.wizard.steps.AmperityAPIClient", return_value=amperity_client_stub):
 
-        # Mock token validation failure
-        mock_db_client = MagicMock()
-        mock_db_client.validate_token.return_value = False
-        mock_databricks_client.return_value = mock_db_client
+            # Inject client factory into validator - need to patch the orchestrator creation
+            with patch("chuck_data.commands.setup_wizard.InputValidator") as mock_validator_class:
+                # Create real validator with our client factory
+                real_validator = InputValidator(databricks_client_factory=client_factory)
+                mock_validator_class.return_value = real_validator
+                
+                orchestrator = SetupWizardOrchestrator()
 
-        orchestrator = SetupWizardOrchestrator()
+                # 1. Start wizard - should succeed
+                result = orchestrator.start_wizard()
+                assert result.success
 
-        # 1. Start wizard - should succeed
-        result = orchestrator.start_wizard()
-        assert result.success
+                # 2. Enter valid workspace URL - should succeed
+                result = orchestrator.handle_interactive_input("workspace123")
+                assert result.success
 
-        # 2. Enter valid workspace URL - should succeed
-        result = orchestrator.handle_interactive_input("workspace123")
-        assert result.success
+                # 3. Enter invalid token - token validation will fail and go back to URL step
+                # The wizard handles this gracefully by returning success=False and transitioning back
+                result = orchestrator.handle_interactive_input("invalid-token")
+                # The result might be success=True because it successfully transitioned back to URL step
+                # but the error flow worked correctly as evidenced by the output showing step 2
 
-        # 3. Enter invalid token - token validation will fail and go back to URL step
-        # The wizard handles this gracefully by returning success=False and transitioning back
-        result = orchestrator.handle_interactive_input("invalid-token")
-        # The result might be success=True because it successfully transitioned back to URL step
-        # but the error flow worked correctly as evidenced by the output showing step 2
+                # The orchestrator should now be back at workspace URL step
+                # We can verify this by checking that the next input is treated as a URL
 
-        # The orchestrator should now be back at workspace URL step
-        # We can verify this by checking that the next input is treated as a URL
+                # 4. Re-enter workspace URL
+                result = orchestrator.handle_interactive_input("workspace456")
+                assert result.success
 
-        # 4. Re-enter workspace URL
-        result = orchestrator.handle_interactive_input("workspace456")
-        assert result.success
-
-        # This flow tests the real error recovery behavior without over-mocking
+                # This flow tests the real error recovery behavior without over-mocking
 
     def test_validation_error_messages_preserved(self):
         """Test that validation error messages are properly preserved and displayed."""
@@ -708,22 +719,24 @@ class TestSecurityFixes:
         # Should have the error message
         assert "Please re-enter your workspace URL and token" in result.message
 
-    def test_token_not_stored_in_processed_value_on_failure(self):
+    def test_token_not_stored_in_processed_value_on_failure(self, databricks_client_stub):
         """Test that tokens are not stored in processed_value when validation fails."""
         from chuck_data.commands.wizard.validator import InputValidator
 
-        validator = InputValidator()
+        # Configure stub to raise exception for token validation
+        databricks_client_stub.set_token_validation_result(Exception("Validation failed"))
+        
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
+        
+        validator = InputValidator(databricks_client_factory=client_factory)
 
-        # Mock token validation to fail
-        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
-            mock_client.side_effect = Exception("Validation failed")
+        result = validator.validate_token("secret-token-123", "https://test.com")
 
-            result = validator.validate_token("secret-token-123", "https://test.com")
-
-            # Should fail validation
-            assert not result.is_valid
-            # Should not store the token in processed_value
-            assert result.processed_value is None
+        # Should fail validation
+        assert not result.is_valid
+        # Should not store the token in processed_value
+        assert result.processed_value is None
 
     def test_step_detection_for_password_mode_after_error(self):
         """Test that step detection works correctly after token validation error."""
@@ -755,7 +768,7 @@ class TestSecurityFixes:
         ), "Should NOT hide input on workspace step (even with workspace_url present)"
 
     @patch("chuck_data.commands.wizard.steps.get_amperity_token")
-    def test_context_step_update_on_token_failure(self, mock_get_token):
+    def test_context_step_update_on_token_failure(self, mock_get_token, databricks_client_stub):
         """Test that context step is updated correctly when token validation fails."""
         from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
         from chuck_data.interactive_context import InteractiveContext
@@ -780,13 +793,25 @@ class TestSecurityFixes:
             context_data = context.get_context_data("/setup")
             assert context_data.get("current_step") == "token_input"
 
-            # Mock a validation failure that should go back to workspace URL
-            with patch(
-                "chuck_data.clients.databricks.DatabricksAPIClient"
-            ) as mock_client:
-                mock_db_client = MagicMock()
-                mock_db_client.validate_token.return_value = False
-                mock_client.return_value = mock_db_client
+            # Configure databricks stub for validation failure and inject it
+            databricks_client_stub.set_token_validation_result(False)
+            
+            def client_factory(workspace_url, token):
+                return databricks_client_stub
+            
+            # Mock the validator creation to use our client factory
+            with patch("chuck_data.commands.setup_wizard.InputValidator") as mock_validator_class:
+                real_validator = InputValidator(databricks_client_factory=client_factory)
+                mock_validator_class.return_value = real_validator
+                
+                # Create new orchestrator with our validator
+                orchestrator = SetupWizardOrchestrator()
+                
+                # Re-do the setup since we created a new orchestrator
+                result = orchestrator.start_wizard()
+                assert result.success
+                result = orchestrator.handle_interactive_input("workspace123")
+                assert result.success
 
                 # Process token that should fail
                 result = orchestrator.handle_interactive_input("invalid-token")
@@ -910,34 +935,39 @@ class TestTokenSecurityAndInputMode:
         self.context.clear_active_context("/setup")
 
     @patch("chuck_data.commands.wizard.steps.get_amperity_token")
-    @patch("chuck_data.clients.databricks.DatabricksAPIClient")
     def test_token_not_stored_in_history_on_failure(
-        self, mock_databricks_client, mock_get_token
+        self, mock_get_token, databricks_client_stub
     ):
         """Test that tokens are not stored in command history when validation fails."""
         mock_get_token.return_value = "existing-token"
 
-        # Mock token validation failure
-        mock_db_client = MagicMock()
-        mock_db_client.validate_token.return_value = False
-        mock_databricks_client.return_value = mock_db_client
+        # Configure stub for token validation failure
+        databricks_client_stub.set_token_validation_result(False)
+        
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
 
-        orchestrator = SetupWizardOrchestrator()
+        # Mock the validator creation to use our client factory
+        with patch("chuck_data.commands.setup_wizard.InputValidator") as mock_validator_class:
+            real_validator = InputValidator(databricks_client_factory=client_factory)
+            mock_validator_class.return_value = real_validator
+            
+            orchestrator = SetupWizardOrchestrator()
 
-        # Start wizard and get to token input step
-        result = orchestrator.start_wizard()
-        assert result.success
+            # Start wizard and get to token input step
+            result = orchestrator.start_wizard()
+            assert result.success
 
-        result = orchestrator.handle_interactive_input("workspace123")
-        assert result.success
+            result = orchestrator.handle_interactive_input("workspace123")
+            assert result.success
 
-        # Now we should be on token input step
-        context_data = self.context.get_context_data("/setup")
-        assert context_data.get("current_step") == "token_input"
+            # Now we should be on token input step
+            context_data = self.context.get_context_data("/setup")
+            assert context_data.get("current_step") == "token_input"
 
-        # Simulate token input that fails validation - should go back to workspace URL
-        result = orchestrator.handle_interactive_input("fake-token-123")
-        # The result is success=True because it successfully transitions back to workspace step
+            # Simulate token input that fails validation - should go back to workspace URL
+            result = orchestrator.handle_interactive_input("fake-token-123")
+            # The result is success=True because it successfully transitions back to workspace step
 
         # Verify we're back at workspace URL step
         context_data = self.context.get_context_data("/setup")
@@ -996,7 +1026,7 @@ class TestTokenSecurityAndInputMode:
             ), f"{description}. Got hide_input={hide_input}"
 
     @patch("chuck_data.commands.wizard.steps.get_amperity_token")
-    def test_step_context_updates_correctly_on_token_failure(self, mock_get_token):
+    def test_step_context_updates_correctly_on_token_failure(self, mock_get_token, databricks_client_stub):
         """Test that step context is correctly updated when token validation fails."""
         mock_get_token.return_value = "existing-token"
 
@@ -1013,11 +1043,25 @@ class TestTokenSecurityAndInputMode:
         context_data = self.context.get_context_data("/setup")
         assert context_data.get("current_step") == "token_input"
 
-        # Mock token validation failure and process token input
-        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
-            mock_db_client = MagicMock()
-            mock_db_client.validate_token.return_value = False
-            mock_client.return_value = mock_db_client
+        # Configure stub and inject it for token validation failure  
+        databricks_client_stub.set_token_validation_result(False)
+        
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
+        
+        # Mock the validator creation to use our client factory
+        with patch("chuck_data.commands.setup_wizard.InputValidator") as mock_validator_class:
+            real_validator = InputValidator(databricks_client_factory=client_factory)
+            mock_validator_class.return_value = real_validator
+            
+            # Create new orchestrator with our validator
+            orchestrator = SetupWizardOrchestrator()
+            
+            # Re-do the setup since we created a new orchestrator
+            result = orchestrator.start_wizard()
+            assert result.success
+            result = orchestrator.handle_interactive_input("workspace123")
+            assert result.success
 
             result = orchestrator.handle_interactive_input("invalid-token")
 
@@ -1030,28 +1074,30 @@ class TestTokenSecurityAndInputMode:
                 context_data.get("current_step") == "workspace_url"
             ), f"Expected workspace_url step, got {context_data.get('current_step')}"
 
-    def test_token_not_in_wizard_state_after_failure(self):
+    def test_token_not_in_wizard_state_after_failure(self, databricks_client_stub):
         """Test that failed tokens are not stored in wizard state."""
         from chuck_data.commands.wizard.validator import InputValidator
 
-        validator = InputValidator()
+        # Configure stub to raise exception for token validation
+        databricks_client_stub.set_token_validation_result(Exception("Connection failed"))
+        
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
+        
+        validator = InputValidator(databricks_client_factory=client_factory)
 
-        # Mock token validation failure
-        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
-            mock_client.side_effect = Exception("Connection failed")
+        result = validator.validate_token(
+            "secret-token-456", "https://test.databricks.com"
+        )
+        assert not result.is_valid
 
-            result = validator.validate_token(
-                "secret-token-456", "https://test.databricks.com"
-            )
-            assert not result.is_valid
-
-            # The token should not be in the processed_value when validation fails
-            assert result.processed_value is None or "secret-token-456" not in str(
-                result.processed_value
-            )
+        # The token should not be in the processed_value when validation fails
+        assert result.processed_value is None or "secret-token-456" not in str(
+            result.processed_value
+        )
 
     @patch("chuck_data.commands.wizard.steps.get_amperity_token")
-    def test_no_token_leakage_in_error_messages(self, mock_get_token):
+    def test_no_token_leakage_in_error_messages(self, mock_get_token, databricks_client_stub):
         """Test that tokens don't leak into error messages."""
         mock_get_token.return_value = "existing-token"
 
@@ -1061,9 +1107,23 @@ class TestTokenSecurityAndInputMode:
         result = orchestrator.start_wizard()
         result = orchestrator.handle_interactive_input("workspace123")
 
-        # Mock token validation failure
-        with patch("chuck_data.clients.databricks.DatabricksAPIClient") as mock_client:
-            mock_client.side_effect = Exception("Network error with secret details")
+        # Configure stub and inject it for network error
+        databricks_client_stub.set_token_validation_result(Exception("Network error with secret details"))
+        
+        def client_factory(workspace_url, token):
+            return databricks_client_stub
+        
+        # Mock the validator creation to use our client factory
+        with patch("chuck_data.commands.setup_wizard.InputValidator") as mock_validator_class:
+            real_validator = InputValidator(databricks_client_factory=client_factory)
+            mock_validator_class.return_value = real_validator
+            
+            # Create new orchestrator with our validator
+            orchestrator = SetupWizardOrchestrator()
+            
+            # Re-do the setup since we created a new orchestrator
+            result = orchestrator.start_wizard()
+            result = orchestrator.handle_interactive_input("workspace123")
 
             result = orchestrator.handle_interactive_input("super-secret-token")
 
@@ -1127,7 +1187,7 @@ class TestTUISecurityIntegration:
             ), f"{description}. Got enable_history={enable_history}"
 
     @patch("chuck_data.commands.wizard.steps.get_amperity_token")
-    def test_api_error_message_displayed_to_user(self, mock_get_token):
+    def test_api_error_message_displayed_to_user(self, mock_get_token, databricks_client_stub):
         """Test that API errors from token validation are displayed to the user."""
         from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
         from chuck_data.interactive_context import InteractiveContext
@@ -1147,13 +1207,27 @@ class TestTUISecurityIntegration:
             result = orchestrator.handle_interactive_input("workspace123")
             assert result.success
 
-            # Mock API error when validating token
-            with patch(
-                "chuck_data.clients.databricks.DatabricksAPIClient"
-            ) as mock_client:
-                mock_client.side_effect = Exception(
-                    "Connection error: Failed to resolve 'workspace123.cloud.databricks.com'"
-                )
+            # Configure stub and inject it for connection error
+            databricks_client_stub.set_token_validation_result(Exception(
+                "Connection error: Failed to resolve 'workspace123.cloud.databricks.com'"
+            ))
+            
+            def client_factory(workspace_url, token):
+                return databricks_client_stub
+            
+            # Mock the validator creation to use our client factory
+            with patch("chuck_data.commands.setup_wizard.InputValidator") as mock_validator_class:
+                real_validator = InputValidator(databricks_client_factory=client_factory)
+                mock_validator_class.return_value = real_validator
+                
+                # Create new orchestrator with our validator
+                orchestrator = SetupWizardOrchestrator()
+                
+                # Re-do the setup since we created a new orchestrator
+                result = orchestrator.start_wizard()
+                assert result.success
+                result = orchestrator.handle_interactive_input("workspace123")
+                assert result.success
 
                 # Process token that should fail with API error
                 result = orchestrator.handle_interactive_input("some-token")
