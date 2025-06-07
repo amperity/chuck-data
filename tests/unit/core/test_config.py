@@ -244,13 +244,24 @@ def test_needs_setup_method(config_setup):
         assert not fresh_manager.needs_setup()
 
 
-@patch("chuck_data.config.clear_agent_history")
-def test_set_active_model_clears_history(mock_clear_history, config_setup):
+def test_set_active_model_clears_history(config_setup):
     """Test that setting active model clears agent history."""
     config_manager, config_path, temp_dir = config_setup
 
-    # Set active model
+    # Set up some agent history first
+    from chuck_data.config import set_agent_history, get_agent_history
+
+    test_history = [{"role": "user", "content": "test message"}]
+    set_agent_history(test_history)
+
+    # Verify history is set
+    history_before = get_agent_history()
+    assert len(history_before) == 1
+    assert history_before[0]["content"] == "test message"
+
+    # Set active model (should clear history)
     set_active_model("test-model")
 
-    # Should have called clear_agent_history
-    mock_clear_history.assert_called_once()
+    # Verify history was actually cleared
+    history_after = get_agent_history()
+    assert len(history_after) == 0
