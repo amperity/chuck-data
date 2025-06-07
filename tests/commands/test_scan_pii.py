@@ -76,7 +76,7 @@ class TestScanPII(unittest.TestCase):
         self.assertIn("Scanned 5/6 tables", result.message)
         self.assertIn("Found 3 tables with 8 PII columns", result.message)
         mock_helper_scan.assert_called_once_with(
-            self.client, llm_client_stub, "test_catalog", "test_schema"
+            self.client, llm_client_stub, "test_catalog", "test_schema", True
         )
 
     @patch("chuck_data.commands.scan_pii.get_active_catalog")
@@ -111,7 +111,7 @@ class TestScanPII(unittest.TestCase):
         # Verify results
         self.assertTrue(result.success)
         mock_helper_scan.assert_called_once_with(
-            self.client, llm_client_stub, "active_catalog", "active_schema"
+            self.client, llm_client_stub, "active_catalog", "active_schema", True
         )
 
     @patch("chuck_data.commands.scan_pii.LLMClient")

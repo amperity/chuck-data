@@ -124,12 +124,13 @@ class TestPIITools(unittest.TestCase):
             self.assertEqual(result["tables_with_pii"], 1)
             self.assertEqual(result["total_pii_columns"], 2)
 
-    @patch("chuck_data.ui.tui.get_console")
-    def test_progress_display_integration_test(self, mock_get_console):
+    @patch("rich.console.Console")
+    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used
+    def test_progress_display_integration_test(self, mock_console_class):
         """Integration test for progress display using real business logic."""
         # Setup mock console (external boundary - UI/Terminal)
         mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+        mock_console_class.return_value = mock_console
 
         # Set up real test data using stubs (external boundaries)
         self.client_stub.add_catalog("test_cat")
@@ -143,15 +144,9 @@ class TestPIITools(unittest.TestCase):
                 {"name": "first_name", "type_name": "string"},
             ],
         )
-        self.client_stub.add_table(
-            "test_cat",
-            "test_schema",
-            "orders",
-            columns=[{"name": "order_id", "type_name": "string"}],
-        )
 
         # Configure LLM responses for real PII detection
-        pii_response = '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"},{"name":"order_id","semantic":null}]'
+        pii_response = '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"}]'
         self.llm_client.set_response_content(pii_response)
 
         # Call real function with progress enabled
@@ -166,23 +161,27 @@ class TestPIITools(unittest.TestCase):
         # Verify real business logic results
         self.assertEqual(result["catalog"], "test_cat")
         self.assertEqual(result["schema"], "test_schema")
-        self.assertEqual(result["tables_scanned_attempted"], 2)
+        self.assertEqual(result["tables_scanned_attempted"], 1)
 
-        # TODO: After implementation, verify progress messages
-        # expected_messages = [
-        #     "[dim]Scanning test_cat.test_schema.users...[/dim]",
-        #     "[dim]Scanning test_cat.test_schema.orders...[/dim]"
-        # ]
-        # print_calls = [call[0][0] for call in mock_console.print.call_args_list]
-        # for expected_msg in expected_messages:
-        #     self.assertIn(expected_msg, print_calls)
+        # Verify progress messages are displayed
+        expected_messages = [
+            "[dim]Scanning test_cat.test_schema.users...[/dim]"
+        ]
+        
+        # Check if mock console was called
+        self.assertTrue(mock_console.print.called, "Console.print should have been called for progress display")
+        
+        print_calls = [call[0][0] for call in mock_console.print.call_args_list]
+        for expected_msg in expected_messages:
+            self.assertIn(expected_msg, print_calls)
 
-    @patch("chuck_data.ui.tui.get_console")
-    def test_progress_display_can_be_disabled(self, mock_get_console):
+    @patch("rich.console.Console")
+    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used
+    def test_progress_display_can_be_disabled(self, mock_console_class):
         """Test progress display can be disabled using real business logic."""
         # Setup mock console (external boundary)
         mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+        mock_console_class.return_value = mock_console
 
         # Set up real test data
         self.client_stub.add_catalog("test_cat")
@@ -213,8 +212,8 @@ class TestPIITools(unittest.TestCase):
             result["tables_successfully_processed"] >= 0
         )  # Should process successfully
 
-        # TODO: After implementation, verify NO progress messages when disabled
-        # if mock_console.print.called:
-        #     print_calls = [call[0][0] for call in mock_console.print.call_args_list]
-        #     progress_messages = [msg for msg in print_calls if "Scanning" in msg and "[dim]" in msg]
-        #     self.assertEqual(len(progress_messages), 0, "No progress messages when show_progress=False")
+        # Verify NO progress messages when disabled
+        if mock_console.print.called:
+            print_calls = [call[0][0] for call in mock_console.print.call_args_list]
+            progress_messages = [msg for msg in print_calls if "Scanning" in msg and "[dim]" in msg]
+            self.assertEqual(len(progress_messages), 0, "No progress messages when show_progress=False")

@@ -21,12 +21,13 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         # Use real databricks client stub (external boundary)
         self.client_stub = DatabricksClientStub()
 
-    @patch("chuck_data.ui.tui.get_console")
-    def test_interactive_display_with_real_business_logic(self, mock_get_console):
+    @patch("rich.console.Console")
+    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used  
+    def test_interactive_display_with_real_business_logic(self, mock_console_class):
         """Test interactive display using real business logic (following CLAUDE.md guidelines)."""
         # Setup mock console (external boundary - UI/Terminal)
         mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+        mock_console_class.return_value = mock_console
 
         # Setup real databricks data using stub
         self.client_stub.add_catalog("test_catalog")
@@ -72,26 +73,26 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         self.assertEqual(result.data["catalog"], "test_catalog")
         self.assertEqual(result.data["schema"], "test_schema")
 
-        # TODO: After implementation, verify console progress messages
-        # Once feature is implemented, uncomment the following:
-        # print_calls = [
-        #     call[0][0]
-        #     for call in mock_console.print.call_args_list
-        #     if mock_console.print.called
-        # ]
-        # expected_progress_messages = [
-        #     "[dim]Scanning test_catalog.test_schema.users...[/dim]",
-        #     "[dim]Scanning test_catalog.test_schema.products...[/dim]",
-        # ]
-        # for expected_msg in expected_progress_messages:
-        #     self.assertIn(expected_msg, print_calls)
+        # Verify console progress messages are displayed
+        print_calls = [
+            call[0][0]
+            for call in mock_console.print.call_args_list
+            if mock_console.print.called
+        ]
+        expected_progress_messages = [
+            "[dim]Scanning test_catalog.test_schema.users...[/dim]",
+            "[dim]Scanning test_catalog.test_schema.products...[/dim]",
+        ]
+        for expected_msg in expected_progress_messages:
+            self.assertIn(expected_msg, print_calls)
 
-    @patch("chuck_data.ui.tui.get_console")
-    def test_progress_can_be_disabled_with_real_logic(self, mock_get_console):
+    @patch("rich.console.Console")
+    @patch("chuck_data.ui.tui._tui_instance", None)  # Ensure fallback path is used
+    def test_progress_can_be_disabled_with_real_logic(self, mock_console_class):
         """Test that progress display can be disabled using real business logic."""
         # Setup mock console (external boundary)
         mock_console = MagicMock()
-        mock_get_console.return_value = mock_console
+        mock_console_class.return_value = mock_console
 
         # Setup real databricks data
         self.client_stub.add_catalog("test_catalog")
@@ -136,9 +137,9 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
 
     def test_show_progress_parameter_in_definition(self):
         """Test that show_progress parameter is properly defined in command definition."""
+        from chuck_data.commands.scan_pii import DEFINITION
 
-        # After implementation, verify the parameter is defined
-        # TODO: Uncomment after implementation
-        # self.assertIn("show_progress", DEFINITION.parameters)
-        # self.assertEqual(DEFINITION.parameters["show_progress"]["type"], "boolean")
-        # self.assertIn("progress", DEFINITION.parameters["show_progress"]["description"].lower())
+        # Verify the parameter is defined
+        self.assertIn("show_progress", DEFINITION.parameters)
+        self.assertEqual(DEFINITION.parameters["show_progress"]["type"], "boolean")
+        self.assertIn("progress", DEFINITION.parameters["show_progress"]["description"].lower())
