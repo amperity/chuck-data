@@ -27,36 +27,43 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         # Setup mock console (external boundary - UI/Terminal)
         mock_console = MagicMock()
         mock_get_console.return_value = mock_console
-        
+
         # Setup real databricks data using stub
         self.client_stub.add_catalog("test_catalog")
         self.client_stub.add_schema("test_catalog", "test_schema")
-        self.client_stub.add_table("test_catalog", "test_schema", "users", columns=[
-            {"name": "email", "type_name": "string"},
-            {"name": "first_name", "type_name": "string"},
-            {"name": "signup_date", "type_name": "date"}
-        ])
-        self.client_stub.add_table("test_catalog", "test_schema", "products", columns=[
-            {"name": "product_id", "type_name": "string"},
-            {"name": "description", "type_name": "string"}
-        ])
+        self.client_stub.add_table(
+            "test_catalog",
+            "test_schema",
+            "users",
+            columns=[
+                {"name": "email", "type_name": "string"},
+                {"name": "first_name", "type_name": "string"},
+                {"name": "signup_date", "type_name": "date"},
+            ],
+        )
+        self.client_stub.add_table(
+            "test_catalog",
+            "test_schema",
+            "products",
+            columns=[
+                {"name": "product_id", "type_name": "string"},
+                {"name": "description", "type_name": "string"},
+            ],
+        )
 
         # Configure LLM client stub (external boundary - API calls)
-        pii_response_users = '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"},{"name":"signup_date","semantic":null}]'
-        pii_response_products = '[{"name":"product_id","semantic":null},{"name":"description","semantic":null}]'
-        
+        pii_response = '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"},{"name":"signup_date","semantic":null}]'
+
         # Mock the LLM class but use real LLM client stub
         with patch("chuck_data.commands.scan_pii.LLMClient") as mock_llm_class:
             llm_stub = LLMClientStub()
             # Set up responses for multiple tables
-            llm_stub.set_response_content(pii_response_users)
+            llm_stub.set_response_content(pii_response)
             mock_llm_class.return_value = llm_stub
-            
+
             # Call real handle_command function (no mocking internal business logic)
             result = handle_command(
-                self.client_stub, 
-                catalog_name="test_catalog", 
-                schema_name="test_schema"
+                self.client_stub, catalog_name="test_catalog", schema_name="test_schema"
             )
 
         # Verify results using real business logic
@@ -64,64 +71,72 @@ class TestScanPIIInteractiveDisplay(unittest.TestCase):
         self.assertIn("test_catalog.test_schema", result.message)
         self.assertEqual(result.data["catalog"], "test_catalog")
         self.assertEqual(result.data["schema"], "test_schema")
-        
-        # Once feature is implemented, verify console progress messages
-        # For now, we expect no progress messages since feature isn't implemented yet
-        print_calls = [call[0][0] for call in mock_console.print.call_args_list if mock_console.print.called]
-        
-        # After implementation, we should see these messages:
-        expected_progress_messages = [
-            "[dim]Scanning test_catalog.test_schema.users...[/dim]",
-            "[dim]Scanning test_catalog.test_schema.products...[/dim]"
-        ]
-        
-        # TODO: Uncomment after implementation
+
+        # TODO: After implementation, verify console progress messages
+        # Once feature is implemented, uncomment the following:
+        # print_calls = [
+        #     call[0][0]
+        #     for call in mock_console.print.call_args_list
+        #     if mock_console.print.called
+        # ]
+        # expected_progress_messages = [
+        #     "[dim]Scanning test_catalog.test_schema.users...[/dim]",
+        #     "[dim]Scanning test_catalog.test_schema.products...[/dim]",
+        # ]
         # for expected_msg in expected_progress_messages:
         #     self.assertIn(expected_msg, print_calls)
 
-    @patch("chuck_data.ui.tui.get_console")  
+    @patch("chuck_data.ui.tui.get_console")
     def test_progress_can_be_disabled_with_real_logic(self, mock_get_console):
         """Test that progress display can be disabled using real business logic."""
         # Setup mock console (external boundary)
         mock_console = MagicMock()
         mock_get_console.return_value = mock_console
-        
+
         # Setup real databricks data
         self.client_stub.add_catalog("test_catalog")
-        self.client_stub.add_schema("test_catalog", "test_schema") 
-        self.client_stub.add_table("test_catalog", "test_schema", "users", columns=[
-            {"name": "email", "type_name": "string"}
-        ])
+        self.client_stub.add_schema("test_catalog", "test_schema")
+        self.client_stub.add_table(
+            "test_catalog",
+            "test_schema",
+            "users",
+            columns=[{"name": "email", "type_name": "string"}],
+        )
 
         # Configure LLM stub
         pii_response = '[{"name":"email","semantic":"email"}]'
-        
+
         with patch("chuck_data.commands.scan_pii.LLMClient") as mock_llm_class:
             llm_stub = LLMClientStub()
             llm_stub.set_response_content(pii_response)
             mock_llm_class.return_value = llm_stub
-            
+
             # Call with show_progress=False
             result = handle_command(
                 self.client_stub,
                 catalog_name="test_catalog",
-                schema_name="test_schema", 
-                show_progress=False
+                schema_name="test_schema",
+                show_progress=False,
             )
 
         # Verify results
         self.assertTrue(result.success)
-        
+
         # Verify no progress messages when disabled
         if mock_console.print.called:
             print_calls = [call[0][0] for call in mock_console.print.call_args_list]
-            progress_messages = [msg for msg in print_calls if "Scanning" in msg and "[dim]" in msg]
-            self.assertEqual(len(progress_messages), 0, "No progress messages should appear when show_progress=False")
+            progress_messages = [
+                msg for msg in print_calls if "Scanning" in msg and "[dim]" in msg
+            ]
+            self.assertEqual(
+                len(progress_messages),
+                0,
+                "No progress messages should appear when show_progress=False",
+            )
 
     def test_show_progress_parameter_in_definition(self):
         """Test that show_progress parameter is properly defined in command definition."""
-        from chuck_data.commands.scan_pii import DEFINITION
-        
+
         # After implementation, verify the parameter is defined
         # TODO: Uncomment after implementation
         # self.assertIn("show_progress", DEFINITION.parameters)

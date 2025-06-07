@@ -130,17 +130,25 @@ class TestPIITools(unittest.TestCase):
         # Setup mock console (external boundary - UI/Terminal)
         mock_console = MagicMock()
         mock_get_console.return_value = mock_console
-        
+
         # Set up real test data using stubs (external boundaries)
         self.client_stub.add_catalog("test_cat")
         self.client_stub.add_schema("test_cat", "test_schema")
-        self.client_stub.add_table("test_cat", "test_schema", "users", columns=[
-            {"name": "email", "type_name": "string"},
-            {"name": "first_name", "type_name": "string"}
-        ])
-        self.client_stub.add_table("test_cat", "test_schema", "orders", columns=[
-            {"name": "order_id", "type_name": "string"}
-        ])
+        self.client_stub.add_table(
+            "test_cat",
+            "test_schema",
+            "users",
+            columns=[
+                {"name": "email", "type_name": "string"},
+                {"name": "first_name", "type_name": "string"},
+            ],
+        )
+        self.client_stub.add_table(
+            "test_cat",
+            "test_schema",
+            "orders",
+            columns=[{"name": "order_id", "type_name": "string"}],
+        )
 
         # Configure LLM responses for real PII detection
         pii_response = '[{"name":"email","semantic":"email"},{"name":"first_name","semantic":"given-name"},{"name":"order_id","semantic":null}]'
@@ -148,14 +156,18 @@ class TestPIITools(unittest.TestCase):
 
         # Call real function with progress enabled
         result = _helper_scan_schema_for_pii_logic(
-            self.client_stub, self.llm_client, "test_cat", "test_schema", show_progress=True
+            self.client_stub,
+            self.llm_client,
+            "test_cat",
+            "test_schema",
+            show_progress=True,
         )
 
         # Verify real business logic results
         self.assertEqual(result["catalog"], "test_cat")
         self.assertEqual(result["schema"], "test_schema")
         self.assertEqual(result["tables_scanned_attempted"], 2)
-        
+
         # TODO: After implementation, verify progress messages
         # expected_messages = [
         #     "[dim]Scanning test_cat.test_schema.users...[/dim]",
@@ -171,13 +183,16 @@ class TestPIITools(unittest.TestCase):
         # Setup mock console (external boundary)
         mock_console = MagicMock()
         mock_get_console.return_value = mock_console
-        
+
         # Set up real test data
         self.client_stub.add_catalog("test_cat")
         self.client_stub.add_schema("test_cat", "test_schema")
-        self.client_stub.add_table("test_cat", "test_schema", "users", columns=[
-            {"name": "email", "type_name": "string"}
-        ])
+        self.client_stub.add_table(
+            "test_cat",
+            "test_schema",
+            "users",
+            columns=[{"name": "email", "type_name": "string"}],
+        )
 
         # Configure LLM response
         pii_response = '[{"name":"email","semantic":"email"}]'
@@ -185,13 +200,19 @@ class TestPIITools(unittest.TestCase):
 
         # Call real function with progress disabled
         result = _helper_scan_schema_for_pii_logic(
-            self.client_stub, self.llm_client, "test_cat", "test_schema", show_progress=False
+            self.client_stub,
+            self.llm_client,
+            "test_cat",
+            "test_schema",
+            show_progress=False,
         )
 
         # Verify real business logic results
         self.assertEqual(result["tables_scanned_attempted"], 1)
-        self.assertTrue(result["tables_successfully_processed"] >= 0)  # Should process successfully
-        
+        self.assertTrue(
+            result["tables_successfully_processed"] >= 0
+        )  # Should process successfully
+
         # TODO: After implementation, verify NO progress messages when disabled
         # if mock_console.print.called:
         #     print_calls = [call[0][0] for call in mock_console.print.call_args_list]
