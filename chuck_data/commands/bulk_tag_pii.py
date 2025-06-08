@@ -9,6 +9,7 @@ Bulk PII tagging command with interactive confirmation.
 
 from chuck_data.interactive_context import InteractiveContext
 from chuck_data.commands.base import CommandResult
+from chuck_data.command_registry import CommandDefinition
 from chuck_data import config
 
 
@@ -156,3 +157,31 @@ def _handle_interactive_input(client, user_input, **kwargs):
     """Handle user input during interactive mode."""
     # Minimal implementation to start failing tests
     return CommandResult(False, message="Not implemented yet")
+
+
+DEFINITION = CommandDefinition(
+    name="bulk-tag-pii",
+    description="Scan schema for PII columns and bulk tag them with semantic tags after interactive confirmation",
+    handler=handle_bulk_tag_pii,
+    parameters={
+        "catalog_name": {
+            "type": "string",
+            "description": "Optional: Name of the catalog. If not provided, uses the active catalog",
+        },
+        "schema_name": {
+            "type": "string", 
+            "description": "Optional: Name of the schema. If not provided, uses the active schema",
+        },
+        "auto_confirm": {
+            "type": "boolean",
+            "description": "Optional: Skip interactive confirmation and proceed automatically. Default: false",
+        },
+    },
+    required_params=[],
+    supports_interactive_input=True,
+    tui_aliases=["/bulk-tag-pii"],
+    agent_display="full",
+    condensed_action="Bulk tagging PII columns",
+    visible_to_user=True,
+    visible_to_agent=True,
+)

@@ -14,6 +14,7 @@ from .catalog_selection import DEFINITION as catalog_selection_definition
 from .schema_selection import DEFINITION as schema_selection_definition
 from .tag_pii import DEFINITION as tag_pii_definition
 from .scan_pii import DEFINITION as scan_pii_definition
+from .bulk_tag_pii import DEFINITION as bulk_tag_pii_definition
 from .setup_stitch import DEFINITION as setup_stitch_definition
 from .workspace_selection import DEFINITION as workspace_selection_definition
 from .help import DEFINITION as help_definition
@@ -76,6 +77,7 @@ ALL_COMMAND_DEFINITIONS = [
     # PII and Stitch related commands
     tag_pii_definition,
     scan_pii_definition,
+    bulk_tag_pii_definition,
     setup_stitch_definition,
     add_stitch_report_definition,
     # Job commands
