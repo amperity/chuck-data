@@ -27,8 +27,12 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
     Args:
         client: API client instance
-        **kwargs: No parameters required
+        **kwargs: Command parameters
+            - display: bool, whether to display the status table (default: False)
     """
+    # Extract display parameter (default to False for agent calls)
+    display = kwargs.get("display", False)
+
     try:
         data = {
             "workspace_url": get_workspace_url(),
@@ -38,6 +42,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
             "warehouse_id": get_warehouse_id(),
             "connection_status": "Client not available or not initialized.",
             "permissions": {},
+            "display": display,  # Pass through to display logic
         }
         if client:
             try:
@@ -61,14 +66,23 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 DEFINITION = CommandDefinition(
     name="status",
-    description="Show current status of the configured workspace, catalog, schema, model, and API permissions. Used to verify connection and permissions.",
+    description="Show current status of the configured workspace, catalog, schema, model, and API permissions. By default returns data without showing table. Use display=true when user asks to see status.",
     handler=handle_command,
-    parameters={},
+    parameters={
+        "display": {
+            "type": "boolean",
+            "description": "Whether to display the status table to the user (default: false). Set to true when user asks to see status.",
+        },
+    },
     required_params=[],
     tui_aliases=[
         "/status",
     ],
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Always show full status table for agents
+    agent_display="conditional",  # Use conditional display based on display parameter
+    display_condition=lambda result: result.get(
+        "display", False
+    ),  # Show full table only when display=True
+    condensed_action="Checking status",  # Friendly name for condensed display
 )

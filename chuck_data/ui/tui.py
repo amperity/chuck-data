@@ -658,8 +658,8 @@ class ChuckTUI:
                     handler = self.agent_full_display_handlers[tool_name]
                     handler(tool_name, tool_result)
                 elif tool_name == "status":
-                    # Status uses regular full display method (which raises PaginationCancelled)
-                    self._display_status(tool_result)
+                    # Status uses the full display method when display=True
+                    self._display_full_tool_output(tool_name, tool_result)
                 else:
                     # For other agent calls, fall back to condensed display for unknown tools
                     self._display_condensed_tool_output(tool_name, tool_result)
@@ -707,6 +707,8 @@ class ChuckTUI:
             self._display_pii_scan_results(tool_result)
         elif tool_name == "run-sql":
             self._display_sql_results_formatted(tool_result)
+        elif tool_name == "status":
+            self._display_status(tool_result)
         else:
             # For unknown tools, display a generic panel with the data
             from rich.panel import Panel
