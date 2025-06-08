@@ -220,11 +220,7 @@ def test_agent_display_setting_validation(tui):
     agent_commands = get_agent_commands()
 
     # Find all list-* commands
-    list_commands = [
-        name
-        for name in agent_commands.keys()
-        if name.startswith("list-")
-    ]
+    list_commands = [name for name in agent_commands.keys() if name.startswith("list-")]
 
     # Ensure we have the expected list commands
     expected_list_commands = {
@@ -391,7 +387,15 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
             "_display_models",
             [{"name": "test", "creator": "test"}],
         ),  # models expects a list directly
-        ("_display_models_consolidated", {"models": [{"name": "test"}], "active_model": None, "detailed": False, "filter": None}),
+        (
+            "_display_models_consolidated",
+            {
+                "models": [{"name": "test"}],
+                "active_model": None,
+                "detailed": False,
+                "filter": None,
+            },
+        ),
     ]
 
     for method_name, test_data in list_display_methods:
