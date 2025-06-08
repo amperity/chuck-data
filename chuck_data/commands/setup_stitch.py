@@ -85,7 +85,6 @@ def handle_command(
     Args:
         client: API client instance
         interactive_input: User input for interactive mode
-        auto_confirm: Skip confirmation and launch immediately
         **kwargs:
             catalog_name (str, optional): Target catalog name
             schema_name (str, optional): Target schema name
@@ -95,11 +94,6 @@ def handle_command(
 
     if not client:
         return CommandResult(False, message="Client is required for Stitch setup.")
-
-    # Determine if legacy auto-confirm mode was explicitly requested
-    explicit_auto_confirm = auto_confirm or kwargs.get("auto_confirm") is True
-    if explicit_auto_confirm:
-        return _handle_legacy_setup(client, catalog_name_arg, schema_name_arg)
 
     # Interactive mode - use context management
     context = InteractiveContext()

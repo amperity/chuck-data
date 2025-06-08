@@ -83,173 +83,6 @@ def test_missing_context(databricks_client_stub):
     assert "Target catalog and schema must be specified" in result.message
 
 
-# Direct command execution tests
-@patch("chuck_data.commands.setup_stitch.get_metrics_collector")
-@patch("chuck_data.commands.setup_stitch.LLMClient")
-def test_direct_command_successful_setup(
-    mock_llm_client,
-    mock_get_metrics_collector,
-    databricks_client_stub,
-    llm_client_stub,
-):
-    """Direct command successfully sets up Stitch integration."""
-    # Mock external boundaries only
-    mock_metrics_collector = MagicMock()
-    mock_get_metrics_collector.return_value = mock_metrics_collector
-    mock_llm_client.return_value = llm_client_stub
-
-    # Setup test data for successful operation
-    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
-
-    # Set amperity token
-    with patch(
-        "chuck_data.commands.stitch_tools.get_amperity_token", return_value="test_token"
-    ):
-        result = handle_command(
-            databricks_client_stub,
-            catalog_name="test_catalog",
-            schema_name="test_schema",
-            auto_confirm=True,
-        )
-
-    # Verify behavioral outcomes
-    assert result.success
-    assert "Stitch is now running in your Databricks workspace!" in result.message
-    assert "What you can do now:" in result.message
-    assert "run_id" in result.data
-    assert result.data["stitch_job_name"].startswith("stitch-")
-
-    # Verify metrics collection happened
-    mock_metrics_collector.track_event.assert_called_once()
-
-
-@patch("chuck_data.commands.setup_stitch.get_metrics_collector")
-@patch("chuck_data.commands.setup_stitch.LLMClient")
-def test_direct_command_uses_active_context(
-    mock_llm_client,
-    mock_get_metrics_collector,
-    databricks_client_stub,
-    llm_client_stub,
-):
-    """Direct command uses active catalog and schema when not specified."""
-    # Mock external boundaries
-    mock_metrics_collector = MagicMock()
-    mock_get_metrics_collector.return_value = mock_metrics_collector
-    mock_llm_client.return_value = llm_client_stub
-
-    # Setup test data with active_ prefix
-    databricks_client_stub.add_catalog("active_catalog")
-    databricks_client_stub.add_schema("active_catalog", "active_schema")
-    databricks_client_stub.add_table(
-        "active_catalog",
-        "active_schema",
-        "users",
-        columns=[
-            {"name": "email", "type": "STRING"},
-            {"name": "name", "type": "STRING"},
-        ],
-    )
-
-    # Mock PII scan results
-    llm_client_stub.set_pii_detection_result(
-        [
-            {"column": "email", "semantic": "email"},
-            {"column": "name", "semantic": "name"},
-        ]
-    )
-
-    # Fix API compatibility issues
-    original_create_volume = databricks_client_stub.create_volume
-
-    def mock_create_volume(catalog_name, schema_name, name, **kwargs):
-        return original_create_volume(catalog_name, schema_name, name, **kwargs)
-
-    databricks_client_stub.create_volume = mock_create_volume
-
-    def mock_upload_file(path, content=None, overwrite=False, **kwargs):
-        return True
-
-    databricks_client_stub.upload_file = mock_upload_file
-
-    databricks_client_stub.fetch_amperity_job_init_response = {
-        "cluster-init": "#!/bin/bash\necho init"
-    }
-    databricks_client_stub.submit_job_run_response = {"run_id": "12345"}
-    databricks_client_stub.create_stitch_notebook_response = {
-        "notebook_path": "/Workspace/test"
-    }
-
-    # Use real config system with active catalog and schema
-    with tempfile.NamedTemporaryFile() as tmp:
-        config_manager = ConfigManager(tmp.name)
-        config_manager.update(
-            active_catalog="active_catalog", active_schema="active_schema"
-        )
-
-        with patch("chuck_data.config._config_manager", config_manager):
-            with patch(
-                "chuck_data.commands.stitch_tools.get_amperity_token",
-                return_value="test_token",
-            ):
-                result = handle_command(databricks_client_stub, auto_confirm=True)
-
-                # Verify behavioral outcomes
-                assert result.success
-                assert (
-                    "Stitch is now running in your Databricks workspace!"
-                    in result.message
-                )
-                assert "active_catalog.stitch_outputs" in result.message
-
-
-@patch("chuck_data.commands.setup_stitch.get_metrics_collector")
-@patch("chuck_data.commands.setup_stitch.LLMClient")
-def test_direct_command_pii_scan_failure_shows_helpful_error(
-    mock_llm_client,
-    mock_get_metrics_collector,
-    databricks_client_stub,
-    llm_client_stub,
-):
-    """Direct command failure during PII scan shows helpful error message."""
-    # Mock external boundaries
-    mock_metrics_collector = MagicMock()
-    mock_get_metrics_collector.return_value = mock_metrics_collector
-    mock_llm_client.return_value = llm_client_stub
-
-    # Setup test data with no tables (will cause PII scan to fail)
-    databricks_client_stub.add_catalog("test_catalog")
-    databricks_client_stub.add_schema("test_catalog", "test_schema")
-    # No tables added - this will cause failure
-
-    # Fix API compatibility for volume creation
-    original_create_volume = databricks_client_stub.create_volume
-
-    def mock_create_volume(catalog_name, schema_name, name, **kwargs):
-        return original_create_volume(catalog_name, schema_name, name, **kwargs)
-
-    databricks_client_stub.create_volume = mock_create_volume
-
-    with patch(
-        "chuck_data.commands.stitch_tools.get_amperity_token", return_value="test_token"
-    ):
-        result = handle_command(
-            databricks_client_stub,
-            catalog_name="test_catalog",
-            schema_name="test_schema",
-            auto_confirm=True,
-        )
-
-    # Verify error behavior
-    assert not result.success
-    assert (
-        "PII Scan failed" in result.message
-        or "No tables with PII found" in result.message
-    )
-
-    # Verify metrics collection for error
-    mock_metrics_collector.track_event.assert_called_once()
-
-
 @patch("chuck_data.commands.setup_stitch.LLMClient")
 def test_direct_command_llm_exception_handled_gracefully(
     mock_llm_client, databricks_client_stub
@@ -266,48 +99,6 @@ def test_direct_command_llm_exception_handled_gracefully(
     assert not result.success
     assert "Error setting up Stitch" in result.message
     assert str(result.error) == "LLM client error"
-
-
-# Agent-specific behavioral tests
-def test_agent_setup_shows_progress_steps(databricks_client_stub, llm_client_stub):
-    """Agent execution shows progress during Stitch setup."""
-    # Setup test data for successful operation
-    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
-
-    # Capture progress during agent execution
-    progress_steps = []
-
-    def capture_progress(tool_name, data):
-        if "step" in data:
-            progress_steps.append(f"→ Setting up Stitch: ({data['step']})")
-
-    with patch(
-        "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
-    ):
-        with patch(
-            "chuck_data.commands.stitch_tools.get_amperity_token",
-            return_value="test_token",
-        ):
-            with patch(
-                "chuck_data.commands.setup_stitch.get_metrics_collector",
-                return_value=MagicMock(),
-            ):
-                result = handle_command(
-                    databricks_client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
-                    auto_confirm=True,
-                    tool_output_callback=capture_progress,
-                )
-
-    # Verify command success
-    assert result.success
-    assert "Stitch is now running in your Databricks workspace!" in result.message
-    assert "test_catalog.stitch_outputs" in result.message
-
-    # Note: Current implementation doesn't report progress via callback
-    # This test documents the current behavior - progress would need to be added
-    # to the helper functions to support agent progress reporting
 
 
 def test_agent_failure_shows_error_without_progress(
@@ -348,7 +139,6 @@ def test_agent_failure_shows_error_without_progress(
                     databricks_client_stub,
                     catalog_name="test_catalog",
                     schema_name="test_schema",
-                    auto_confirm=True,
                     tool_output_callback=capture_progress,
                 )
 
@@ -382,7 +172,6 @@ def test_agent_callback_errors_bubble_up_as_command_errors(
             databricks_client_stub,
             catalog_name="test_catalog",
             schema_name="test_schema",
-            auto_confirm=True,
             tool_output_callback=failing_callback,
         )
 
@@ -416,43 +205,3 @@ def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client
     assert result.success
     # Interactive mode should return empty message (console output handles display)
     assert result.message == ""
-
-
-# End-to-end integration test
-def test_agent_tool_executor_end_to_end_integration(
-    databricks_client_stub, llm_client_stub
-):
-    """Agent tool_executor integration works end-to-end."""
-    from chuck_data.agent.tool_executor import execute_tool
-
-    # Setup test data for successful operation
-    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
-
-    with patch(
-        "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
-    ):
-        with patch(
-            "chuck_data.commands.stitch_tools.get_amperity_token",
-            return_value="test_token",
-        ):
-            with patch(
-                "chuck_data.commands.setup_stitch.get_metrics_collector",
-                return_value=MagicMock(),
-            ):
-                result = execute_tool(
-                    api_client=databricks_client_stub,
-                    tool_name="setup-stitch",
-                    tool_args={
-                        "catalog_name": "test_catalog",
-                        "schema_name": "test_schema",
-                        "auto_confirm": True,
-                    },
-                )
-
-    # Verify agent gets proper result format
-    assert "message" in result
-    assert "test_catalog.test_schema" in result["message"]
-
-    # Verify the integration actually worked by checking result structure
-    assert isinstance(result, dict)
-    assert "success" in result or "message" in result
