@@ -136,19 +136,43 @@ def test_direct_command_uses_active_context(
     mock_get_metrics_collector.return_value = mock_metrics_collector
     mock_llm_client.return_value = llm_client_stub
 
-    # Setup test data
+    # Setup test data with active_ prefix
     databricks_client_stub.add_catalog("active_catalog")
     databricks_client_stub.add_schema("active_catalog", "active_schema")
-    databricks_client_stub.add_table("active_catalog", "active_schema", "users")
+    databricks_client_stub.add_table(
+        "active_catalog",
+        "active_schema",
+        "users",
+        columns=[
+            {"name": "email", "type": "STRING"},
+            {"name": "name", "type": "STRING"},
+        ],
+    )
 
-    # Mock required responses
-    llm_client_stub.set_response_content('{"semantic": "email"}')
-    databricks_client_stub.list_volumes_response = {"volumes": []}
-    databricks_client_stub.create_volume_response = {"name": "chuck"}
+    # Mock PII scan results
+    llm_client_stub.set_pii_detection_result(
+        [
+            {"column": "email", "semantic": "email"},
+            {"column": "name", "semantic": "name"},
+        ]
+    )
+
+    # Fix API compatibility issues
+    original_create_volume = databricks_client_stub.create_volume
+
+    def mock_create_volume(catalog_name, schema_name, name, **kwargs):
+        return original_create_volume(catalog_name, schema_name, name, **kwargs)
+
+    databricks_client_stub.create_volume = mock_create_volume
+
+    def mock_upload_file(path, content=None, overwrite=False, **kwargs):
+        return True
+
+    databricks_client_stub.upload_file = mock_upload_file
+
     databricks_client_stub.fetch_amperity_job_init_response = {
         "cluster-init": "#!/bin/bash\necho init"
     }
-    databricks_client_stub.upload_file_response = True
     databricks_client_stub.submit_job_run_response = {"run_id": "12345"}
     databricks_client_stub.create_stitch_notebook_response = {
         "notebook_path": "/Workspace/test"
@@ -191,6 +215,12 @@ def test_direct_command_pii_scan_failure_shows_helpful_error(
     databricks_client_stub.add_catalog("test_catalog")
     databricks_client_stub.add_schema("test_catalog", "test_schema")
     # No tables added - this will cause failure
+    
+    # Fix API compatibility for volume creation
+    original_create_volume = databricks_client_stub.create_volume
+    def mock_create_volume(catalog_name, schema_name, name, **kwargs):
+        return original_create_volume(catalog_name, schema_name, name, **kwargs)
+    databricks_client_stub.create_volume = mock_create_volume
 
     with patch(
         "chuck_data.commands.stitch_tools.get_amperity_token", return_value="test_token"
@@ -234,23 +264,8 @@ def test_direct_command_llm_exception_handled_gracefully(
 # Agent-specific behavioral tests
 def test_agent_setup_shows_progress_steps(databricks_client_stub, llm_client_stub):
     """Agent execution shows progress during Stitch setup."""
-    # Setup test data
-    databricks_client_stub.add_catalog("test_catalog")
-    databricks_client_stub.add_schema("test_catalog", "test_schema")
-    databricks_client_stub.add_table("test_catalog", "test_schema", "users")
-
-    # Mock required responses for successful setup
-    llm_client_stub.set_response_content('{"semantic": "email"}')
-    databricks_client_stub.list_volumes_response = {"volumes": []}
-    databricks_client_stub.create_volume_response = {"name": "chuck"}
-    databricks_client_stub.fetch_amperity_job_init_response = {
-        "cluster-init": "#!/bin/bash\necho init"
-    }
-    databricks_client_stub.upload_file_response = True
-    databricks_client_stub.submit_job_run_response = {"run_id": "12345"}
-    databricks_client_stub.create_stitch_notebook_response = {
-        "notebook_path": "/Workspace/test"
-    }
+    # Setup test data for successful operation
+    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
     # Capture progress during agent execution
     progress_steps = []
@@ -291,10 +306,16 @@ def test_agent_failure_shows_error_without_progress(
     databricks_client_stub, llm_client_stub
 ):
     """Agent execution shows error without progress steps when setup fails."""
-    # Setup test data with no tables (will cause failure)
+    # Setup minimal test data with no PII tables (will cause failure)
     databricks_client_stub.add_catalog("test_catalog")
     databricks_client_stub.add_schema("test_catalog", "test_schema")
-    # No tables - will cause "No tables with PII found" error
+    # No tables with PII - will cause failure
+    
+    # Fix API compatibility for volume creation
+    original_create_volume = databricks_client_stub.create_volume
+    def mock_create_volume(catalog_name, schema_name, name, **kwargs):
+        return original_create_volume(catalog_name, schema_name, name, **kwargs)
+    databricks_client_stub.create_volume = mock_create_volume
 
     progress_steps = []
 
@@ -364,18 +385,8 @@ def test_agent_callback_errors_bubble_up_as_command_errors(
 # Interactive mode tests
 def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client_stub):
     """Interactive mode Phase 1 prepares configuration and shows preview."""
-    # Setup test data
-    databricks_client_stub.add_catalog("test_catalog")
-    databricks_client_stub.add_schema("test_catalog", "test_schema")
-    databricks_client_stub.add_table("test_catalog", "test_schema", "users")
-
-    # Mock required responses
-    llm_client_stub.set_response_content('{"semantic": "email"}')
-    databricks_client_stub.list_volumes_response = {"volumes": []}
-    databricks_client_stub.create_volume_response = {"name": "chuck"}
-    databricks_client_stub.fetch_amperity_job_init_response = {
-        "cluster-init": "#!/bin/bash\necho init"
-    }
+    # Setup test data for successful operation
+    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
     with patch(
         "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
@@ -404,23 +415,8 @@ def test_agent_tool_executor_end_to_end_integration(
     """Agent tool_executor integration works end-to-end."""
     from chuck_data.agent.tool_executor import execute_tool
 
-    # Setup test data
-    databricks_client_stub.add_catalog("test_catalog")
-    databricks_client_stub.add_schema("test_catalog", "test_schema")
-    databricks_client_stub.add_table("test_catalog", "test_schema", "users")
-
-    # Mock required responses
-    llm_client_stub.set_response_content('{"semantic": "email"}')
-    databricks_client_stub.list_volumes_response = {"volumes": []}
-    databricks_client_stub.create_volume_response = {"name": "chuck"}
-    databricks_client_stub.fetch_amperity_job_init_response = {
-        "cluster-init": "#!/bin/bash\necho init"
-    }
-    databricks_client_stub.upload_file_response = True
-    databricks_client_stub.submit_job_run_response = {"run_id": "12345"}
-    databricks_client_stub.create_stitch_notebook_response = {
-        "notebook_path": "/Workspace/test"
-    }
+    # Setup test data for successful operation
+    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
     with patch(
         "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
@@ -435,7 +431,7 @@ def test_agent_tool_executor_end_to_end_integration(
             ):
                 result = execute_tool(
                     api_client=databricks_client_stub,
-                    tool_name="setup_stitch",
+                    tool_name="setup-stitch",
                     tool_args={
                         "catalog_name": "test_catalog",
                         "schema_name": "test_schema",
