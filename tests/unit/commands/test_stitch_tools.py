@@ -5,7 +5,7 @@ This module contains tests for the Stitch integration utilities.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from chuck_data.commands.stitch_tools import _helper_setup_stitch_logic
 from tests.fixtures.llm import LLMClientStub

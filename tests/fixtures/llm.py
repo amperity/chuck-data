@@ -126,7 +126,7 @@ class LLMClientStub:
                     # Parse the JSON to get actual column names
                     columns_json = json.loads(json_match.group(1))
                     columns_in_message = [col["name"] for col in columns_json]
-                except:
+                except (json.JSONDecodeError, AttributeError):
                     # Fallback to regex patterns
                     patterns = [
                         r'"name": "(\w+)"',  # JSON format

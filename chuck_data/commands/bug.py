@@ -19,8 +19,14 @@ from chuck_data.config import get_config_manager, get_amperity_token
 from chuck_data.logger import get_current_log_file
 
 
+def _report_step(message: str, tool_output_callback=None):
+    """Report a step in the bug report submission process."""
+    if tool_output_callback:
+        tool_output_callback("bug", {"step": message})
+
+
 def handle_command(
-    client: Optional[DatabricksAPIClient], **kwargs: Any
+    client: Optional[DatabricksAPIClient], tool_output_callback=None, **kwargs: Any
 ) -> CommandResult:
     """
     Submit a bug report to Amperity's API.
@@ -35,6 +41,8 @@ def handle_command(
     Returns:
         CommandResult indicating success or failure
     """
+    _report_step("Gathering bug report details...", tool_output_callback)
+
     # Try to get description from multiple sources
     description = kwargs.get("description", "").strip()
 
@@ -56,6 +64,7 @@ def handle_command(
         )
 
     # Check for Amperity token
+    _report_step("Checking authentication...", tool_output_callback)
     amperity_token = get_amperity_token()
     if not amperity_token:
         return CommandResult(
@@ -65,9 +74,13 @@ def handle_command(
 
     try:
         # Prepare bug report payload
+        _report_step(
+            "Preparing bug report with system information...", tool_output_callback
+        )
         payload = _prepare_bug_report(description)
 
         # Submit to Amperity API using the client
+        _report_step("Submitting bug report...", tool_output_callback)
         amperity_client = AmperityAPIClient()
         success, message = amperity_client.submit_bug_report(payload, amperity_token)
 
@@ -171,12 +184,12 @@ def _get_session_log() -> str:
 
 DEFINITION = CommandDefinition(
     name="bug",
-    description="Submit a bug report with current configuration and session logs",
+    description="Submit a bug report when users mention reporting bugs, issues, or problems. Extract the bug description from their message and submit it with system logs.",
     handler=handle_command,
     parameters={
         "description": {
             "type": "string",
-            "description": "Description of the bug or issue you're experiencing",
+            "description": "The bug description extracted from the user's message. For 'report a bug - hi caleb', use 'hi caleb' as the description.",
         },
         "rest": {
             "type": "string",
@@ -191,6 +204,8 @@ DEFINITION = CommandDefinition(
     tui_aliases=["/bug"],
     needs_api_client=False,  # We use Amperity token directly
     visible_to_user=True,
-    visible_to_agent=False,  # Bug reports should come from users, not agents
+    visible_to_agent=True,  # Allow agents to submit bug reports on behalf of users
     usage_hint="Example: /bug The table list is not refreshing properly",
+    agent_display="condensed",
+    condensed_action="Submitting bug report",
 )

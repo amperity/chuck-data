@@ -152,11 +152,6 @@ def test_store_manifest(mock_b64encode, mock_sleep, databricks_client_stub):
 def test_profile_table_success(mock_sleep, databricks_client_stub, warehouse_id):
     """Test successfully profiling a table."""
     # Use real profiler logic with external API stubbing
-    table_info = {
-        "catalog_name": "catalog1",
-        "schema_name": "schema1",
-        "table_name": "table1",
-    }
 
     # Configure databricks_client_stub for all the API calls
     # Mock the SQL query execution for list_tables
