@@ -27,8 +27,11 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
     Args:
         client: API client instance
-        **kwargs: No parameters required
+        **kwargs: display (optional) - whether to display full status details (default: False for agent)
     """
+    # Check if display should be shown (default to False for agent calls)
+    display = kwargs.get("display", False)
+
     try:
         data = {
             "workspace_url": get_workspace_url(),
@@ -38,6 +41,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
             "warehouse_id": get_warehouse_id(),
             "connection_status": "Client not available or not initialized.",
             "permissions": {},
+            "display": display,
         }
         if client:
             try:
@@ -63,12 +67,21 @@ DEFINITION = CommandDefinition(
     name="status",
     description="Show current status of the configured workspace, catalog, schema, model, and API permissions. Used to verify connection and permissions.",
     handler=handle_command,
-    parameters={},
+    parameters={
+        "display": {
+            "type": "boolean",
+            "description": "Whether to display the full status details to the user (default: false). Set to true when user asks to see status details.",
+        },
+    },
     required_params=[],
     tui_aliases=[
         "/status",
     ],
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full status details to agents
+    agent_display="conditional",  # Use conditional display based on display parameter
+    display_condition=lambda result: result.get(
+        "display", False
+    ),  # Show full status only when display=True
+    condensed_action="Getting status",  # Friendly name for condensed display
 )
