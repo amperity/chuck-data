@@ -114,7 +114,8 @@ def test_direct_command_successful_setup(
 
     # Verify behavioral outcomes
     assert result.success
-    assert "Stitch setup for test_catalog.test_schema initiated" in result.message
+    assert "Stitch is now running in your Databricks workspace!" in result.message
+    assert "What you can do now:" in result.message
     assert "run_id" in result.data
     assert result.data["stitch_job_name"].startswith("stitch-")
 
@@ -194,7 +195,11 @@ def test_direct_command_uses_active_context(
 
                 # Verify behavioral outcomes
                 assert result.success
-                assert "active_catalog.active_schema" in result.message
+                assert (
+                    "Stitch is now running in your Databricks workspace!"
+                    in result.message
+                )
+                assert "active_catalog.stitch_outputs" in result.message
 
 
 @patch("chuck_data.commands.setup_stitch.get_metrics_collector")
@@ -297,7 +302,8 @@ def test_agent_setup_shows_progress_steps(databricks_client_stub, llm_client_stu
 
     # Verify command success
     assert result.success
-    assert "test_catalog.test_schema" in result.message
+    assert "Stitch is now running in your Databricks workspace!" in result.message
+    assert "test_catalog.stitch_outputs" in result.message
 
     # Note: Current implementation doesn't report progress via callback
     # This test documents the current behavior - progress would need to be added

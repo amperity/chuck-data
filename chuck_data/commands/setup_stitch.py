@@ -75,7 +75,7 @@ def _display_confirmation_prompt(console):
 
 def handle_command(
     client: Optional[DatabricksAPIClient],
-    interactive_input: str = None,
+    interactive_input: Optional[str] = None,
     auto_confirm: bool = False,
     **kwargs,
 ) -> CommandResult:
@@ -233,10 +233,19 @@ def _handle_legacy_setup(
             },
         )
 
+        # Show detailed summary first as progress info for legacy mode too
+        console = get_console()
+        _display_detailed_summary(console, stitch_result_data)
+
+        # Create the user guidance as the main result message
+        result_message = _build_post_launch_guidance_message(
+            stitch_result_data, prep_result["metadata"], client
+        )
+
         return CommandResult(
             True,
             data=stitch_result_data,
-            message=stitch_result_data.get("message", "Stitch setup completed."),
+            message=result_message,
         )
     except Exception as e:
         logging.error(f"Legacy stitch setup error: {e}", exc_info=True)
@@ -455,10 +464,19 @@ def _phase_3_launch_job(
         console.print(
             f"\n[{SUCCESS_STYLE}]Stitch job launched successfully![/{SUCCESS_STYLE}]"
         )
+
+        # Show detailed summary first as progress info
+        _display_detailed_summary(console, launch_result)
+
+        # Create the user guidance as the main result message
+        result_message = _build_post_launch_guidance_message(
+            launch_result, metadata, client
+        )
+
         return CommandResult(
             True,
             data=launch_result,
-            message=launch_result.get("message", "Stitch setup completed."),
+            message=result_message,
         )
 
     elif user_input_lower in ["cancel", "abort", "stop", "no"]:
@@ -473,6 +491,206 @@ def _phase_3_launch_job(
         return CommandResult(
             True, message="Please type 'confirm' to launch or 'cancel' to abort."
         )
+
+
+def _display_post_launch_options(console, launch_result, metadata, client=None):
+    """Display post-launch options and guidance to the user."""
+    from chuck_data.config import get_workspace_url
+    from chuck_data.databricks.url_utils import (
+        get_full_workspace_url,
+        detect_cloud_provider,
+    )
+
+    console.print(
+        f"\n[{INFO_STYLE}]Stitch is now running in your Databricks workspace![/{INFO_STYLE}]"
+    )
+    console.print(
+        "Running Stitch creates a job that will take at least a few minutes to complete."
+    )
+    console.print(
+        "A Stitch report showing the results has been created to help you see the results."
+    )
+    console.print(
+        f"[{WARNING}]The report will not work until Stitch is complete.[/{WARNING}]"
+    )
+
+    # Extract key information from launch result
+    run_id = launch_result.get("run_id")
+    notebook_result = launch_result.get("notebook_result")
+
+    console.print(f"\n[{INFO_STYLE}]Choose from the following options:[/{INFO_STYLE}]")
+
+    # Option 1: Check job status
+    if run_id:
+        console.print(
+            f"• Check the status of the job: [bold]/job-status --run_id {run_id}[/bold]"
+        )
+
+    # Get workspace URL for constructing browser links
+    workspace_url = get_workspace_url()
+    if workspace_url:
+        from chuck_data.databricks.url_utils import normalize_workspace_url
+
+        # If workspace_url is already a full URL, normalize it to get just the workspace ID
+        # If it's just the workspace ID, this will return it as-is
+        workspace_id = normalize_workspace_url(workspace_url)
+        cloud_provider = detect_cloud_provider(workspace_url)
+        full_workspace_url = get_full_workspace_url(workspace_id, cloud_provider)
+
+        # Option 2: Open job in browser
+        if run_id and client:
+            try:
+                job_run_status = client.get_job_run_status(run_id)
+                job_id = job_run_status.get("job_id")
+                if job_id:
+                    # Use proper URL format: https://workspace.domain.com/jobs/<job-id>/runs/<run-id>?o=<workspace-id>
+                    job_url = f"{full_workspace_url}/jobs/{job_id}/runs/{run_id}?o={workspace_id}"
+                    console.print(
+                        f"• Open Databricks job in browser: [link]{job_url}[/link]"
+                    )
+            except Exception as e:
+                logging.warning(f"Could not get job details for run {run_id}: {e}")
+
+        # Option 3: Open notebook in browser
+        if notebook_result and notebook_result.get("success"):
+            notebook_path = notebook_result.get("notebook_path", "")
+            if notebook_path:
+                from urllib.parse import quote
+
+                # Remove leading /Workspace if present, and construct proper URL
+                clean_path = notebook_path.replace("/Workspace", "")
+                # URL encode the path, especially spaces
+                encoded_path = quote(clean_path, safe="/")
+                # Construct URL with workspace ID: https://workspace.domain.com/?o=workspace_id#workspace/path
+                notebook_url = (
+                    f"{full_workspace_url}/?o={workspace_id}#workspace{encoded_path}"
+                )
+                console.print(
+                    f"• Open Stitch Report notebook in browser: [link]{notebook_url}[/link]"
+                )
+
+        # Option 4: Open main workspace
+        console.print(f"• Open Databricks workspace: [link]{full_workspace_url}[/link]")
+    else:
+        # Fallback when workspace URL is not configured
+        if run_id:
+            console.print(
+                f"• Check the status of the job: [bold]/job-status --run_id {run_id}[/bold]"
+            )
+        console.print(
+            "• Open your Databricks workspace to view the running job and report"
+        )
+
+    # Option 5: Do nothing
+    console.print("• Do nothing for now - you can check the job status later")
+
+    # Additional information about outputs
+    console.print(f"\n[{INFO_STYLE}]What Stitch will create:[/{INFO_STYLE}]")
+    target_catalog = metadata.get("target_catalog", "your_catalog")
+    console.print(f"• Schema: [bold]{target_catalog}.stitch_outputs[/bold]")
+    console.print(
+        f"• Table: [bold]{target_catalog}.stitch_outputs.unified_coalesced[/bold] (standardized PII and amperity_ids)"
+    )
+    console.print(
+        f"• Table: [bold]{target_catalog}.stitch_outputs.unified_scores[/bold] (links and confidence scores)"
+    )
+
+
+def _display_detailed_summary(console, launch_result):
+    """Display the detailed technical summary after user guidance."""
+    # Extract the original detailed message that was meant to be shown last
+    detailed_message = launch_result.get("message", "")
+    if detailed_message:
+        console.print(f"\n[{INFO_STYLE}]Technical Summary:[/{INFO_STYLE}]")
+        console.print(detailed_message)
+
+
+def _build_post_launch_guidance_message(launch_result, metadata, client=None):
+    """Build the post-launch guidance message as a string to return as CommandResult message."""
+    from chuck_data.config import get_workspace_url
+    from chuck_data.databricks.url_utils import (
+        get_full_workspace_url,
+        detect_cloud_provider,
+        normalize_workspace_url,
+    )
+
+    lines = []
+    lines.append("Stitch is now running in your Databricks workspace!")
+    # Additional information about outputs
+    lines.append("")
+    lines.append(
+        "Running Stitch creates a job that will take at least a few minutes to complete."
+    )
+    lines.append("")
+    lines.append("What Stitch will create:")
+    target_catalog = metadata.get("target_catalog", "your_catalog")
+    lines.append(f"• Schema: {target_catalog}.stitch_outputs")
+    lines.append(
+        f"• Table: {target_catalog}.stitch_outputs.unified_coalesced (standardized PII and amperity_ids)"
+    )
+    lines.append(
+        f"• Table: {target_catalog}.stitch_outputs.unified_scores (links and confidence scores)"
+    )
+    lines.append("")
+    lines.append(
+        "A Stitch report showing the results has been created to help you see the results."
+    )
+    lines.append("The report will not work until Stitch is complete.")
+
+    # Extract key information from launch result
+    run_id = launch_result.get("run_id")
+    notebook_result = launch_result.get("notebook_result")
+
+    lines.append("")
+    lines.append("")
+    lines.append("What you can do now:")
+
+    # Option 1: Check job status
+    if run_id:
+        lines.append(f"• you can ask me about the status of the job (id {run_id})")
+
+    # Get workspace URL for constructing browser links
+    workspace_url = get_workspace_url()
+    # If workspace_url is already a full URL, normalize it to get just the workspace ID
+    # If it's just the workspace ID, this will return it as-is
+    workspace_id = normalize_workspace_url(workspace_url)
+    cloud_provider = detect_cloud_provider(workspace_url)
+    full_workspace_url = get_full_workspace_url(workspace_id, cloud_provider)
+
+    # Option 2: Open job in browser
+    if run_id and client:
+        try:
+            job_run_status = client.get_job_run_status(run_id)
+            job_id = job_run_status.get("job_id")
+            if job_id:
+                # Use proper URL format: https://workspace.domain.com/jobs/<job-id>/runs/<run-id>?o=<workspace-id>
+                job_url = (
+                    f"{full_workspace_url}/jobs/{job_id}/runs/{run_id}?o={workspace_id}"
+                )
+                lines.append(f"• Open Databricks job in browser: {job_url}")
+        except Exception as e:
+            logging.warning(f"Could not get job details for run {run_id}: {e}")
+
+    # Option 3: Open notebook in browser
+    if notebook_result and notebook_result.get("success"):
+        notebook_path = notebook_result.get("notebook_path", "")
+        if notebook_path:
+            from urllib.parse import quote
+
+            # Remove leading /Workspace if present, and construct proper URL
+            clean_path = notebook_path.replace("/Workspace", "")
+            # URL encode the path, especially spaces
+            encoded_path = quote(clean_path, safe="/")
+            # Construct URL with workspace ID: https://workspace.domain.com/?o=workspace_id#workspace/path
+            notebook_url = (
+                f"{full_workspace_url}/?o={workspace_id}#workspace{encoded_path}"
+            )
+            lines.append(f"• Open Stitch Report notebook in browser: {notebook_url}")
+
+    # Option 4: Open main workspace
+    lines.append(f"• Open Databricks workspace: {full_workspace_url}")
+
+    return "\n".join(lines)
 
 
 DEFINITION = CommandDefinition(
