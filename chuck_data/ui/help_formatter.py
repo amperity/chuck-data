@@ -166,7 +166,7 @@ def format_help_text(
         elif cmd_name == "upload-file" or cmd.name == "upload-file":
             alias = f"{alias} <file_path> <volume_path>"
         elif cmd_name == "launch-job" or cmd.name == "launch-job":
-            alias = f"{alias} [--filter <filter>]"
+            alias = f"{alias}"
         elif cmd_name == "job-status" or cmd.name == "job-status":
             alias = f"{alias} <run_id>"
         elif cmd_name == "run-sql" or cmd.name == "run-sql":

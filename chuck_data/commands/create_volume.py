@@ -105,5 +105,5 @@ DEFINITION = CommandDefinition(
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    usage_hint="Usage: /create-volume --name <volume_name> [--catalog_name <catalog>] [--schema_name <schema>] [--volume_type MANAGED|EXTERNAL]\n(Uses active catalog/schema if not specified)",
+    usage_hint="Usage: /create-volume --name <volume_name>",
 )
