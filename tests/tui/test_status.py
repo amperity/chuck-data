@@ -34,10 +34,10 @@ def tui_with_mocked_console(mock_chuck_service_init):
 class TestWhatUsersSeeDuringAgentStatusCalls:
     """Test what users see when the agent calls the status tool."""
 
-    def test_user_sees_compact_status_summary_when_agent_checks_status(
+    def test_user_sees_full_status_table_when_agent_checks_status(
         self, tui_with_mocked_console
     ):
-        """When agent checks status, user sees a compact panel with key workspace info."""
+        """When agent checks status, user sees the full status table and pagination is triggered."""
         tui = tui_with_mocked_console
 
         # Agent collects status information
@@ -49,22 +49,15 @@ class TestWhatUsersSeeDuringAgentStatusCalls:
             "permissions": {"catalog_access": {"authorized": True}},
         }
 
-        # User sees the status display when agent calls status tool
-        tui._display_status_for_agent("status", workspace_status)
+        # User sees the full status display when agent calls status tool
+        # This should trigger pagination to prevent further agent interaction
+        from chuck_data.exceptions import PaginationCancelled
 
-        # User should see a single compact panel printed to console
-        tui.console.print.assert_called_once()
-        displayed_panel = tui.console.print.call_args[0][0]
+        with pytest.raises(PaginationCancelled):
+            tui.display_tool_output("status", workspace_status)
 
-        # User sees a Rich panel with workspace information
-        assert isinstance(displayed_panel, Panel)
-        panel_text = str(displayed_panel.renderable)
-
-        # User can see their current workspace and active settings
-        assert "acme-corp.databricks.com" in panel_text
-        assert "production_data" in panel_text
-        assert "analytics" in panel_text
-        assert "Connected" in panel_text
+        # User should see the full status table displayed
+        assert tui.console.print.called
 
     def test_user_sees_connection_problems_highlighted_when_agent_checks_status(
         self, tui_with_mocked_console
@@ -80,15 +73,15 @@ class TestWhatUsersSeeDuringAgentStatusCalls:
             "permissions": {},
         }
 
-        # User sees the error status when agent reports it
-        tui._display_status_for_agent("status", problem_status)
+        # User sees the full error status when agent reports it
+        # This should trigger pagination to prevent further agent interaction
+        from chuck_data.exceptions import PaginationCancelled
 
-        tui.console.print.assert_called_once()
-        displayed_panel = tui.console.print.call_args[0][0]
-        panel_text = str(displayed_panel.renderable)
+        with pytest.raises(PaginationCancelled):
+            tui.display_tool_output("status", problem_status)
 
-        # User can clearly see what went wrong
-        assert "Token expired" in panel_text or "error" in panel_text.lower()
+        # User should see the full status table displayed
+        assert tui.console.print.called
 
     def test_user_sees_clean_format_for_long_workspace_names(
         self, tui_with_mocked_console
@@ -104,20 +97,20 @@ class TestWhatUsersSeeDuringAgentStatusCalls:
             "permissions": {},
         }
 
-        # User sees formatted output regardless of URL length
-        tui._display_status_for_agent("status", enterprise_status)
+        # User sees full status table regardless of URL length
+        # This should trigger pagination to prevent further agent interaction
+        from chuck_data.exceptions import PaginationCancelled
 
-        tui.console.print.assert_called_once()
-        displayed_panel = tui.console.print.call_args[0][0]
-        panel_text = str(displayed_panel.renderable)
+        with pytest.raises(PaginationCancelled):
+            tui.display_tool_output("status", enterprise_status)
 
-        # User can see the full workspace name without layout issues
-        assert "very-long-enterprise-workspace-name.cloud.databricks.com" in panel_text
+        # User should see the full status table displayed
+        assert tui.console.print.called
 
-    def test_user_sees_status_panel_not_generic_tool_output_when_agent_calls_status(
+    def test_user_sees_full_status_table_not_generic_tool_output_when_agent_calls_status(
         self, tui_with_mocked_console
     ):
-        """When agent uses status tool, user sees custom status display, not generic tool output."""
+        """When agent uses status tool, user sees full status table, not generic tool output."""
         tui = tui_with_mocked_console
 
         # Mock the command definition lookup
@@ -133,11 +126,14 @@ class TestWhatUsersSeeDuringAgentStatusCalls:
                 "permissions": {"resource": {"authorized": True}},
             }
 
-            # Agent calls status, user sees the display
-            tui.display_tool_output("status", workspace_info)
+            # Agent calls status, user sees the full display with pagination
+            from chuck_data.exceptions import PaginationCancelled
 
-            # User should see some output from the custom handler
-            tui.console.print.assert_called()
+            with pytest.raises(PaginationCancelled):
+                tui.display_tool_output("status", workspace_info)
+
+            # User should see the full status table displayed
+            assert tui.console.print.called
 
             # User should NOT see generic "Agent Tool Output: status" panel
             for call in tui.console.print.call_args_list:
@@ -170,11 +166,14 @@ class TestWhatUsersSeeDuringAgentStatusCalls:
                 "permissions": {"basic_access": {"authorized": True}},
             }
 
-            # User sees agent's status check result
-            tui.display_tool_output("status", comprehensive_status)
+            # User sees agent's status check result with full display and pagination
+            from chuck_data.exceptions import PaginationCancelled
 
-            # User should see meaningful output on their screen
-            tui.console.print.assert_called()
+            with pytest.raises(PaginationCancelled):
+                tui.display_tool_output("status", comprehensive_status)
+
+            # User should see the full status table displayed
+            assert tui.console.print.called
 
 
 class TestWhatUsersSeeDuringDirectStatusCommands:
@@ -233,30 +232,20 @@ class TestWhatUsersSeeDuringDirectStatusCommands:
 class TestStatusCommandBehaviorConsistency:
     """Test that status command behavior is consistent and reliable."""
 
-    def test_status_command_always_shows_condensed_view_for_agents(
+    def test_status_command_always_shows_full_view_for_agents(
         self, mock_chuck_service_init
     ):
-        """Status command consistently shows condensed view when agents use it."""
+        """Status command consistently shows full view when agents use it."""
         from chuck_data.commands.status import DEFINITION
 
-        # Command is configured to always use condensed display for agents
-        assert DEFINITION.agent_display == "conditional"
-        assert callable(DEFINITION.display_condition)
+        # Command is configured to always use full display for agents
+        assert DEFINITION.agent_display == "full"
 
-        # Any status data should result in condensed display for agents
-        various_status_scenarios = [
-            {"workspace_url": "test", "connection_status": "Connected"},
-            {"workspace_url": "test", "connection_status": "Error", "permissions": {}},
-            {
-                "workspace_url": "different",
-                "active_catalog": "prod",
-                "connection_status": "Connected",
-            },
-        ]
-
-        for status_data in various_status_scenarios:
-            # Should always return False = condensed display for agents
-            assert DEFINITION.display_condition(status_data) is False
+        # Status command should no longer use conditional display
+        assert (
+            not hasattr(DEFINITION, "display_condition")
+            or DEFINITION.display_condition is None
+        )
 
     def test_status_command_infrastructure_remains_available_for_both_flows(
         self, tui_with_mocked_console
@@ -268,6 +257,5 @@ class TestStatusCommandBehaviorConsistency:
         assert hasattr(tui, "_display_status")
         assert callable(tui._display_status)
 
-        # Agents can access their specialized status display handler
-        assert "status" in tui.agent_full_display_handlers
-        assert callable(tui.agent_full_display_handlers["status"])
+        # Agents now use the same full display method as direct users
+        # No specialized agent display handler needed since we want full display

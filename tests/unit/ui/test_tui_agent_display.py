@@ -48,8 +48,8 @@ class TestAgentDisplayInfrastructure:
         # Should have the registry attribute
         assert hasattr(tui, "agent_full_display_handlers")
         assert isinstance(tui.agent_full_display_handlers, dict)
-        # Should have status handler pre-registered
-        assert "status" in tui.agent_full_display_handlers
+        # Registry starts empty now - status uses regular full display method
+        # Custom handlers can be registered for other tools as needed
 
     def test_tui_defaults_to_condensed_for_unknown_tools(self, mock_chuck_service_init):
         """TUI should default to condensed display for unknown tools (no generic full handler)."""

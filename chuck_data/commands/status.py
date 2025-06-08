@@ -70,6 +70,5 @@ DEFINITION = CommandDefinition(
     ],
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="conditional",  # Use conditional logic like list-tables
-    display_condition=lambda data: False,  # Always use condensed display for agents
+    agent_display="full",  # Always show full status table for agents
 )
