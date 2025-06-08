@@ -81,6 +81,7 @@ def format_help_text(
         ],
         "PII & Data Management": [
             "scan-schema-for-pii",
+            "bulk-tag-pii",
             "tag-pii-columns",
             "setup-stitch",
             "add-stitch-report",
