@@ -1,8 +1,8 @@
 """
-Tests for status command TUI integration.
+Tests for status command user experience.
 
-This module tests how the status command integrates with the TUI,
-including both direct user commands and agent display functionality.
+This module tests what users see when they interact with the status command,
+both directly through the TUI and when an agent uses the status tool.
 """
 
 import pytest
@@ -31,219 +31,243 @@ def tui_with_mocked_console(mock_chuck_service_init):
     return tui
 
 
-class TestStatusCommandAgentDisplay:
-    """Test status command agent display functionality."""
+class TestWhatUsersSeeDuringAgentStatusCalls:
+    """Test what users see when the agent calls the status tool."""
 
-    def test_status_command_registered_for_agent_display(self, tui_with_mocked_console):
-        """Status command should be registered in agent display handlers."""
-        tui = tui_with_mocked_console
-
-        # Status should be registered in the handlers registry
-        assert "status" in tui.agent_full_display_handlers
-        assert callable(tui.agent_full_display_handlers["status"])
-
-    def test_status_agent_display_shows_condensed_summary(
+    def test_user_sees_compact_status_summary_when_agent_checks_status(
         self, tui_with_mocked_console
     ):
-        """Status agent display should show a condensed summary with key info."""
+        """When agent checks status, user sees a compact panel with key workspace info."""
         tui = tui_with_mocked_console
 
-        status_data = {
-            "workspace_url": "https://test.databricks.com",
-            "active_catalog": "production",
-            "active_schema": "bronze",
+        # Agent collects status information
+        workspace_status = {
+            "workspace_url": "https://acme-corp.databricks.com",
+            "active_catalog": "production_data",
+            "active_schema": "analytics",
             "connection_status": "Connected (client present).",
-            "permissions": {},
+            "permissions": {"catalog_access": {"authorized": True}},
         }
 
-        # Call the status agent display handler
-        tui._display_status_for_agent("status", status_data)
+        # User sees the status display when agent calls status tool
+        tui._display_status_for_agent("status", workspace_status)
 
-        # Should print a condensed status summary as a Panel
+        # User should see a single compact panel printed to console
         tui.console.print.assert_called_once()
-        call_args = tui.console.print.call_args[0][0]
+        displayed_panel = tui.console.print.call_args[0][0]
 
-        assert isinstance(call_args, Panel)
-        panel_content = str(call_args.renderable)
-        assert "test.databricks.com" in panel_content
-        assert "production" in panel_content
-        assert "bronze" in panel_content
-        assert "Connected" in panel_content
+        # User sees a Rich panel with workspace information
+        assert isinstance(displayed_panel, Panel)
+        panel_text = str(displayed_panel.renderable)
 
-    def test_status_agent_display_highlights_connection_issues(
+        # User can see their current workspace and active settings
+        assert "acme-corp.databricks.com" in panel_text
+        assert "production_data" in panel_text
+        assert "analytics" in panel_text
+        assert "Connected" in panel_text
+
+    def test_user_sees_connection_problems_highlighted_when_agent_checks_status(
         self, tui_with_mocked_console
     ):
-        """Status agent display should highlight connection problems."""
+        """When agent detects connection issues, user sees error info prominently displayed."""
         tui = tui_with_mocked_console
 
-        status_data = {
+        # Agent detects authentication problem
+        problem_status = {
             "workspace_url": "https://test.databricks.com",
             "active_catalog": "production",
-            "connection_status": "Client connection/permission error: Invalid token",
+            "connection_status": "Client connection/permission error: Token expired",
             "permissions": {},
         }
 
-        tui._display_status_for_agent("status", status_data)
+        # User sees the error status when agent reports it
+        tui._display_status_for_agent("status", problem_status)
 
         tui.console.print.assert_called_once()
-        call_args = tui.console.print.call_args[0][0]
+        displayed_panel = tui.console.print.call_args[0][0]
+        panel_text = str(displayed_panel.renderable)
 
-        panel_content = str(call_args.renderable)
-        assert "Invalid token" in panel_content or "error" in panel_content.lower()
+        # User can clearly see what went wrong
+        assert "Token expired" in panel_text or "error" in panel_text.lower()
 
-    def test_status_agent_display_formats_long_workspace_urls(
+    def test_user_sees_clean_format_for_long_workspace_names(
         self, tui_with_mocked_console
     ):
-        """Status agent display should handle long workspace URLs gracefully."""
+        """User sees readable format even with very long workspace URLs."""
         tui = tui_with_mocked_console
 
-        status_data = {
-            "workspace_url": "https://very-long-workspace-name.cloud.databricks.com",
-            "active_catalog": "test",
+        # Agent works with enterprise workspace with long name
+        enterprise_status = {
+            "workspace_url": "https://very-long-enterprise-workspace-name.cloud.databricks.com",
+            "active_catalog": "enterprise_catalog",
             "connection_status": "Connected",
             "permissions": {},
         }
 
-        tui._display_status_for_agent("status", status_data)
+        # User sees formatted output regardless of URL length
+        tui._display_status_for_agent("status", enterprise_status)
 
         tui.console.print.assert_called_once()
-        call_args = tui.console.print.call_args[0][0]
+        displayed_panel = tui.console.print.call_args[0][0]
+        panel_text = str(displayed_panel.renderable)
 
-        panel_content = str(call_args.renderable)
-        assert "very-long-workspace-name.cloud.databricks.com" in panel_content
+        # User can see the full workspace name without layout issues
+        assert "very-long-enterprise-workspace-name.cloud.databricks.com" in panel_text
 
-    @patch("chuck_data.ui.tui.get_command")
-    def test_status_tool_uses_custom_agent_handler(
-        self, mock_get_cmd, tui_with_mocked_console
+    def test_user_sees_status_panel_not_generic_tool_output_when_agent_calls_status(
+        self, tui_with_mocked_console
     ):
-        """Status tool should use its custom agent display handler."""
+        """When agent uses status tool, user sees custom status display, not generic tool output."""
         tui = tui_with_mocked_console
 
-        # Use real status command definition
-        from chuck_data.commands.status import DEFINITION
-
-        mock_get_cmd.return_value = DEFINITION
-
-        status_data = {
-            "workspace_url": "https://test.databricks.com",
-            "active_catalog": "test_catalog",
-            "connection_status": "Connected (client present).",
-            "permissions": {"test_resource": {"authorized": True}},
-        }
-
-        tui.display_tool_output("status", status_data)
-
-        # Should call console.print (the custom handler will display)
-        tui.console.print.assert_called()
-
-    def test_status_command_end_to_end_agent_flow(self, mock_chuck_service_init):
-        """Test complete agent flow for status command."""
+        # Mock the command definition lookup
         with patch("chuck_data.ui.tui.get_command") as mock_get_cmd:
-            tui = ChuckTUI()
-            tui.console = MagicMock(spec=Console)
-
-            # Use real status command definition
             from chuck_data.commands.status import DEFINITION
 
             mock_get_cmd.return_value = DEFINITION
 
-            status_data = {
+            workspace_info = {
                 "workspace_url": "https://test.databricks.com",
-                "active_catalog": "production",
+                "active_catalog": "test_catalog",
                 "connection_status": "Connected (client present).",
-                "permissions": {"basic": {"authorized": True}},
+                "permissions": {"resource": {"authorized": True}},
             }
 
-            # This should route through the agent display system
-            tui.display_tool_output("status", status_data)
+            # Agent calls status, user sees the display
+            tui.display_tool_output("status", workspace_info)
 
-            # Should have displayed something
+            # User should see some output from the custom handler
             tui.console.print.assert_called()
 
-            # Should NOT show generic "Agent Tool Output: status" panel
-            # (because status has a custom agent display handler)
+            # User should NOT see generic "Agent Tool Output: status" panel
             for call in tui.console.print.call_args_list:
-                panel_arg = call[0][0] if call[0] else None
-                if isinstance(panel_arg, Panel):
-                    assert "Agent Tool Output: status" not in str(panel_arg.title)
+                if call[0]:
+                    displayed_content = call[0][0]
+                    if isinstance(displayed_content, Panel):
+                        panel_title = (
+                            str(displayed_content.title)
+                            if displayed_content.title
+                            else ""
+                        )
+                        assert "Agent Tool Output: status" not in panel_title
+
+    def test_user_experiences_complete_agent_status_flow(self, mock_chuck_service_init):
+        """User experiences the complete flow when agent checks workspace status."""
+        # User interacts with agent, agent needs to check current status
+        with patch("chuck_data.ui.tui.get_command") as mock_get_cmd:
+            tui = ChuckTUI()
+            tui.console = MagicMock(spec=Console)
+
+            from chuck_data.commands.status import DEFINITION
+
+            mock_get_cmd.return_value = DEFINITION
+
+            # Agent gathers comprehensive status info
+            comprehensive_status = {
+                "workspace_url": "https://company.databricks.com",
+                "active_catalog": "production",
+                "connection_status": "Connected (client present).",
+                "permissions": {"basic_access": {"authorized": True}},
+            }
+
+            # User sees agent's status check result
+            tui.display_tool_output("status", comprehensive_status)
+
+            # User should see meaningful output on their screen
+            tui.console.print.assert_called()
 
 
-class TestStatusCommandDirectDisplay:
-    """Test status command direct user display functionality."""
+class TestWhatUsersSeeDuringDirectStatusCommands:
+    """Test what users see when they directly run status commands."""
 
-    @patch("chuck_data.ui.tui.get_command")
-    def test_direct_status_command_shows_full_display(
-        self, mock_get_cmd, tui_with_mocked_console
+    def test_user_sees_comprehensive_status_table_for_direct_status_command(
+        self, tui_with_mocked_console
     ):
-        """Direct user /status command should show full status table."""
+        """When user runs /status directly, they see a comprehensive status table."""
         tui = tui_with_mocked_console
 
-        # Simulate direct command execution path
+        # User has configured their workspace
         with tempfile.NamedTemporaryFile() as tmp:
             config_manager = ConfigManager(tmp.name)
             config_manager.update(
-                workspace_url="https://test.databricks.com",
-                active_catalog="test_catalog",
+                workspace_url="https://mycompany.databricks.com",
+                active_catalog="analytics_catalog",
             )
 
             with patch("chuck_data.config._config_manager", config_manager):
-                status_data = {
-                    "workspace_url": "https://test.databricks.com",
-                    "active_catalog": "test_catalog",
+                user_status = {
+                    "workspace_url": "https://mycompany.databricks.com",
+                    "active_catalog": "analytics_catalog",
                     "connection_status": "Connected",
-                    "permissions": {},
+                    "permissions": {"catalog_read": {"authorized": True}},
                 }
 
-                # The full status display should raise PaginationCancelled
+                # User runs /status command and expects full detailed view
                 from chuck_data.exceptions import PaginationCancelled
 
                 with pytest.raises(PaginationCancelled):
-                    tui._display_status(status_data)
+                    tui._display_status(user_status)
 
-                # Should have printed the full status table
+                # User should have seen detailed status information printed
                 assert tui.console.print.call_count > 0
 
-    def test_status_full_display_preserves_pagination_cancelled(
+    def test_user_direct_status_maintains_expected_tui_pagination_behavior(
         self, tui_with_mocked_console
     ):
-        """Status full display should raise PaginationCancelled for TUI flow."""
+        """User's direct /status command maintains expected TUI pagination flow."""
         tui = tui_with_mocked_console
 
-        status_data = {
+        user_workspace_status = {
             "workspace_url": "https://test.databricks.com",
             "connection_status": "Connected",
-            "permissions": {},
+            "permissions": {"workspace": {"authorized": True}},
         }
 
+        # User's direct command should follow TUI pagination pattern
         from chuck_data.exceptions import PaginationCancelled
 
         with pytest.raises(PaginationCancelled):
-            tui._display_status(status_data)
+            tui._display_status(user_workspace_status)
 
 
-class TestStatusCommandIntegration:
-    """Integration tests for status command TUI behavior."""
+class TestStatusCommandBehaviorConsistency:
+    """Test that status command behavior is consistent and reliable."""
 
-    def test_status_command_conditional_display_logic(self, mock_chuck_service_init):
-        """Status command should use conditional display logic correctly."""
+    def test_status_command_always_shows_condensed_view_for_agents(
+        self, mock_chuck_service_init
+    ):
+        """Status command consistently shows condensed view when agents use it."""
         from chuck_data.commands.status import DEFINITION
 
-        # Status command should be configured for conditional display
+        # Command is configured to always use condensed display for agents
         assert DEFINITION.agent_display == "conditional"
         assert callable(DEFINITION.display_condition)
 
-        # Display condition should always return False (always condensed for agents)
-        test_data = {"workspace_url": "test", "connection_status": "Connected"}
-        assert DEFINITION.display_condition(test_data) is False
+        # Any status data should result in condensed display for agents
+        various_status_scenarios = [
+            {"workspace_url": "test", "connection_status": "Connected"},
+            {"workspace_url": "test", "connection_status": "Error", "permissions": {}},
+            {
+                "workspace_url": "different",
+                "active_catalog": "prod",
+                "connection_status": "Connected",
+            },
+        ]
 
-    def test_status_backwards_compatibility_preserved(self, tui_with_mocked_console):
-        """Status command changes should preserve backwards compatibility."""
+        for status_data in various_status_scenarios:
+            # Should always return False = condensed display for agents
+            assert DEFINITION.display_condition(status_data) is False
+
+    def test_status_command_infrastructure_remains_available_for_both_flows(
+        self, tui_with_mocked_console
+    ):
+        """Status command preserves both direct user and agent display capabilities."""
         tui = tui_with_mocked_console
 
-        # Should still have the full display method for direct commands
+        # Users can still access direct status display method
         assert hasattr(tui, "_display_status")
         assert callable(tui._display_status)
 
-        # Should still have the agent display handler
+        # Agents can access their specialized status display handler
         assert "status" in tui.agent_full_display_handlers
         assert callable(tui.agent_full_display_handlers["status"])
