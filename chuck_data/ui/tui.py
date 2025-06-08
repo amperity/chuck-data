@@ -774,10 +774,25 @@ class ChuckTUI:
                 metrics.append(f"{len(tool_result['tagged_columns'])} columns tagged")
 
             # Status-specific info
-            if tool_name == "status" and "workspace" in tool_result:
-                workspace = tool_result.get("workspace", {})
-                if "name" in workspace:
-                    metrics.append(f"workspace: {workspace['name']}")
+            if tool_name in ["status", "get_status"]:
+                if "workspace_url" in tool_result and tool_result["workspace_url"]:
+                    # Extract just the hostname from workspace URL for brevity
+                    workspace_url = tool_result["workspace_url"]
+                    try:
+                        from urllib.parse import urlparse
+
+                        hostname = urlparse(workspace_url).hostname or workspace_url
+                        metrics.append(f"workspace: {hostname}")
+                    except Exception:
+                        metrics.append(f"workspace: {workspace_url}")
+
+                # Show connection status if it indicates an issue
+                connection_status = tool_result.get("connection_status", "")
+                if (
+                    "error" in connection_status.lower()
+                    or "not" in connection_status.lower()
+                ):
+                    metrics.append("connection issue")
 
             # Step-based progress reporting (used by warehouse selection, etc.)
             if "step" in tool_result:

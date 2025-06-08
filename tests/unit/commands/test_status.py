@@ -177,3 +177,113 @@ def test_handle_status_real_config_integration():
         result.data["workspace_url"] == "https://second.databricks.com"
     )  # Latest update
     assert result.data["active_catalog"] == "first_catalog"  # Preserved from earlier
+
+
+def test_agent_status_with_display_false_shows_condensed_behavior(
+    databricks_client_stub,
+):
+    """Agent status execution with display=False shows condensed behavior."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(
+            workspace_url="https://test.databricks.com",
+            active_catalog="test_catalog",
+        )
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch(
+                "chuck_data.commands.status.validate_all_permissions"
+            ) as mock_permissions:
+                mock_permissions.return_value = {"test_resource": {"authorized": True}}
+
+                # Execute with display=False (default agent behavior)
+                result = handle_command(databricks_client_stub, display=False)
+
+        # Verify command success
+        assert result.success
+        assert result.data["workspace_url"] == "https://test.databricks.com"
+        assert result.data["active_catalog"] == "test_catalog"
+        assert not result.data["display"]
+
+
+def test_agent_status_with_display_true_shows_full_behavior(databricks_client_stub):
+    """Agent status execution with display=True shows full behavior."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(
+            workspace_url="https://test.databricks.com",
+            active_catalog="test_catalog",
+        )
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch(
+                "chuck_data.commands.status.validate_all_permissions"
+            ) as mock_permissions:
+                mock_permissions.return_value = {"test_resource": {"authorized": True}}
+
+                # Execute with display=True (full display)
+                result = handle_command(databricks_client_stub, display=True)
+
+        # Verify command success
+        assert result.success
+        assert result.data["workspace_url"] == "https://test.databricks.com"
+        assert result.data["active_catalog"] == "test_catalog"
+        assert result.data["display"]
+
+
+def test_direct_status_command_defaults_to_condensed_display(databricks_client_stub):
+    """Direct status command (from TUI) defaults to condensed display."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(workspace_url="https://test.databricks.com")
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch(
+                "chuck_data.commands.status.validate_all_permissions"
+            ) as mock_permissions:
+                mock_permissions.return_value = {}
+
+                # Execute without display parameter (direct command)
+                result = handle_command(databricks_client_stub)
+
+        # Verify command success and default display behavior
+        assert result.success
+        assert result.data["workspace_url"] == "https://test.databricks.com"
+        assert not result.data["display"]  # Default is False
+
+
+def test_agent_status_never_shows_tool_output_section(databricks_client_stub):
+    """Agent status execution should never show 'Tool Output: status' section."""
+    with tempfile.NamedTemporaryFile() as tmp:
+        config_manager = ConfigManager(tmp.name)
+        config_manager.update(
+            workspace_url="https://test.databricks.com",
+            active_catalog="test_catalog",
+        )
+
+        with patch("chuck_data.config._config_manager", config_manager):
+            with patch(
+                "chuck_data.commands.status.validate_all_permissions"
+            ) as mock_permissions:
+                mock_permissions.return_value = {"test_resource": {"authorized": True}}
+
+                # Execute with default agent behavior (display=False)
+                result = handle_command(databricks_client_stub)
+
+        # Verify command success
+        assert result.success
+        assert result.data["workspace_url"] == "https://test.databricks.com"
+        assert result.data["active_catalog"] == "test_catalog"
+
+        # CRITICAL: Verify display=False to ensure condensed display (no Tool Output section)
+        assert not result.data["display"]
+
+        # Verify the command definition has correct settings for condensed display
+        from chuck_data.commands.status import DEFINITION
+
+        assert DEFINITION.agent_display == "conditional"
+        assert DEFINITION.condensed_action == "Getting status"
+        assert DEFINITION.display_condition is not None
+
+        # Verify the display condition returns False for this result (triggers condensed display)
+        assert not DEFINITION.display_condition(result.data)
