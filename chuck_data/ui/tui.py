@@ -4,7 +4,7 @@ Main TUI interface for CHUCK AI.
 
 import os
 import shlex
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable
 import logging
 
 from rich.console import Console
@@ -84,6 +84,14 @@ class ChuckTUI:
         self.running = True
         self.debug = False  # Debug state
         self.no_color = no_color
+
+        # Agent display infrastructure
+        self.agent_full_display_handlers: Dict[
+            str, Callable[[str, Dict[str, Any]], None]
+        ] = {}
+
+        # Register specific agent display handlers
+        self.agent_full_display_handlers["status"] = self._display_status_for_agent
 
         # Register this instance as the global TUI instance
         # This allows other modules to access the service instance
@@ -640,11 +648,18 @@ class ChuckTUI:
                     display_type = agent_display
 
             # Route based on display type
-            if display_type == "condensed":
+            if display_type == "none":
+                return  # Show nothing
+            elif display_type == "condensed":
                 self._display_condensed_tool_output(tool_name, tool_result)
             else:
-                # Full display - use existing detailed display methods
-                self._display_full_tool_output(tool_name, tool_result)
+                # Full display - check for custom agent handler first
+                if tool_name in self.agent_full_display_handlers:
+                    handler = self.agent_full_display_handlers[tool_name]
+                    handler(tool_name, tool_result)
+                else:
+                    # For agent calls, fall back to condensed display for unknown tools
+                    self._display_condensed_tool_output(tool_name, tool_result)
 
         except Exception as e:
             # Handle pagination cancellation specially - let it bubble up
@@ -687,8 +702,6 @@ class ChuckTUI:
             self._display_table_details(tool_result)
         elif tool_name in ["scan-schema-for-pii", "scan_schema_for_pii", "scan_pii"]:
             self._display_pii_scan_results(tool_result)
-        elif tool_name == "get_status":
-            self._display_status(tool_result)
         elif tool_name == "run-sql":
             self._display_sql_results_formatted(tool_result)
         else:
@@ -734,7 +747,7 @@ class ChuckTUI:
         # Extract meaningful metrics from common result patterns
         if isinstance(tool_result, dict):
             # Look for common success indicators
-            if tool_result.get("success") is True or "message" in tool_result:
+            if tool_result.get("success") is True:
                 status_line += " [green]✓[/green]"
             elif tool_result.get("success") is False:
                 status_line += " [red]✗[/red]"
@@ -785,6 +798,58 @@ class ChuckTUI:
             status_line += f" ({', '.join(metrics)})"
 
         self.console.print(status_line)
+
+    def _display_status_for_agent(
+        self, tool_name: str, tool_data: Dict[str, Any]
+    ) -> None:
+        """Display status information in a condensed format for agent calls."""
+        from rich.panel import Panel
+        from urllib.parse import urlparse
+
+        # Extract key status information
+        workspace_url = tool_data.get("workspace_url", "Not set")
+        active_catalog = tool_data.get("active_catalog", "Not set")
+        active_schema = tool_data.get("active_schema", "Not set")
+        active_model = tool_data.get("active_model", "Not set")
+        warehouse_id = tool_data.get("warehouse_id", "Not set")
+        connection_status = tool_data.get("connection_status", "Unknown")
+
+        # Format workspace URL nicely
+        workspace_display = workspace_url
+        if workspace_url and workspace_url != "Not set":
+            try:
+                hostname = urlparse(workspace_url).hostname or workspace_url
+                workspace_display = hostname
+            except Exception:
+                workspace_display = workspace_url
+
+        # Build condensed status content
+        content_lines = []
+        content_lines.append(f"🌐 Workspace: {workspace_display}")
+
+        if active_catalog and active_catalog != "Not set":
+            content_lines.append(f"📊 Catalog: {active_catalog}")
+
+        if active_schema and active_schema != "Not set":
+            content_lines.append(f"🗂️  Schema: {active_schema}")
+
+        if active_model and active_model != "Not set":
+            content_lines.append(f"🤖 Model: {active_model}")
+
+        if warehouse_id and warehouse_id != "Not set":
+            content_lines.append(f"🏭 Warehouse: {warehouse_id}")
+
+        # Connection status with appropriate styling
+        if "error" in connection_status.lower() or "not" in connection_status.lower():
+            content_lines.append(f"🔴 Status: {connection_status}")
+        else:
+            content_lines.append(f"🟢 Status: {connection_status}")
+
+        content = "\n".join(content_lines)
+
+        self.console.print(
+            Panel(content, title="Current Status", border_style="cyan", padding=(0, 1))
+        )
 
     def _display_error(self, result: CommandResult) -> None:
         """Display an error from a command result."""
@@ -1407,6 +1472,12 @@ class ChuckTUI:
         permissions_data = data.get("permissions")
         if permissions_data:
             self._display_permissions(permissions_data)
+
+        # Raise PaginationCancelled to return to chuck > prompt immediately
+        # This prevents agent from continuing processing after status display is complete
+        from chuck_data.exceptions import PaginationCancelled
+
+        raise PaginationCancelled()
 
     def _display_permissions(self, permissions_data: Dict[str, Any]) -> None:
         """
