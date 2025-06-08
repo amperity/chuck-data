@@ -131,8 +131,6 @@ class TestAgentDisplayInfrastructure:
 
         # Should call the specific handler, not the default
         mock_specific_handler.assert_called_once_with("test-tool-specific", tool_data)
-        # Default handler (console.print) should not be called by the routing logic
-        # (though the specific handler might call it)
 
     @patch("chuck_data.ui.tui.get_command")
     def test_agent_tool_conditional_display_routes_to_custom_handler_when_true(
@@ -280,13 +278,11 @@ class TestAgentDisplayCondensedFormat:
         assert "✗" in call_args
         assert "Error occurred" in call_args  # Should fallback to message
 
-    @patch("chuck_data.ui.tui.get_command")
     def test_condensed_display_uses_tool_name_when_no_action(
-        self, mock_get_cmd, tui_with_mocked_console
+        self, tui_with_mocked_console
     ):
         """Condensed display should use tool name when no condensed_action provided."""
         tui = tui_with_mocked_console
-        mock_get_cmd.return_value = None  # No command definition
 
         tui._display_condensed_tool_output("fallback-tool", {"success": True})
 
