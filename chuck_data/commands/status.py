@@ -66,7 +66,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 DEFINITION = CommandDefinition(
     name="status",
-    description="Show current status of the configured workspace, catalog, schema, model, and API permissions. By default returns data without showing table. Use display=true when user asks to see status.",
+    description="Show current status of the configured workspace, catalog, schema, model, and API permissions.",
     handler=handle_command,
     parameters={
         "display": {
