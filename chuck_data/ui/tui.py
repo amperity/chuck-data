@@ -1042,7 +1042,9 @@ class ChuckTUI:
 
         # Define styling function for the name to highlight active model
         def name_style(name):
-            if active_model and (name == active_model or name.startswith(active_model + " ")):
+            if active_model and (
+                name == active_model or name.startswith(active_model + " ")
+            ):
                 return "bold green"
             return None
 
@@ -1152,7 +1154,9 @@ class ChuckTUI:
 
         # Define styling function for the name to highlight active model
         def name_style(name):
-            if active_model and (name == active_model or name.startswith(active_model + " ")):
+            if active_model and (
+                name == active_model or name.startswith(active_model + " ")
+            ):
                 return "bold green"
             return "cyan"
 
@@ -1188,9 +1192,11 @@ class ChuckTUI:
 
         # Display current active model
         if active_model:
-            self.console.print(f"\nCurrent model: [bold green]{active_model}[/bold green]")
+            self.console.print(
+                f"\nCurrent model: [bold green]{active_model}[/bold green]"
+            )
         else:
-            self.console.print(f"\nCurrent model: [dim]None[/dim]")
+            self.console.print("\nCurrent model: [dim]None[/dim]")
 
         # Raise PaginationCancelled to return to chuck > prompt immediately
         # This prevents agent from continuing processing after detailed model display is complete

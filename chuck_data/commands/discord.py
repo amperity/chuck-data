@@ -6,7 +6,6 @@ the Discord community and optionally opening the link in a browser.
 """
 
 import logging
-import webbrowser
 from typing import Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient

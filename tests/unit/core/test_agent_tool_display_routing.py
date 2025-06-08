@@ -182,8 +182,7 @@ def test_command_name_mapping_prevents_regression(tui):
         ("list-tables", "_display_tables"),
         ("list-warehouses", "_display_warehouses"),
         ("list-volumes", "_display_volumes"),
-        ("detailed-models", "_display_detailed_models"),
-        ("list-models", "_display_models"),
+        ("list-models", "_display_models_consolidated"),
     ]
 
     for tool_name, expected_method in command_mappings:
@@ -191,15 +190,13 @@ def test_command_name_mapping_prevents_regression(tui):
         with patch.object(tui, expected_method) as mock_method:
             # Call with appropriate test data structure based on what the TUI routing expects
             if tool_name == "list-models":
-                # For list-models, the TUI checks if "models" key exists in the dict
-                # If not, it calls _display_models with the dict itself
-                # (which seems like a bug, but we're testing the current behavior)
-                test_data = [
-                    {"name": "test_model", "creator": "test"}
-                ]  # This will be passed to _display_models
-            elif tool_name == "detailed-models":
-                # For detailed-models, it expects "models" key in the dict
-                test_data = {"models": [{"name": "test_model", "creator": "test"}]}
+                # The consolidated method expects structured data with "models" key
+                test_data = {
+                    "models": [{"name": "test_model", "creator": "test"}],
+                    "active_model": None,
+                    "detailed": False,
+                    "filter": None,
+                }
             else:
                 test_data = {"test": "data"}
             tui._display_full_tool_output(tool_name, test_data)
@@ -226,7 +223,7 @@ def test_agent_display_setting_validation(tui):
     list_commands = [
         name
         for name in agent_commands.keys()
-        if name.startswith("list-") or name == "detailed-models"
+        if name.startswith("list-")
     ]
 
     # Ensure we have the expected list commands
@@ -236,7 +233,6 @@ def test_agent_display_setting_validation(tui):
         "list-tables",
         "list-warehouses",
         "list-volumes",
-        "detailed-models",
         "list-models",
     }
 
@@ -395,7 +391,7 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
             "_display_models",
             [{"name": "test", "creator": "test"}],
         ),  # models expects a list directly
-        ("_display_detailed_models", {"models": [{"name": "test"}]}),
+        ("_display_models_consolidated", {"models": [{"name": "test"}], "active_model": None, "detailed": False, "filter": None}),
     ]
 
     for method_name, test_data in list_display_methods:
