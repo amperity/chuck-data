@@ -215,11 +215,13 @@ def test_direct_command_pii_scan_failure_shows_helpful_error(
     databricks_client_stub.add_catalog("test_catalog")
     databricks_client_stub.add_schema("test_catalog", "test_schema")
     # No tables added - this will cause failure
-    
+
     # Fix API compatibility for volume creation
     original_create_volume = databricks_client_stub.create_volume
+
     def mock_create_volume(catalog_name, schema_name, name, **kwargs):
         return original_create_volume(catalog_name, schema_name, name, **kwargs)
+
     databricks_client_stub.create_volume = mock_create_volume
 
     with patch(
@@ -310,11 +312,13 @@ def test_agent_failure_shows_error_without_progress(
     databricks_client_stub.add_catalog("test_catalog")
     databricks_client_stub.add_schema("test_catalog", "test_schema")
     # No tables with PII - will cause failure
-    
+
     # Fix API compatibility for volume creation
     original_create_volume = databricks_client_stub.create_volume
+
     def mock_create_volume(catalog_name, schema_name, name, **kwargs):
         return original_create_volume(catalog_name, schema_name, name, **kwargs)
+
     databricks_client_stub.create_volume = mock_create_volume
 
     progress_steps = []
