@@ -36,7 +36,7 @@ def test_successful_list_warehouses_shows_count(databricks_client_stub):
     assert result.success
     assert "Found 3 SQL warehouse(s)" in result.message
     assert len(result.data["warehouses"]) == 3
-    
+
     # Verify warehouse names are included
     warehouse_names = [w["name"] for w in result.data["warehouses"]]
     assert "Production Warehouse" in warehouse_names
@@ -59,6 +59,7 @@ def test_empty_warehouse_list_shows_appropriate_message(databricks_client_stub):
 
 def test_api_errors_handled_gracefully(databricks_client_stub):
     """Command handles API errors gracefully."""
+
     # Configure stub to raise an exception
     def list_warehouses_failing(**kwargs):
         raise Exception("API connection error")
@@ -82,7 +83,7 @@ def test_display_parameter_controls_behavior(databricks_client_stub):
 
     # Execute command with display=True
     result_with_display = handle_command(databricks_client_stub, display=True)
-    
+
     # Execute command with display=False (default)
     result_without_display = handle_command(databricks_client_stub, display=False)
 
@@ -91,7 +92,7 @@ def test_display_parameter_controls_behavior(databricks_client_stub):
     assert result_without_display.success
     assert result_with_display.data["display"] is True
     assert result_without_display.data["display"] is False
-    
+
     # Both should contain warehouse data
     assert len(result_with_display.data["warehouses"]) == 1
     assert len(result_without_display.data["warehouses"]) == 1

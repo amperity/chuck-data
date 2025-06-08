@@ -21,7 +21,9 @@ def test_missing_warehouse_parameter(databricks_client_stub, temp_config):
 
 
 # Direct command tests (no tool_output_callback)
-def test_direct_command_selects_existing_warehouse_by_id(databricks_client_stub, temp_config):
+def test_direct_command_selects_existing_warehouse_by_id(
+    databricks_client_stub, temp_config
+):
     """Direct command successfully selects warehouse by ID."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Set up warehouse in stub
@@ -47,7 +49,9 @@ def test_direct_command_selects_existing_warehouse_by_id(databricks_client_stub,
         assert get_warehouse_id() == warehouse_id
 
 
-def test_direct_command_failure_shows_helpful_error(databricks_client_stub, temp_config):
+def test_direct_command_failure_shows_helpful_error(
+    databricks_client_stub, temp_config
+):
     """Direct command failure shows error with available warehouses."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Add a warehouse to stub but call with different name
@@ -151,6 +155,7 @@ def test_agent_exact_match_shows_no_progress_steps(databricks_client_stub, temp_
 
         # Capture progress during agent execution
         progress_steps = []
+
         def capture_progress(tool_name, data):
             progress_steps.append(f"→ Setting warehouse: ({data['step']})")
 
@@ -158,7 +163,7 @@ def test_agent_exact_match_shows_no_progress_steps(databricks_client_stub, temp_
         result = handle_command(
             databricks_client_stub,
             warehouse=warehouse_id,
-            tool_output_callback=capture_progress
+            tool_output_callback=capture_progress,
         )
 
         # Verify command success
@@ -169,7 +174,9 @@ def test_agent_exact_match_shows_no_progress_steps(databricks_client_stub, temp_
         assert len(progress_steps) == 0
 
 
-def test_agent_exact_name_match_shows_progress_step(databricks_client_stub, temp_config):
+def test_agent_exact_name_match_shows_progress_step(
+    databricks_client_stub, temp_config
+):
     """Agent execution with exact name match shows progress step."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Setup test data
@@ -183,6 +190,7 @@ def test_agent_exact_name_match_shows_progress_step(databricks_client_stub, temp
 
         # Capture progress during agent execution
         progress_steps = []
+
         def capture_progress(tool_name, data):
             progress_steps.append(f"→ Setting warehouse: ({data['step']})")
 
@@ -190,7 +198,7 @@ def test_agent_exact_name_match_shows_progress_step(databricks_client_stub, temp
         result = handle_command(
             databricks_client_stub,
             warehouse="Production Warehouse",
-            tool_output_callback=capture_progress
+            tool_output_callback=capture_progress,
         )
 
         # Restore original method
@@ -202,10 +210,14 @@ def test_agent_exact_name_match_shows_progress_step(databricks_client_stub, temp
 
         # Verify progress behavior
         assert len(progress_steps) >= 1
-        assert any("Found warehouse 'Production Warehouse'" in step for step in progress_steps)
+        assert any(
+            "Found warehouse 'Production Warehouse'" in step for step in progress_steps
+        )
 
 
-def test_agent_fuzzy_match_shows_multiple_progress_steps(databricks_client_stub, temp_config):
+def test_agent_fuzzy_match_shows_multiple_progress_steps(
+    databricks_client_stub, temp_config
+):
     """Agent execution with fuzzy matching shows multiple progress steps."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Setup test data
@@ -219,6 +231,7 @@ def test_agent_fuzzy_match_shows_multiple_progress_steps(databricks_client_stub,
 
         # Capture progress during agent execution
         progress_steps = []
+
         def capture_progress(tool_name, data):
             progress_steps.append(f"→ Setting warehouse: ({data['step']})")
 
@@ -226,7 +239,7 @@ def test_agent_fuzzy_match_shows_multiple_progress_steps(databricks_client_stub,
         result = handle_command(
             databricks_client_stub,
             warehouse="prod",
-            tool_output_callback=capture_progress
+            tool_output_callback=capture_progress,
         )
 
         # Restore original method
@@ -238,8 +251,12 @@ def test_agent_fuzzy_match_shows_multiple_progress_steps(databricks_client_stub,
 
         # Verify progress behavior (should have 2 progress steps)
         assert len(progress_steps) == 2
-        assert any("Looking for warehouse matching 'prod'" in step for step in progress_steps)
-        assert any("Selecting 'Production Data Warehouse'" in step for step in progress_steps)
+        assert any(
+            "Looking for warehouse matching 'prod'" in step for step in progress_steps
+        )
+        assert any(
+            "Selecting 'Production Data Warehouse'" in step for step in progress_steps
+        )
 
 
 def test_agent_shows_progress_before_failure(databricks_client_stub, temp_config):
@@ -256,6 +273,7 @@ def test_agent_shows_progress_before_failure(databricks_client_stub, temp_config
 
         # Capture progress during agent execution
         progress_steps = []
+
         def capture_progress(tool_name, data):
             progress_steps.append(f"→ Setting warehouse: ({data['step']})")
 
@@ -263,7 +281,7 @@ def test_agent_shows_progress_before_failure(databricks_client_stub, temp_config
         result = handle_command(
             databricks_client_stub,
             warehouse="nonexistent",
-            tool_output_callback=capture_progress
+            tool_output_callback=capture_progress,
         )
 
         # Restore original method
@@ -279,7 +297,9 @@ def test_agent_shows_progress_before_failure(databricks_client_stub, temp_config
         assert "Looking for warehouse matching 'nonexistent'" in progress_steps[0]
 
 
-def test_agent_callback_errors_bubble_up_as_command_errors(databricks_client_stub, temp_config):
+def test_agent_callback_errors_bubble_up_as_command_errors(
+    databricks_client_stub, temp_config
+):
     """Agent callback failures bubble up as command errors (current behavior)."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Setup test data
@@ -298,7 +318,7 @@ def test_agent_callback_errors_bubble_up_as_command_errors(databricks_client_stu
         result = handle_command(
             databricks_client_stub,
             warehouse="Test Warehouse",
-            tool_output_callback=failing_callback
+            tool_output_callback=failing_callback,
         )
 
         # Restore original method
@@ -309,7 +329,9 @@ def test_agent_callback_errors_bubble_up_as_command_errors(databricks_client_stu
         assert "Display system crashed" in result.message
 
 
-def test_agent_tool_executor_end_to_end_integration(databricks_client_stub, temp_config):
+def test_agent_tool_executor_end_to_end_integration(
+    databricks_client_stub, temp_config
+):
     """Agent tool_executor integration works end-to-end."""
     from chuck_data.agent.tool_executor import execute_tool
 
@@ -323,7 +345,7 @@ def test_agent_tool_executor_end_to_end_integration(databricks_client_stub, temp
         result = execute_tool(
             api_client=databricks_client_stub,
             tool_name="select-warehouse",
-            tool_args={"warehouse": "Integration Test Warehouse"}
+            tool_args={"warehouse": "Integration Test Warehouse"},
         )
 
         # Verify agent gets proper result format
