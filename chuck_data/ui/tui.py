@@ -658,8 +658,13 @@ class ChuckTUI:
                     handler = self.agent_full_display_handlers[tool_name]
                     handler(tool_name, tool_result)
                 else:
-                    # For agent calls, fall back to condensed display for unknown tools
-                    self._display_condensed_tool_output(tool_name, tool_result)
+                    # For agent calls, only use full display if display=true is explicitly set
+                    if isinstance(tool_result, dict) and tool_result.get("display") is True:
+                        # Use full display when explicitly requested
+                        self._display_full_tool_output(tool_name, tool_result)
+                    else:
+                        # Default to condensed display for all agent tools
+                        self._display_condensed_tool_output(tool_name, tool_result)
 
         except Exception as e:
             # Handle pagination cancellation specially - let it bubble up
