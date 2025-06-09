@@ -58,7 +58,12 @@ class ConfigManager:
     def __new__(cls, config_path: Optional[str] = None):
         """Singleton pattern that also respects different config paths for testing"""
         if config_path is None:
-            config_path = os.path.join(os.path.expanduser("~"), ".chuck_config.json")
+            # Check for environment variable first
+            config_path = os.getenv("CHUCK_CONFIG_PATH")
+            if config_path is None:
+                config_path = os.path.join(
+                    os.path.expanduser("~"), ".chuck_config.json"
+                )
 
         # For testing, allow different instances with different paths
         if config_path in cls._instances_by_path:
@@ -86,9 +91,13 @@ class ConfigManager:
         if config_path:
             self.config_path = config_path
         else:
-            self.config_path = os.path.join(
-                os.path.expanduser("~"), ".chuck_config.json"
-            )
+            # Check for environment variable first
+            config_path = os.getenv("CHUCK_CONFIG_PATH")
+            if config_path is None:
+                config_path = os.path.join(
+                    os.path.expanduser("~"), ".chuck_config.json"
+                )
+            self.config_path = config_path
 
         self._config: Optional[ChuckConfig] = None
         self._initialized = True

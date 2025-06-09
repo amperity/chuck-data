@@ -265,3 +265,111 @@ def test_set_active_model_clears_history(config_setup):
     # Verify history was actually cleared
     history_after = get_agent_history()
     assert len(history_after) == 0
+
+
+def test_chuck_config_path_environment_variable():
+    """Test CHUCK_CONFIG_PATH environment variable sets custom config file path."""
+    # Create a temporary directory and file path
+    temp_dir = tempfile.TemporaryDirectory()
+    custom_config_path = os.path.join(temp_dir.name, "custom_chuck_config.json")
+
+    try:
+        # Test without environment variable (should use default path)
+        with patch.dict(os.environ, {}, clear=True):
+            default_manager = ConfigManager()
+            expected_default_path = os.path.join(
+                os.path.expanduser("~"), ".chuck_config.json"
+            )
+            assert default_manager.config_path == expected_default_path
+
+        # Test with CHUCK_CONFIG_PATH environment variable
+        with patch.dict(os.environ, {"CHUCK_CONFIG_PATH": custom_config_path}):
+            # Clear the singleton cache to force new instance creation
+            ConfigManager._instance = None
+            ConfigManager._instances_by_path.clear()
+
+            custom_manager = ConfigManager()
+            assert custom_manager.config_path == custom_config_path
+
+            # Test that the config actually works with the custom path
+            custom_manager.update(active_model="env-path-test")
+
+            # Verify config was saved to custom path
+            assert os.path.exists(custom_config_path)
+
+            # Verify contents
+            with open(custom_config_path, "r") as f:
+                config_data = json.load(f)
+            assert config_data["active_model"] == "env-path-test"
+
+    finally:
+        # Cleanup
+        temp_dir.cleanup()
+        # Reset singleton for other tests
+        ConfigManager._instance = None
+        ConfigManager._instances_by_path.clear()
+
+
+def test_chuck_config_path_integration_test_isolation():
+    """Test that CHUCK_CONFIG_PATH allows integration test isolation."""
+    # Create two temporary config files to simulate user config vs test config
+    user_temp_dir = tempfile.TemporaryDirectory()
+    test_temp_dir = tempfile.TemporaryDirectory()
+
+    user_config_path = os.path.join(user_temp_dir.name, "user_config.json")
+    test_config_path = os.path.join(test_temp_dir.name, "test_config.json")
+
+    try:
+        # Simulate user's existing config
+        with patch.dict(os.environ, {"CHUCK_CONFIG_PATH": user_config_path}):
+            ConfigManager._instance = None
+            ConfigManager._instances_by_path.clear()
+
+            user_manager = ConfigManager()
+            user_manager.update(
+                active_model="user-model",
+                workspace_url="user-workspace",
+                active_catalog="user-catalog",
+            )
+
+            # Verify user config exists and has expected values
+            user_config = user_manager.get_config()
+            assert user_config.active_model == "user-model"
+            assert user_config.workspace_url == "user-workspace"
+            assert user_config.active_catalog == "user-catalog"
+
+        # Simulate integration test with different config path
+        with patch.dict(os.environ, {"CHUCK_CONFIG_PATH": test_config_path}):
+            ConfigManager._instance = None
+            ConfigManager._instances_by_path.clear()
+
+            test_manager = ConfigManager()
+            test_manager.update(
+                active_model="test-model",
+                workspace_url="test-workspace",
+                active_catalog="test-catalog",
+            )
+
+            # Verify test config is isolated
+            test_config = test_manager.get_config()
+            assert test_config.active_model == "test-model"
+            assert test_config.workspace_url == "test-workspace"
+            assert test_config.active_catalog == "test-catalog"
+
+        # Verify user config is unchanged
+        with patch.dict(os.environ, {"CHUCK_CONFIG_PATH": user_config_path}):
+            ConfigManager._instance = None
+            ConfigManager._instances_by_path.clear()
+
+            user_manager_reload = ConfigManager()
+            user_config_reload = user_manager_reload.get_config()
+            assert user_config_reload.active_model == "user-model"
+            assert user_config_reload.workspace_url == "user-workspace"
+            assert user_config_reload.active_catalog == "user-catalog"
+
+    finally:
+        # Cleanup
+        user_temp_dir.cleanup()
+        test_temp_dir.cleanup()
+        ConfigManager._instance = None
+        ConfigManager._instances_by_path.clear()
