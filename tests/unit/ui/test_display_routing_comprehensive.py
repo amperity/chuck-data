@@ -82,14 +82,18 @@ class TestDisplayRoutingLogicComprehensive:
     def test_agent_display_routing_comprehensive(
         self, tui_with_captured_console, agent_display, tool_result, should_show_output
     ):
-        """Test all agent_display routing scenarios using real command definitions."""
+        """Test all agent_display routing scenarios using real command registry."""
         tui = tui_with_captured_console
         
-        # Create real command definition with the test agent_display setting
+        # Create and register real command definition
         real_cmd_def = create_real_command_def(agent_display=agent_display)
         
-        # Use real command registry lookup (only mock the external get_command call)
-        with patch("chuck_data.ui.tui.get_command", return_value=real_cmd_def):
+        # Use real command registry - temporarily register our test command
+        from chuck_data.command_registry import TUI_COMMAND_MAP
+        original_command = TUI_COMMAND_MAP.get("test-tool")
+        TUI_COMMAND_MAP["test-tool"] = real_cmd_def
+        
+        try:
             tui.display_tool_output("test-tool", tool_result)
             
             if should_show_output:
@@ -98,6 +102,12 @@ class TestDisplayRoutingLogicComprehensive:
             else:
                 # Should not have printed anything (none display)
                 assert not tui.console.print.called, f"Expected no output for {agent_display} with {tool_result}"
+        finally:
+            # Clean up - restore original command or remove test command
+            if original_command is not None:
+                TUI_COMMAND_MAP["test-tool"] = original_command
+            else:
+                TUI_COMMAND_MAP.pop("test-tool", None)
 
     def test_conditional_display_routing_with_true_condition(self, tui_with_captured_console):
         """Test conditional display routing when condition returns True."""
@@ -113,7 +123,12 @@ class TestDisplayRoutingLogicComprehensive:
             display_condition=should_display_full
         )
         
-        with patch("chuck_data.ui.tui.get_command", return_value=real_cmd_def):
+        # Register with real command registry
+        from chuck_data.command_registry import TUI_COMMAND_MAP
+        original_command = TUI_COMMAND_MAP.get("test-tool")
+        TUI_COMMAND_MAP["test-tool"] = real_cmd_def
+        
+        try:
             # Test case where condition returns True but no display=True -> condensed
             tui.display_tool_output("test-tool", {"trigger_full": True})
             assert tui.console.print.called
@@ -124,6 +139,12 @@ class TestDisplayRoutingLogicComprehensive:
             # Test case where condition returns True AND display=True -> should still work
             tui.display_tool_output("test-tool", {"trigger_full": True, "display": True})
             assert tui.console.print.called
+        finally:
+            # Clean up registry
+            if original_command is not None:
+                TUI_COMMAND_MAP["test-tool"] = original_command
+            else:
+                TUI_COMMAND_MAP.pop("test-tool", None)
 
     def test_conditional_display_routing_with_false_condition(self, tui_with_captured_console):
         """Test conditional display routing when condition returns False."""
