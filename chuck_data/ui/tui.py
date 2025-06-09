@@ -659,7 +659,10 @@ class ChuckTUI:
                     handler(tool_name, tool_result)
                 else:
                     # For agent calls, only use full display if display=true is explicitly set
-                    if isinstance(tool_result, dict) and tool_result.get("display") is True:
+                    if (
+                        isinstance(tool_result, dict)
+                        and tool_result.get("display") is True
+                    ):
                         # Use full display when explicitly requested
                         self._display_full_tool_output(tool_name, tool_result)
                     else:
