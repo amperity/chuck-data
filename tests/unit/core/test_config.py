@@ -267,8 +267,33 @@ def test_set_active_model_clears_history(config_setup):
     assert len(history_after) == 0
 
 
+def test_resolve_config_path_precedence():
+    """Test _resolve_config_path follows correct precedence order."""
+    from chuck_data.config import ConfigManager
+
+    # Test 1: Explicit parameter takes highest precedence
+    with patch.dict(os.environ, {"CHUCK_CONFIG_PATH": "/env/path.json"}):
+        result = ConfigManager._resolve_config_path("/explicit/path.json")
+        assert result == "/explicit/path.json"
+
+    # Test 2: Environment variable when no explicit parameter
+    with patch.dict(os.environ, {"CHUCK_CONFIG_PATH": "/env/path.json"}):
+        result = ConfigManager._resolve_config_path(None)
+        assert result == "/env/path.json"
+
+    # Test 3: Default path when no parameter and no env var
+    with patch.dict(os.environ, {}, clear=True):
+        result = ConfigManager._resolve_config_path(None)
+        expected_default = os.path.join(os.path.expanduser("~"), ".chuck_config.json")
+        assert result == expected_default
+
+
 def test_chuck_config_path_environment_variable():
     """Test CHUCK_CONFIG_PATH environment variable sets custom config file path."""
+    # Reset singleton state at the start of the test
+    ConfigManager._instance = None
+    ConfigManager._instances_by_path.clear()
+
     # Create a temporary directory and file path
     temp_dir = tempfile.TemporaryDirectory()
     custom_config_path = os.path.join(temp_dir.name, "custom_chuck_config.json")
@@ -312,6 +337,10 @@ def test_chuck_config_path_environment_variable():
 
 def test_chuck_config_path_integration_test_isolation():
     """Test that CHUCK_CONFIG_PATH allows integration test isolation."""
+    # Reset singleton state at the start of the test
+    ConfigManager._instance = None
+    ConfigManager._instances_by_path.clear()
+
     # Create two temporary config files to simulate user config vs test config
     user_temp_dir = tempfile.TemporaryDirectory()
     test_temp_dir = tempfile.TemporaryDirectory()
