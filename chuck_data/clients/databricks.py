@@ -854,7 +854,7 @@ class DatabricksAPIClient:
         """
         # 1. Load the template notebook
         template_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            os.path.dirname(os.path.dirname(__file__)),
             "assets",
             "stitch_notebook_template.ipynb",
         )

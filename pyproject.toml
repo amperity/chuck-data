@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [tool.hatchling.packages.find]
 where = ["."]
+include = ["chuck_data*"]
 
 [tool.hatchling.metadata]
 allow-direct-references = true
