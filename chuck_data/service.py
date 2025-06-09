@@ -310,7 +310,8 @@ class ChuckService:
             )
         except jsonschema.exceptions.ValidationError as ve:
             usage = (
-                command_def.usage_hint or f"Use /help {command_def.name} for details."
+                command_def.usage_hint
+                or f"Use '/help' for details on '{command_def.name}'."
             )
             # More detailed error: ve.message, ve.path, ve.schema_path
             error_path = " -> ".join(map(str, ve.path)) if ve.path else "argument"

@@ -208,7 +208,7 @@ DEFINITION = CommandDefinition(
         },
     },
     required_params=["table_name", "pii_columns"],
-    tui_aliases=["/tag-pii"],
+    tui_aliases=["/tag-pii-columns"],
     visible_to_user=True,
     visible_to_agent=True,
     usage_hint='Example: /tag-pii --table_name my_table --pii_columns \'[{"name": "email", "semantic": "email"}]\'',

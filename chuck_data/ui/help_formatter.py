@@ -81,6 +81,7 @@ def format_help_text(
         ],
         "PII & Data Management": [
             "scan-schema-for-pii",
+            "bulk-tag-pii",
             "tag-pii-columns",
             "setup-stitch",
             "add-stitch-report",
@@ -158,15 +159,15 @@ def format_help_text(
         elif cmd_name == "agent" or cmd.name == "agent":
             alias = f"{alias} <query>"
         elif cmd_name == "scan-schema-for-pii" or cmd.name == "scan-schema-for-pii":
-            alias = f"{alias} [--catalog_name <catalog>] [--schema_name <schema>]"
+            alias = f"{alias}"
         elif cmd_name == "tag-pii-columns" or cmd.name == "tag-pii-columns":
-            alias = f"{alias} [--table name <table-name> --pii_columns <pii-columns>]"
+            alias = f"{alias}"
         elif cmd_name == "create-volume" or cmd.name == "create-volume":
-            alias = f"{alias} --name <volume_name> [--catalog_name <catalog>] [--schema_name <schema>] [--volume_type MANAGED|EXTERNAL]"
+            alias = f"{alias}"
         elif cmd_name == "upload-file" or cmd.name == "upload-file":
             alias = f"{alias} <file_path> <volume_path>"
         elif cmd_name == "launch-job" or cmd.name == "launch-job":
-            alias = f"{alias} [--filter <filter>]"
+            alias = f"{alias}"
         elif cmd_name == "job-status" or cmd.name == "job-status":
             alias = f"{alias} <run_id>"
         elif cmd_name == "run-sql" or cmd.name == "run-sql":
@@ -175,7 +176,7 @@ def format_help_text(
             alias = f"{alias} <description>"
 
         # Format the command with its description
-        return f"{alias:<30} - {cmd.description}"
+        return f"{alias:<40} - {cmd.description}"
 
     # Start with Chuck Data CLI Commands header
     help_lines = ["", "Chuck Data CLI Commands:"]
