@@ -5,15 +5,18 @@ class VolumeStubMixin:
     """Mixin providing volume operations for DatabricksClientStub."""
 
     def __init__(self):
-        self.volumes = {}  # catalog_name -> [volumes]
+        self.volumes = {}  # (catalog_name, schema_name) -> [volumes]
         self.list_volumes_error = None
         self.create_volume_failure = False
+        self.list_volumes_calls = []
 
-    def list_volumes(self, catalog_name, **kwargs):
-        """List volumes in a catalog."""
+    def list_volumes(self, catalog_name, schema_name, **kwargs):
+        """List volumes in a schema."""
+        self.list_volumes_calls.append((catalog_name, schema_name, kwargs))
         if self.list_volumes_error:
             raise self.list_volumes_error
-        return {"volumes": self.volumes.get(catalog_name, [])}
+        key = (catalog_name, schema_name)
+        return {"volumes": self.volumes.get(key, [])}
 
     def create_volume(
         self, catalog_name, schema_name, volume_name, volume_type="MANAGED", **kwargs
@@ -22,7 +25,7 @@ class VolumeStubMixin:
         if self.create_volume_failure:
             return None
 
-        key = catalog_name
+        key = (catalog_name, schema_name)
         if key not in self.volumes:
             self.volumes[key] = []
 
@@ -49,7 +52,7 @@ class VolumeStubMixin:
         self, catalog_name, schema_name, volume_name, volume_type="MANAGED", **kwargs
     ):
         """Add a volume to the test data."""
-        key = catalog_name
+        key = (catalog_name, schema_name)
         if key not in self.volumes:
             self.volumes[key] = []
 
