@@ -143,6 +143,14 @@ def test_handle_launch_job_missing_url(temp_config):
 
 def test_handle_job_status_basic_success(databricks_client_stub, temp_config):
     """Test getting job status with successful response."""
+    # Add explicit job run data for this test
+    databricks_client_stub.add_simple_job_run(
+        run_id="123456",
+        job_id=12345,
+        run_name="Test Job Run",
+        life_cycle_state="RUNNING",
+    )
+
     with patch("chuck_data.config._config_manager", temp_config):
         result = handle_job_status(databricks_client_stub, run_id="123456")
         assert result.success
@@ -288,15 +296,20 @@ def test_agent_job_status_success_shows_progress_steps(
     """
     AGENT TEST: Getting job status successfully shows expected progress steps.
     """
+    # Add explicit job run data for this test
+    databricks_client_stub.add_simple_job_run(
+        run_id="123456",
+        job_id=12345,
+        run_name="Test Job Run",
+        life_cycle_state="RUNNING",
+    )
+
     with patch("chuck_data.config._config_manager", temp_config):
         progress_steps = []
 
         def capture_progress(tool_name, data):
             assert tool_name == "job_status_progress"
             progress_steps.append(data.get("step", str(data)))
-
-        # Ensure the default stub behavior provides a valid status for this success test
-        # (The fixture default is RUNNING for run_id 123456)
 
         result = handle_job_status(
             databricks_client_stub,

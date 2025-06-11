@@ -6,6 +6,9 @@ class JobStubMixin:
 
     def __init__(self):
         self.create_stitch_notebook_calls = []
+        self.job_runs = {}  # run_id -> job run data
+        self.get_job_run_status_calls = []  # Track calls
+        self.get_job_run_status_error = None  # Exception to raise
 
     def list_jobs(self, **kwargs):
         """List jobs."""
@@ -37,11 +40,36 @@ class JobStubMixin:
 
     def get_job_run_status(self, run_id):
         """Get job run status."""
+        # Track the call for verification
+        self.get_job_run_status_calls.append(run_id)
+
+        # Raise error if configured
+        if self.get_job_run_status_error:
+            raise self.get_job_run_status_error
+
+        # Return pre-configured job run data if available
+        if str(run_id) in self.job_runs:
+            return self.job_runs[str(run_id)]
+
+        # Return None for nonexistent runs (unless it's a default test case)
+        if (
+            not hasattr(self, "_return_default_for_missing")
+            or not self._return_default_for_missing
+        ):
+            return None
+
+        # Default response (only if specifically enabled)
         return {
+            "job_id": 12345,
+            "run_id": (
+                int(run_id)
+                if run_id and str(run_id).isdigit()
+                else (hash(str(run_id)) % 1000000 if run_id else None)
+            ),
+            "run_name": "Default Test Run",
             "state": {"life_cycle_state": "RUNNING"},
-            "run_id": int(run_id),
-            "run_name": "Test Run",
             "creator_user_name": "test@example.com",
+            "start_time": 1640995200000,  # 2022-01-01 00:00:00 UTC in milliseconds
         }
 
     def create_stitch_notebook(self, *args, **kwargs):
@@ -65,3 +93,58 @@ class JobStubMixin:
     def set_create_stitch_notebook_error(self, error):
         """Configure create_stitch_notebook to raise error."""
         self._create_stitch_notebook_error = error
+
+    def add_job_run(self, run_id, job_run_data):
+        """Add a job run to the test data."""
+        self.job_runs[str(run_id)] = job_run_data
+
+    def add_simple_job_run(
+        self,
+        run_id,
+        job_id=12345,
+        run_name="Test Job Run",
+        life_cycle_state="RUNNING",
+        result_state=None,
+        creator_user_name="test@example.com",
+        start_time=1640995200000,
+        setup_duration=None,
+        execution_duration=None,
+        cleanup_duration=None,
+        tasks=None,
+    ):
+        """Add a simple job run with common parameters."""
+        job_run_data = {
+            "job_id": job_id,
+            "run_id": int(run_id) if str(run_id).isdigit() else hash(run_id) % 1000000,
+            "run_name": run_name,
+            "state": {"life_cycle_state": life_cycle_state},
+            "creator_user_name": creator_user_name,
+            "start_time": start_time,
+        }
+
+        if result_state:
+            job_run_data["state"]["result_state"] = result_state
+
+        if setup_duration is not None:
+            job_run_data["setup_duration"] = setup_duration
+        if execution_duration is not None:
+            job_run_data["execution_duration"] = execution_duration
+        if cleanup_duration is not None:
+            job_run_data["cleanup_duration"] = cleanup_duration
+
+        if tasks:
+            job_run_data["tasks"] = tasks
+
+        self.add_job_run(run_id, job_run_data)
+
+    def set_get_job_run_status_error(self, error):
+        """Configure get_job_run_status to raise an error."""
+        self.get_job_run_status_error = error
+
+    def clear_get_job_run_status_error(self):
+        """Clear any configured error."""
+        self.get_job_run_status_error = None
+
+    def enable_default_response_for_missing_runs(self, enable=True):
+        """Configure whether to return default response for missing runs."""
+        self._return_default_for_missing = enable

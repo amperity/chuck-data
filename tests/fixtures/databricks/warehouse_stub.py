@@ -6,6 +6,8 @@ class WarehouseStubMixin:
 
     def __init__(self):
         self.warehouses = []
+        self.create_warehouse_calls = []  # Track create_warehouse calls
+        self.create_warehouse_error = None  # Exception to raise on create_warehouse
 
     def list_warehouses(self, **kwargs):
         """List available warehouses."""
@@ -14,19 +16,21 @@ class WarehouseStubMixin:
     def get_warehouse(self, warehouse_id):
         """Get a specific warehouse by ID."""
         warehouse = next((w for w in self.warehouses if w["id"] == warehouse_id), None)
-        if not warehouse:
-            raise Exception(f"Warehouse {warehouse_id} not found")
-        return warehouse
+        return warehouse  # Return None if not found
 
     def start_warehouse(self, warehouse_id):
         """Start a warehouse."""
         warehouse = self.get_warehouse(warehouse_id)
+        if not warehouse:
+            raise Exception(f"Warehouse {warehouse_id} not found")
         warehouse["state"] = "STARTING"
         return warehouse
 
     def stop_warehouse(self, warehouse_id):
         """Stop a warehouse."""
         warehouse = self.get_warehouse(warehouse_id)
+        if not warehouse:
+            raise Exception(f"Warehouse {warehouse_id} not found")
         warehouse["state"] = "STOPPING"
         return warehouse
 
@@ -61,3 +65,47 @@ class WarehouseStubMixin:
         }
         self.warehouses.append(warehouse)
         return warehouse
+
+    def create_warehouse(self, warehouse_config):
+        """Create a new warehouse."""
+        # Track the call for verification
+        self.create_warehouse_calls.append(warehouse_config)
+
+        # Raise error if configured
+        if self.create_warehouse_error:
+            raise self.create_warehouse_error
+
+        # Generate new warehouse ID
+        new_id = f"warehouse_{len(self.warehouses) + 1}"
+
+        # Create warehouse from config
+        created_warehouse = {
+            "id": new_id,
+            "name": warehouse_config.get("name", "New Warehouse"),
+            "size": warehouse_config.get("size", "Small"),
+            "cluster_size": warehouse_config.get("size", "Small"),
+            "auto_stop_mins": warehouse_config.get("auto_stop_mins", 120),
+            "state": "STARTING",
+            "warehouse_type": "PRO",
+            "enable_serverless_compute": False,
+            "creator_name": "test.user@example.com",
+            "jdbc_url": f"jdbc:databricks://test.cloud.databricks.com:443/default;transportMode=http;ssl=1;httpPath=/sql/1.0/warehouses/{new_id}",
+        }
+
+        # Add optional cluster config if provided
+        if warehouse_config.get("min_num_clusters") is not None:
+            created_warehouse["min_num_clusters"] = warehouse_config["min_num_clusters"]
+        if warehouse_config.get("max_num_clusters") is not None:
+            created_warehouse["max_num_clusters"] = warehouse_config["max_num_clusters"]
+
+        # Add to warehouses list
+        self.warehouses.append(created_warehouse)
+        return created_warehouse
+
+    def set_create_warehouse_error(self, error):
+        """Configure create_warehouse to raise an error."""
+        self.create_warehouse_error = error
+
+    def clear_create_warehouse_error(self):
+        """Clear any configured error."""
+        self.create_warehouse_error = None

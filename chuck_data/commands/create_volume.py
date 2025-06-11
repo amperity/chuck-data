@@ -39,6 +39,13 @@ def handle_command(
     name = kwargs.get("name")
     volume_type = kwargs.get("volume_type", "MANAGED")
 
+    # Validate required parameters
+    if not name:
+        return CommandResult(
+            False,
+            message="No volume name provided. Please specify a name for the volume.",
+        )
+
     # If catalog_name not provided, try to use active catalog
     if not catalog_name:
         catalog_name = get_active_catalog()

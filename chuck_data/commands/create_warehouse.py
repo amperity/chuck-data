@@ -35,10 +35,17 @@ def handle_command(
 
     # Extract parameters
     name = kwargs.get("name")
-    size = kwargs.get("size")
-    auto_stop_mins = kwargs.get("auto_stop_mins")
+    size = kwargs.get("size", "Small")  # Apply default
+    auto_stop_mins = kwargs.get("auto_stop_mins", 120)  # Apply default
     min_num_clusters = kwargs.get("min_num_clusters")
     max_num_clusters = kwargs.get("max_num_clusters")
+
+    # Validate required parameters
+    if not name:
+        return CommandResult(
+            False,
+            message="No warehouse name provided. Please specify a name for the warehouse.",
+        )
 
     # Prepare warehouse configuration
     warehouse_config = {

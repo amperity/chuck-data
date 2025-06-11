@@ -39,6 +39,13 @@ def handle_command(
     catalog = kwargs.get("catalog")
     wait_timeout = kwargs.get("wait_timeout", "30s")
 
+    # Validate required parameters
+    if not query:
+        return CommandResult(
+            False,
+            message="No SQL query provided. Please specify a query to execute.",
+        )
+
     # If warehouse_id not provided, try to use the configured warehouse
     if not warehouse_id:
         warehouse_id = get_warehouse_id()

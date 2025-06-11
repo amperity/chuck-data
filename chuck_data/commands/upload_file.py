@@ -41,14 +41,20 @@ def handle_command(
     use_dbfs = kwargs.get("use_dbfs", False)
     contents = kwargs.get("contents")
 
-    # Validation
-    if local_path and contents:
+    # Validation - check required parameters first
+    if not destination_path:
+        return CommandResult(
+            False,
+            message="No destination path provided. Please specify a destination_path for the upload.",
+        )
+
+    if local_path and contents is not None:
         return CommandResult(
             False,
             message="You cannot specify both local_path and contents. Choose one method to provide file content.",
         )
 
-    if not local_path and not contents:
+    if not local_path and contents is None:
         return CommandResult(
             False, message="You must provide either local_path or contents to upload."
         )
@@ -59,7 +65,7 @@ def handle_command(
     try:
         # Choose the appropriate upload method based on parameters
         if use_dbfs:
-            if contents:
+            if contents is not None:
                 client.store_dbfs_file(
                     path=destination_path, contents=contents, overwrite=overwrite
                 )
@@ -73,7 +79,7 @@ def handle_command(
             upload_type = "DBFS"
         else:
             # Upload to volumes
-            if contents:
+            if contents is not None:
                 client.upload_file(
                     path=destination_path, content=contents, overwrite=overwrite
                 )
