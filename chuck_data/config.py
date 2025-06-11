@@ -55,10 +55,36 @@ class ConfigManager:
     # Track instances by config path to support testing with different paths
     _instances_by_path = {}
 
+    @classmethod
+    def _resolve_config_path(cls, config_path: Optional[str] = None) -> str:
+        """Resolve configuration file path with precedence: parameter > CHUCK_CONFIG_PATH > default.
+
+        Args:
+            config_path: Explicit path provided by caller
+
+        Returns:
+            Resolved configuration file path
+        """
+        if config_path is not None:
+            return config_path
+
+        # Check for environment variable first
+        env_path = os.getenv("CHUCK_CONFIG_PATH")
+        if env_path is not None:
+            return env_path
+
+        # Fall back to default
+        return os.path.join(os.path.expanduser("~"), ".chuck_config.json")
+
     def __new__(cls, config_path: Optional[str] = None):
-        """Singleton pattern that also respects different config paths for testing"""
-        if config_path is None:
-            config_path = os.path.join(os.path.expanduser("~"), ".chuck_config.json")
+        """Singleton pattern that also respects different config paths for testing.
+
+        Configuration file path resolution precedence:
+        1. config_path parameter (highest priority)
+        2. CHUCK_CONFIG_PATH environment variable
+        3. ~/.chuck_config.json (default)
+        """
+        config_path = cls._resolve_config_path(config_path)
 
         # For testing, allow different instances with different paths
         if config_path in cls._instances_by_path:
@@ -83,12 +109,7 @@ class ConfigManager:
         if getattr(self, "_initialized", False):
             return
 
-        if config_path:
-            self.config_path = config_path
-        else:
-            self.config_path = os.path.join(
-                os.path.expanduser("~"), ".chuck_config.json"
-            )
+        self.config_path = self._resolve_config_path(config_path)
 
         self._config: Optional[ChuckConfig] = None
         self._initialized = True

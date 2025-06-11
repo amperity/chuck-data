@@ -25,6 +25,15 @@ Join our community on [Discord](https://discord.gg/f3UZwyuQqe).
 
 ## Installation
 
+### Homebrew (Recommended)
+
+```bash
+brew tap amperity/chuck-data
+brew install chuck-data
+```
+
+### pip
+
 ```bash
 pip install chuck-data
 ```
