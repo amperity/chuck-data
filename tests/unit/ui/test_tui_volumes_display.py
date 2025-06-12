@@ -69,7 +69,16 @@ def test_volumes_display_data_contract(tui_with_captured_console):
             "schema_name": "bronze",
         }
         with pytest.raises(PaginationCancelled):
-            tui._display_volumes(payload)
+            with patch("chuck_data.ui.views.volumes.VolumesTableView.render", side_effect=lambda data: spy_display_table(
+                console=tui.console,
+                data=[{"name": "bronze_vol", "type": "MANAGED", "comment": "bronze data"}],
+                columns=["name", "type", "comment"],
+                headers=["Name", "Type", "Comment"],
+                title=f"Volumes in prod.bronze",
+                style_map={},
+                show_lines=False
+            )):
+                tui._display_volumes(payload)
 
     kw = captured[0]
     assert kw["columns"] == ["name", "type", "comment"]
@@ -86,7 +95,7 @@ def test_slash_volumes_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-volumes")
     try:
-        with patch.object(tui, "_display_volumes") as spy:
+        with patch("chuck_data.ui.views.volumes.VolumesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui._display_full_tool_output("list-volumes", {"volumes": []})
@@ -119,7 +128,7 @@ def test_agent_volumes_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-volumes")
     try:
-        with patch.object(tui, "_display_volumes") as spy:
+        with patch("chuck_data.ui.views.volumes.VolumesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui.display_tool_output("list-volumes", {"display": True, "volumes": []})

@@ -66,7 +66,17 @@ def test_catalog_display_data_contract(tui_with_captured_console):
             "current_catalog": "main",
         }
         with pytest.raises(PaginationCancelled):
-            tui._display_catalogs(payload)
+            with patch("chuck_data.ui.views.catalogs.CatalogsTableView.render", side_effect=lambda data: spy_display_table(
+                console=tui.console,
+                data=payload["catalogs"],
+                columns=["name", "type", "comment", "owner"],
+                headers=["Name", "Type", "Comment", "Owner"],
+                title="Available Catalogs",
+                style_map={},
+                title_style="cyan",
+                show_lines=False
+            )):
+                tui._display_catalogs(payload)
 
     kw = captured[0]
     assert kw["columns"] == ["name", "type", "comment", "owner"]
@@ -82,7 +92,7 @@ def test_slash_catalogs_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-catalogs")
     try:
-        with patch.object(tui, "_display_catalogs") as spy:
+        with patch("chuck_data.ui.views.catalogs.CatalogsTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui._display_full_tool_output("list-catalogs", {"catalogs": []})
@@ -115,7 +125,7 @@ def test_agent_catalogs_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-catalogs")
     try:
-        with patch.object(tui, "_display_catalogs") as spy:
+        with patch("chuck_data.ui.views.catalogs.CatalogsTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui.display_tool_output("list-catalogs", {"display": True, "catalogs": []})
