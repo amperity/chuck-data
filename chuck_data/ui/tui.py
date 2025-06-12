@@ -441,6 +441,9 @@ class ChuckTUI:
             "/catalogs",
             "/list-tables",
             "/tables",
+            "/table",        # Single table details view
+            "/catalog",      # Single catalog details view
+            "/schema",       # Single schema details view
             "/list-models",
             "/models",
             "/list-volumes",
