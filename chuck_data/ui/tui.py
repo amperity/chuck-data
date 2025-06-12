@@ -92,6 +92,9 @@ class ChuckTUI:
 
         # Register specific agent display handlers
         self.agent_full_display_handlers["status"] = self._display_status_for_agent
+        self.agent_full_display_handlers["run-sql"] = (
+            self._display_sql_results_for_agent
+        )
 
         # Register this instance as the global TUI instance
         # This allows other modules to access the service instance
@@ -1954,6 +1957,14 @@ class ChuckTUI:
         """Display SQL query results from the original command result data."""
         # Since we now pass original data to TUI, we can use the regular display method
         self._display_sql_results(data)
+
+    def _display_sql_results_for_agent(
+        self, tool_name: str, tool_result: Dict[str, Any]
+    ) -> None:
+        """Display SQL query results during agent execution."""
+        # The tool_result contains the original command result data
+        # Just display it using the regular SQL results display method
+        self._display_sql_results(tool_result)
 
     def _display_paginated_sql_results(self, data: Dict[str, Any]) -> None:
         """Display paginated SQL query results with interactive navigation."""
