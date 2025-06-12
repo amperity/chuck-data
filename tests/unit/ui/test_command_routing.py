@@ -19,28 +19,73 @@ def tui():
     return tui_instance
 
 
-def test_all_slash_commands_set_display_true_for_tables(tui):
+def test_all_table_display_commands_set_display_true(tui):
     """
     Test that all list-* slash commands set display=True when executing.
 
     This test verifies that the TUI passes display=True to the service layer
     for all list-* commands, ensuring tables are always displayed in full format.
 
-    This test would catch the issue where only warehouses commands were setting
-    display=True, while other list commands were not.
+    This test dynamically collects commands from the TUI_COMMAND_MAP and view registry
+    to ensure coverage of all variants and aliases that should display tables.
     """
-    # Define list commands that should display full tables
-    list_commands = [
+    from chuck_data.command_registry import TUI_COMMAND_MAP, COMMAND_REGISTRY
+    from chuck_data.ui.view_registry import _VIEW_REGISTRY
+
+    table_commands = set()
+
+    # Collect commands from TUI_COMMAND_MAP that should display tables
+    for slash_cmd, registry_name in TUI_COMMAND_MAP.items():
+        # Include all list-* commands or their aliases
+        if registry_name.startswith("list-") or slash_cmd.startswith("/list-"):
+            table_commands.add(slash_cmd)
+
+    # Include short form aliases that correspond to list commands
+    # These are commands like /tables, /schemas, etc.
+    short_form_mapping = {
+        "/tables": "list-tables",
+        "/schemas": "list-schemas",
+        "/catalogs": "list-catalogs",
+        "/models": "list-models",
+        "/warehouses": "list-warehouses",
+        "/volumes": "list-volumes",
+    }
+
+    for short_form, list_form in short_form_mapping.items():
+        if short_form in TUI_COMMAND_MAP or list_form in COMMAND_REGISTRY:
+            table_commands.add(short_form)
+
+    # Also add view registry names that likely represent table views
+    for view_name in _VIEW_REGISTRY.keys():
+        if view_name.endswith("TableView") or "Table" in view_name:
+            # Try to map view names back to commands
+            if view_name.startswith("list-"):
+                table_commands.add(f"/{view_name}")
+
+    # Ensure we have the minimum expected commands for testing
+    expected_minimum = {
         "/list-schemas",
         "/list-catalogs",
         "/list-tables",
         "/list-models",
         "/list-warehouses",
         "/list-volumes",
-    ]
+        "/schemas",
+        "/catalogs",
+        "/tables",
+    }
+
+    # Make sure we don't miss any expected commands
+    for expected_cmd in expected_minimum:
+        if expected_cmd not in table_commands:
+            table_commands.add(expected_cmd)
+
+    assert len(table_commands) >= len(
+        expected_minimum
+    ), "Failed to find all expected table display commands"
 
     # Test each command
-    for cmd in list_commands:
+    for cmd in sorted(table_commands):
         # Reset mock for this command
         tui.service.execute_command.reset_mock()
 

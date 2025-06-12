@@ -431,8 +431,22 @@ class ChuckTUI:
             result = self.service.execute_command(
                 cmd, *args, tool_output_callback=self.display_tool_output
             )
-        elif cmd in ["/warehouses", "/list-warehouses"]:
-            # For TUI warehouse commands, always show the full table
+        # List commands that should show full tables
+        elif cmd in [
+            "/warehouses",
+            "/list-warehouses",
+            "/list-schemas",
+            "/schemas",
+            "/list-catalogs",
+            "/catalogs",
+            "/list-tables",
+            "/tables",
+            "/list-models",
+            "/models",
+            "/list-volumes",
+            "/volumes",
+        ]:
+            # For table display commands, always show the full table
             result = self.service.execute_command(cmd, *args, display=True)
         else:
             result = self.service.execute_command(cmd, *args)

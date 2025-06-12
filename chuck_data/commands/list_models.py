@@ -83,5 +83,6 @@ DEFINITION = CommandDefinition(
     tui_aliases=["/models", "/list-models"],
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full model list in tables
+    agent_display="conditional",  # Show full model list only when display=True
+    display_condition=lambda result: result.get("display", False),
 )

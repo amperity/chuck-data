@@ -126,6 +126,7 @@ DEFINITION = CommandDefinition(
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    agent_display="full",  # Show full volume list in tables
+    agent_display="conditional",  # Show full table only when display=True
+    display_condition=lambda result: result.get("display", False),
     usage_hint="Usage: /list-volumes [--catalog_name <catalog>] [--schema_name <schema>] [--include_browse true|false]\n(Uses active catalog/schema if not specified)",
 )

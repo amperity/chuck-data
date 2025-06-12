@@ -277,7 +277,7 @@ def test_agent_display_setting_validation(tui):
         found_commands == expected_list_commands
     ), f"Expected list commands changed. Found: {found_commands}, Expected: {expected_list_commands}"
 
-    # Verify each has agent_display="full" (except list-warehouses, list-catalogs, list-schemas, and list-tables which use conditional display)
+    # Verify each has agent_display="full" or "conditional" with correct display_condition
     for cmd_name in list_commands:
         cmd_def = get_command(cmd_name)
         if cmd_name in [
@@ -285,8 +285,10 @@ def test_agent_display_setting_validation(tui):
             "list-catalogs",
             "list-schemas",
             "list-tables",
+            "list-models",
+            "list-volumes",
         ]:
-            # list-warehouses, list-catalogs, list-schemas, and list-tables use conditional display with display parameter
+            # These commands use conditional display with display parameter
             assert (
                 cmd_def.agent_display == "conditional"
             ), f"Command {cmd_name} should use conditional display with display parameter control"
