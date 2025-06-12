@@ -474,33 +474,49 @@ class ChuckTUI:
             if not result.data:
                 return
 
-            # Specialized display for different commands
-            if cmd in ["/catalogs", "/search_catalogs", "/list-catalogs"]:
-                self._display_catalogs(result.data)
-            elif cmd in ["/schemas", "/search_schemas", "/list-schemas"]:
-                self._display_schemas(result.data)
-            elif cmd in ["/tables", "/search_tables", "/list-tables"]:
-                self._display_tables(result.data)
-            elif cmd in ["/catalog", "/catalog-details"]:
-                self._display_catalog_details(result.data)
-            elif cmd in ["/schema", "/schema-details"]:
-                self._display_schema_details(result.data)
-            elif cmd in ["/models", "/list-models"]:
-                self._display_models_consolidated(result.data)
-            elif cmd in ["/warehouses", "/list-warehouses"]:
-                self._display_warehouses(result.data)
-            elif cmd in ["/volumes", "/list-volumes"]:
-                self._display_volumes(result.data)
-            elif cmd in ["/table", "/show_table", "/table-details"]:
-                self._display_table_details(result.data)
+            # Use the view registry to route display requests
+            from chuck_data.ui.view_registry import get_view
+            
+            # Try to get the appropriate view from the registry
+            cmd_without_slash = cmd[1:] if cmd.startswith("/") else cmd  # Remove leading slash
+            
+            # Command name mappings to standardize the lookup
+            cmd_mapping = {
+                "catalogs": "list-catalogs",
+                "search_catalogs": "list-catalogs",
+                "schemas": "list-schemas",
+                "search_schemas": "list-schemas",
+                "tables": "list-tables",
+                "search_tables": "list-tables",
+                "catalog": "catalog-details",
+                "schema": "schema-details",
+                "models": "list-models",
+                "warehouses": "list-warehouses",
+                "volumes": "list-volumes", 
+                "table": "table-details",
+                "show_table": "table-details",
+                "run-sql": "sql",
+            }
+            
+            # Standardize command name for lookup
+            standard_cmd = cmd_mapping.get(cmd_without_slash, cmd_without_slash)
+            view_cls = get_view(standard_cmd)
+            
+            if view_cls:
+                # Use the view class to render the data
+                try:
+                    view_cls(self.console).render(result.data)
+                    return  # View handled the display
+                except Exception as e:
+                    logging.warning(f"Failed to render view for {cmd}: {e}")
+            
+            # Fallback for commands without views - handle special cases
+            if cmd == "/auth" and "permissions" in result.data:
+                self._display_permissions(result.data["permissions"])
             elif cmd in ["/run-sql", "/sql"]:
                 self._display_sql_results(result.data)
             elif cmd == "/scan-pii":
                 self._display_pii_scan_results(result.data)
-            elif cmd == "/status":
-                self._display_status(result.data)
-            elif cmd == "/auth" and "permissions" in result.data:
-                self._display_permissions(result.data["permissions"])
             elif cmd == "/usage":
                 # For the usage command, we just display the message
                 if result.message:
@@ -663,48 +679,49 @@ class ChuckTUI:
     ) -> None:
         """Display full detailed tool output using view registry when available."""
         from chuck_data.ui.view_registry import get_view
-        view_cls = get_view(tool_name)
+        
+        # Map legacy tool names to their updated equivalents for routing
+        tool_name_mapping = {
+            "get_catalog_details": "catalog",
+            "show_table": "table",
+            "scan_schema_for_pii": "scan-pii",
+            "scan_pii": "scan-pii",
+        }
+        
+        # Apply tool name mapping if needed
+        mapped_tool_name = tool_name_mapping.get(tool_name, tool_name)
+        
+        # Try to get the view class from registry
+        view_cls = get_view(mapped_tool_name)
         
         if view_cls:
+            # Use registered view class
             view_cls(self.console).render(tool_result)
             return
         
-        # Fallback for tools without registered views
-        # Special cases for a few legacy displays
-        if tool_name in ["get_catalog_details", "catalog"]:
-            self._display_catalog_details(tool_result)
-        elif tool_name in ["get_schema_details", "schema"]:
-            self._display_schema_details(tool_result)
-        elif tool_name in ["get_table_info", "table", "show_table"]:
-            self._display_table_details(tool_result)
-        elif tool_name in ["scan-schema-for-pii", "scan_schema_for_pii", "scan_pii"]:
-            self._display_pii_scan_results(tool_result)
-        elif tool_name == "run-sql":
-            self._display_sql_results_formatted(tool_result)
-        else:
-            # For unknown tools, display a generic panel with the data
-            from rich.panel import Panel
-            import json
+        # Fallback for tools without registered views - display as JSON panel
+        from rich.panel import Panel
+        import json
 
-            # Try to format as JSON for readability
-            try:
-                formatted_data = json.dumps(tool_result, indent=2)
-                self.console.print(
-                    Panel(
-                        formatted_data,
-                        title=f"Tool Output: {tool_name}",
-                        border_style=DIALOG_BORDER,
-                    )
+        # Try to format as JSON for readability
+        try:
+            formatted_data = json.dumps(tool_result, indent=2)
+            self.console.print(
+                Panel(
+                    formatted_data,
+                    title=f"Tool Output: {tool_name}",
+                    border_style=DIALOG_BORDER,
                 )
-            except (TypeError, ValueError):
-                # If JSON serialization fails, display as string
-                self.console.print(
-                    Panel(
-                        str(tool_result),
-                        title=f"Tool Output: {tool_name}",
-                        border_style=DIALOG_BORDER,
-                    )
+            )
+        except (TypeError, ValueError):
+            # If JSON serialization fails, display as string
+            self.console.print(
+                Panel(
+                    str(tool_result),
+                    title=f"Tool Output: {tool_name}",
+                    border_style=DIALOG_BORDER,
                 )
+            )
 
     def _display_condensed_tool_output(
         self, tool_name: str, tool_result: Dict[str, Any]
@@ -806,51 +823,6 @@ class ChuckTUI:
         from chuck_data.ui.views.catalogs import CatalogsTableView
         CatalogsTableView(self.console).render(data)
 
-    def _display_catalogs_legacy(self, data: Dict[str, Any]) -> None:
-        """Display catalogs in a nicely formatted way."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
-
-        catalogs = data.get("catalogs", [])
-        current_catalog = data.get("current_catalog")
-
-        if not catalogs:
-            self.console.print(f"[{WARNING_STYLE}]No catalogs found.[/{WARNING_STYLE}]")
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Define column styling based on the active catalog
-        def name_style(name):
-            return "bold green" if name == current_catalog else None
-
-        style_map = {"name": name_style}
-
-        # Prepare catalog data - ensure lowercase types
-        for catalog in catalogs:
-            if "type" in catalog and catalog["type"]:
-                catalog["type"] = catalog["type"].lower()
-
-        # Display the table
-        display_table(
-            console=self.console,
-            data=catalogs,
-            columns=["name", "type", "comment", "owner"],
-            headers=["Name", "Type", "Comment", "Owner"],
-            title="Available Catalogs",
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=False,
-        )
-
-        # Display current catalog if set
-        if current_catalog:
-            self.console.print(
-                f"\nCurrent catalog: [bold green]{current_catalog}[/bold green]"
-            )
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after catalog display is complete
-        raise PaginationCancelled()
 
     # >>> NEW SHIM for schemas view
     def _display_schemas(self, data: Dict[str, Any]) -> None:
@@ -858,249 +830,13 @@ class ChuckTUI:
         from chuck_data.ui.views.schemas import SchemasTableView
         SchemasTableView(self.console).render(data)
 
-    def _display_schemas_legacy(self, data: Dict[str, Any]) -> None:
-        """Display schemas in a nicely formatted way (legacy)."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
-
-        schemas = data.get("schemas", [])
-        catalog_name = data.get("catalog_name", "")
-        current_schema = data.get("current_schema")
-
-        if not schemas:
-            self.console.print(
-                f"[{WARNING_STYLE}]No schemas found in catalog '{catalog_name}'.[/{WARNING_STYLE}]"
-            )
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Define column styling based on the active schema
-        def name_style(name):
-            return "bold green" if name == current_schema else None
-
-        style_map = {"name": name_style}
-
-        # Display the table
-        display_table(
-            console=self.console,
-            data=schemas,
-            columns=["name", "comment"],
-            headers=["Name", "Comment"],
-            title=f"Schemas in catalog '{catalog_name}'",
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=False,
-        )
-
-        # Display current schema if available
-        if current_schema:
-            self.console.print(
-                f"\nCurrent schema: [{SUCCESS_STYLE}]{current_schema}[/{SUCCESS_STYLE}]"
-            )
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after schema display is complete
-        raise PaginationCancelled()
 
     # >>> NEW SHIM for tables view
     def _display_tables(self, data: Dict[str, Any]) -> None:
         from chuck_data.ui.views.tables import TablesTableView
         TablesTableView(self.console).render(data)
 
-    def _display_tables_legacy(self, data: Dict[str, Any]) -> None:
-        """Display tables in a nicely formatted way."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
 
-        tables = data.get("tables", [])
-        catalog_name = data.get("catalog_name", "")
-        schema_name = data.get("schema_name", "")
-        total_count = data.get("total_count", len(tables))
-
-        if not tables:
-            self.console.print(
-                f"[{WARNING_STYLE}]No tables found in {catalog_name}.{schema_name}[/{WARNING_STYLE}]"
-            )
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Process the table data for display
-        for table in tables:
-            # Convert columns list to count if present
-            if "columns" in table and isinstance(table["columns"], list):
-                table["column_count"] = len(table["columns"])
-            else:
-                table["column_count"] = 0
-
-            # Format timestamps if present
-            for ts_field in ["created_at", "updated_at"]:
-                if ts_field in table and table[ts_field]:
-                    try:
-                        # Convert timestamp to more readable format if needed
-                        # Handle Unix timestamps (integers) and ISO strings
-                        timestamp = table[ts_field]
-                        if isinstance(timestamp, int):
-                            # Convert Unix timestamp (milliseconds) to readable date
-                            from datetime import datetime
-
-                            date_obj = datetime.fromtimestamp(timestamp / 1000)
-                            table[ts_field] = date_obj.strftime("%Y-%m-%d")
-                        elif isinstance(timestamp, str) and len(timestamp) > 10:
-                            table[ts_field] = timestamp.split("T")[0]
-                    except Exception:
-                        pass  # Keep the original format if conversion fails
-
-            # Format row count if present
-            if "row_count" in table and table["row_count"] not in ["-", "Unknown"]:
-                try:
-                    row_count = table["row_count"]
-                    if isinstance(row_count, str) and row_count.isdigit():
-                        row_count = int(row_count)
-
-                    if isinstance(row_count, int):
-                        # Format large numbers with appropriate suffixes
-                        if row_count >= 1_000_000_000:
-                            table["row_count"] = f"{row_count / 1_000_000_000:.1f}B"
-                        elif row_count >= 1_000_000:
-                            table["row_count"] = f"{row_count / 1_000_000:.1f}M"
-                        elif row_count >= 1_000:
-                            table["row_count"] = f"{row_count / 1_000:.1f}K"
-                        else:
-                            table["row_count"] = str(row_count)
-                except Exception:
-                    pass  # Keep the original format if conversion fails
-
-        # Define column styling functions
-        def table_type_style(type_val):
-            if type_val == "VIEW" or type_val == "view":
-                return "bright_blue"
-            return None
-
-        # Set up style map
-        style_map = {
-            "table_type": table_type_style,
-            "column_count": lambda val: "dim" if val == 0 else None,
-        }
-
-        # Adjust title based on method
-        method = data.get("method", "")
-        title = (
-            f"Tables in {catalog_name}.{schema_name} ({total_count} total)"
-            if method == "unity_catalog"
-            else "Available Tables"
-        )
-
-        # Set up column alignments for numerical columns
-        column_alignments = {
-            "# Cols": "right",
-            "Rows": "right",
-        }
-
-        # Display the table using our formatter
-        display_table(
-            console=self.console,
-            data=tables,
-            columns=[
-                "name",
-                "table_type",
-                "column_count",
-                "row_count",
-                "created_at",
-                "updated_at",
-            ],
-            headers=["Table Name", "Type", "# Cols", "Rows", "Created", "Last Updated"],
-            title=title,
-            style_map=style_map,
-            column_alignments=column_alignments,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=True,
-        )
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after table display is complete
-        raise PaginationCancelled()
-
-    def _display_models(self, models: List[Dict[str, Any]]) -> None:
-        """Display models in a nicely formatted way."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
-
-        # Use imported function to get the active model for highlighting
-        active_model = get_active_model()
-
-        if not models:
-            self.console.print(
-                f"[{WARNING_STYLE}]No models found or returned.[/{WARNING_STYLE}]"
-            )
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Process model data for display
-        processed_models = []
-        for model in models:
-            # Create a processed model with clear fields
-            processed = {
-                "name": model.get("name", "N/A"),
-                "creator": model.get("creator", "N/A"),
-            }
-
-            # Extract and process state information
-            state = model.get("state", {})
-            ready_status = state.get("ready", "UNKNOWN").upper()
-            processed["status"] = ready_status
-
-            # Add to our list
-            processed_models.append(processed)
-
-        # Define styling function for status
-        def status_style(status):
-            if status == "READY":
-                return "green"
-            elif status == "NOT_READY":
-                return "yellow"
-            elif "ERROR" in status:
-                return "red"
-            return None
-
-        # Define styling function for the name to highlight active model
-        def name_style(name):
-            if active_model and (
-                name == active_model or name.startswith(active_model + " ")
-            ):
-                return "bold green"
-            return None
-
-        # Process model names to add recommended tag
-        for model in processed_models:
-            if model["name"] in [
-                "databricks-claude-3-7-sonnet",
-            ]:
-                model["name"] = f"{model['name']} (recommended)"
-
-        # Set up style map
-        style_map = {"name": name_style, "status": status_style}
-
-        # Display the table using our formatter
-        display_table(
-            console=self.console,
-            data=processed_models,
-            columns=["name", "creator", "status"],
-            headers=["Endpoint Name", "Creator", "State"],
-            title="Available Model Serving Endpoints",
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=False,
-        )
-
-        # Display active model if set
-        if active_model:
-            self.console.print(
-                f"\nCurrent active model: [{SUCCESS_STYLE}]{active_model}[/{SUCCESS_STYLE}]"
-            )
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after model display is complete
-        raise PaginationCancelled()
 
     def _display_models_consolidated(self, data: Dict[str, Any]) -> None:
         """Shim delegate to ModelsTableView."""
