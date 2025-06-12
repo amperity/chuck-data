@@ -574,6 +574,253 @@ class TestRunSQLDisplayIntegration:
         assert formatted["raw_data"]["rows"] == [["John", 25], ["Jane", 30]]
 
 
+class TestRunSQLAgentDisplayRegression:
+    """Test demonstrating the regression between direct TUI and agent execution display differences."""
+
+    def test_direct_vs_agent_execution_display_differences(
+        self, databricks_client_stub
+    ):
+        """
+        REGRESSION TEST: Agent execution displays different output than direct TUI execution.
+
+        This test demonstrates that:
+        1. Direct command execution (via TUI /run-sql) returns raw columns/rows data
+        2. Agent execution (via tool_executor) applies format_sql_results_for_agent formatter
+        3. This causes different user experiences for the same SQL query
+
+        Expected behavior: Both execution paths should provide the same user experience
+        """
+        # Setup test SQL result
+        sql_result = {
+            "status": {"state": "SUCCEEDED"},
+            "result": {
+                "data_array": [
+                    ["Alice", 28, "Engineer"],
+                    ["Bob", 32, "Manager"],
+                    ["Carol", 26, "Designer"],
+                ],
+                "schema": {
+                    "columns": [
+                        {"name": "name", "type": "string"},
+                        {"name": "age", "type": "int"},
+                        {"name": "role", "type": "string"},
+                    ]
+                },
+            },
+            "manifest": {
+                "schema": {
+                    "columns": [
+                        {"name": "name", "type": "string"},
+                        {"name": "age", "type": "int"},
+                        {"name": "role", "type": "string"},
+                    ]
+                }
+            },
+            "execution_time_ms": 1500,
+        }
+
+        databricks_client_stub.submit_sql_statement = lambda **kwargs: sql_result
+
+        # Test 1: Direct command execution (simulates TUI /run-sql)
+        direct_result = handle_command(
+            databricks_client_stub,
+            query="SELECT name, age, role FROM employees",
+            warehouse_id="test_warehouse",
+        )
+
+        # Test 2: Agent execution through tool_executor
+        from chuck_data.agent.tool_executor import execute_tool
+
+        agent_result = execute_tool(
+            api_client=databricks_client_stub,
+            tool_name="run-sql",
+            tool_args={
+                "query": "SELECT name, age, role FROM employees",
+                "warehouse_id": "test_warehouse",
+            },
+        )
+
+        # Verify both executions succeeded
+        assert direct_result.success
+        assert agent_result["success"] is True
+
+        # DEMONSTRATE THE REGRESSION: Different data structures returned
+
+        # Direct execution returns raw command result data
+        direct_data = direct_result.data
+        assert direct_data["columns"] == ["name", "age", "role"]
+        assert direct_data["rows"] == [
+            ["Alice", 28, "Engineer"],
+            ["Bob", 32, "Manager"],
+            ["Carol", 26, "Designer"],
+        ]
+        assert direct_data["row_count"] == 3
+        assert direct_data["execution_time_ms"] == 1500
+        assert direct_data["is_paginated"] is False
+
+        # Agent execution returns formatted output with table display
+        assert "results_table" in agent_result
+        assert "summary" in agent_result
+        assert "raw_data" in agent_result
+
+        # The agent gets a formatted table string
+        table_output = agent_result["results_table"]
+        assert "name" in table_output  # Column headers
+        assert "Alice" in table_output  # Data rows
+        assert "Bob" in table_output
+        assert "Carol" in table_output
+
+        # The agent also gets summary information
+        summary = agent_result["summary"]
+        assert summary["total_rows"] == 3
+        assert summary["columns"] == ["name", "age", "role"]
+        assert summary["execution_time_ms"] == 1500
+
+        # DOCUMENT THE EXPECTED BEHAVIOR
+        """
+        EXPECTED BEHAVIOR (to fix the regression):
+        
+        Both direct TUI execution and agent execution should provide consistent user experiences:
+        
+        1. The TUI should display formatted tables (like the agent currently does)
+        2. The agent should have access to the same rich formatting capabilities
+        3. Users should see identical or equivalent output regardless of execution path
+        
+        CURRENT PROBLEMATIC BEHAVIOR:
+        - TUI users see raw data that may not be formatted nicely
+        - Agent users see nicely formatted table output
+        - This creates inconsistent user experiences for the same command
+        
+        POTENTIAL SOLUTIONS:
+        1. Apply formatting in the display layer consistently for both paths
+        2. Use the same formatter for both TUI and agent display
+        3. Ensure command results contain both raw data and formatted display versions
+        """
+
+    def test_agent_execution_applies_custom_formatter(self, databricks_client_stub):
+        """Agent execution applies the custom output formatter while direct execution does not."""
+        # Setup test data
+        sql_result = {
+            "status": {"state": "SUCCEEDED"},
+            "result": {
+                "data_array": [["test_value", 42]],
+                "schema": {
+                    "columns": [
+                        {"name": "text_col", "type": "string"},
+                        {"name": "num_col", "type": "int"},
+                    ]
+                },
+            },
+            "manifest": {
+                "schema": {
+                    "columns": [
+                        {"name": "text_col", "type": "string"},
+                        {"name": "num_col", "type": "int"},
+                    ]
+                }
+            },
+            "execution_time_ms": 800,
+        }
+
+        databricks_client_stub.submit_sql_statement = lambda **kwargs: sql_result
+
+        # Direct execution - no formatting applied
+        direct_result = handle_command(
+            databricks_client_stub,
+            query="SELECT 'test_value' as text_col, 42 as num_col",
+            warehouse_id="test_warehouse",
+        )
+
+        # Agent execution - formatting applied via tool_executor
+        from chuck_data.agent.tool_executor import execute_tool
+
+        agent_result = execute_tool(
+            api_client=databricks_client_stub,
+            tool_name="run-sql",
+            tool_args={
+                "query": "SELECT 'test_value' as text_col, 42 as num_col",
+                "warehouse_id": "test_warehouse",
+            },
+        )
+
+        # Verify the structural differences
+        assert direct_result.success
+        assert agent_result["success"] is True
+
+        # Direct result has raw command data
+        assert "columns" in direct_result.data
+        assert "rows" in direct_result.data
+        assert "results_table" not in direct_result.data  # No formatted table
+
+        # Agent result has formatted output
+        assert "results_table" in agent_result  # Formatted table present
+        assert "summary" in agent_result  # Summary information
+        assert "raw_data" in agent_result  # Raw data also included
+
+        # The formatted table should contain the data in a readable format
+        table_output = agent_result["results_table"]
+        assert "text_col" in table_output
+        assert "num_col" in table_output
+        assert "test_value" in table_output
+        assert "42" in table_output
+
+        # Summary should match the raw data
+        assert agent_result["summary"]["total_rows"] == 1
+        assert agent_result["summary"]["columns"] == ["text_col", "num_col"]
+
+    def test_agent_tool_output_callback_integration(self, databricks_client_stub):
+        """Agent execution with tool_output_callback shows intermediate progress."""
+        # Setup test data
+        sql_result = {
+            "status": {"state": "SUCCEEDED"},
+            "result": {
+                "data_array": [["result_1"], ["result_2"]],
+                "schema": {"columns": [{"name": "output", "type": "string"}]},
+            },
+            "manifest": {"schema": {"columns": [{"name": "output", "type": "string"}]}},
+            "execution_time_ms": 1200,
+        }
+
+        databricks_client_stub.submit_sql_statement = lambda **kwargs: sql_result
+
+        # Capture tool output callback calls
+        callback_calls = []
+
+        def capture_callback(tool_name, data):
+            callback_calls.append({"tool_name": tool_name, "data": data})
+
+        # Execute through agent tool executor with callback
+        from chuck_data.agent.tool_executor import execute_tool
+
+        agent_result = execute_tool(
+            api_client=databricks_client_stub,
+            tool_name="run-sql",
+            tool_args={
+                "query": "SELECT 'result_1' UNION SELECT 'result_2'",
+                "warehouse_id": "test_warehouse",
+            },
+            output_callback=capture_callback,
+        )
+
+        # Verify execution succeeded
+        assert agent_result["success"] is True
+
+        # Verify callback was called with the original data for TUI display
+        assert len(callback_calls) == 1
+        callback_data = callback_calls[0]
+        assert callback_data["tool_name"] == "run-sql"
+
+        # The callback should receive the original command result data (for TUI display)
+        assert "columns" in callback_data["data"]
+        assert "rows" in callback_data["data"]
+        assert callback_data["data"]["columns"] == ["output"]
+        assert callback_data["data"]["rows"] == [["result_1"], ["result_2"]]
+
+        # While the agent result should have the formatted output
+        assert "results_table" in agent_result
+        assert "summary" in agent_result
+
+
 class TestRunSQLErrorScenarios:
     """Test various error scenarios for run_sql command."""
 

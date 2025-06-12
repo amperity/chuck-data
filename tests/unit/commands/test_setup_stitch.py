@@ -257,7 +257,9 @@ class TestDirectSetupStitchCommand:
             # Setup minimal test data with no PII tables (will cause failure)
             databricks_client_stub.add_catalog("test_catalog")
             databricks_client_stub.add_schema("test_catalog", "test_schema")
-            databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")  # Add volume to avoid volume creation error
+            databricks_client_stub.add_volume(
+                "test_catalog", "test_schema", "chuck"
+            )  # Add volume to avoid volume creation error
             # No tables with PII - will cause failure
 
             with patch(

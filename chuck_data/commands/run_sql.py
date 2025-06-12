@@ -161,9 +161,24 @@ def handle_command(
                     "is_paginated": False,
                 }
 
+            # Create enhanced result structure with both raw data and display formatting
+            enhanced_result = {
+                **formatted_results,  # Include all raw data fields
+                "display_data": {
+                    "formatted_table": _create_display_table(formatted_results),
+                    "summary_info": {
+                        "execution_time": formatted_results.get("execution_time_ms"),
+                        "row_count": formatted_results.get(
+                            "row_count", len(data_array)
+                        ),
+                        "column_count": len(formatted_results.get("columns", [])),
+                    },
+                },
+            }
+
             return CommandResult(
                 True,
-                data=formatted_results,
+                data=enhanced_result,
                 message=f"Query executed successfully with {len(data_array)} result(s).",
             )
         elif state == "FAILED":
@@ -284,6 +299,62 @@ def format_sql_results_for_agent(result: CommandResult) -> Dict[str, Any]:
         response["raw_data"] = {"columns": columns, "rows": rows}
 
     return response
+
+
+def _create_display_table(formatted_results: Dict[str, Any]) -> str:
+    """
+    Create a formatted table string for display consistency between TUI and agent paths.
+
+    Args:
+        formatted_results: The formatted result data containing columns and rows
+
+    Returns:
+        String representation of the table for display
+    """
+    columns = formatted_results.get("columns", [])
+    rows = formatted_results.get("rows", [])
+
+    if not columns:
+        return "No data to display"
+
+    # Create table lines
+    table_lines = []
+
+    # Determine column widths dynamically
+    col_widths = []
+    for i, col in enumerate(columns):
+        max_width = len(str(col))  # Start with header width
+        # Check data widths (sample first 10 rows)
+        sample_rows = rows[:10] if len(rows) > 10 else rows
+        for row in sample_rows:
+            if isinstance(row, list) and i < len(row):
+                val_width = len(str(row[i] if row[i] is not None else ""))
+                max_width = max(max_width, val_width)
+        # Cap width at 25 characters for readability
+        col_widths.append(min(max_width + 2, 25))
+
+    # Add header
+    header = " | ".join(str(col).ljust(col_widths[i]) for i, col in enumerate(columns))
+    table_lines.append(header)
+    table_lines.append("-" * len(header))
+
+    # Add rows (limit to first 10 for readability)
+    display_rows = rows[:10] if len(rows) > 10 else rows
+    for row in display_rows:
+        if isinstance(row, list):
+            formatted_cells = []
+            for i, val in enumerate(row[: len(columns)]):
+                val_str = str(val if val is not None else "")
+                # Truncate if too long
+                if len(val_str) > col_widths[i] - 2:
+                    val_str = val_str[: col_widths[i] - 5] + "..."
+                formatted_cells.append(val_str.ljust(col_widths[i]))
+            table_lines.append(" | ".join(formatted_cells))
+
+    if len(rows) > 10:
+        table_lines.append(f"\n... and {len(rows) - 10} more rows")
+
+    return "\n".join(table_lines)
 
 
 def _format_paginated_results_for_agent(result: CommandResult) -> Dict[str, Any]:
