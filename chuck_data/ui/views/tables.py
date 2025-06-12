@@ -29,18 +29,28 @@ class TablesTableView(BaseView, TableViewMixin):
     ]
 
     def render(self, data: dict[str, Any]) -> None:
+        """
+        Render tables data to console.
+        
+        Args:
+            data: A dictionary containing table data and rendering options
+                 If data["display"] is True, rendering will complete without raising PaginationCancelled
+        """
         from chuck_data.ui.table_formatter import display_table
 
         tables: List[dict[str, Any]] = data.get("tables", [])
         catalog_name = data.get("catalog_name", "")
         schema_name = data.get("schema_name", "")
         total_count = data.get("total_count", len(tables))
+        display_mode = data.get("display", False)  # If True, suppress PaginationCancelled
 
         if not tables:
             self.console.print(
                 f"[{WARNING_STYLE}]No tables found in {catalog_name}.{schema_name}[/{WARNING_STYLE}]"
             )
-            raise PaginationCancelled()
+            if not display_mode:
+                raise PaginationCancelled()
+            return
 
         for t in tables:
             t["column_count"] = len(t.get("columns", []))
@@ -73,7 +83,9 @@ class TablesTableView(BaseView, TableViewMixin):
             show_lines=True,
         )
 
-        raise PaginationCancelled()
+        # Only raise PaginationCancelled if display_mode is False
+        if not display_mode:
+            raise PaginationCancelled()
 
 
 # auto-register
