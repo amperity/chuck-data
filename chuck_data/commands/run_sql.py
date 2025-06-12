@@ -206,7 +206,10 @@ def handle_command(
 
 def format_sql_results_for_agent(result: CommandResult) -> Dict[str, Any]:
     """
-    Custom formatter for SQL results that displays them in a table format for the agent.
+    Custom formatter for SQL results that provides consistent display.
+
+    Since SQL results are already displayed via TUI when agent executes commands,
+    this formatter provides a minimal success confirmation to avoid duplicate displays.
 
     Args:
         result: CommandResult containing SQL query results
@@ -224,81 +227,25 @@ def format_sql_results_for_agent(result: CommandResult) -> Dict[str, Any]:
             "results": "No data returned",
         }
 
-    # Check if this is a paginated result set
-    if result.data.get("is_paginated", False):
-        return _format_paginated_results_for_agent(result)
-
-    columns = result.data.get("columns", [])
-    rows = result.data.get("rows", [])
+    # Get basic result info for summary
     row_count = result.data.get("row_count", 0)
     execution_time = result.data.get("execution_time_ms")
+    columns = result.data.get("columns", [])
 
-    # If no columns but we have rows, try to infer from row structure
-    if not columns and rows:
-        # For now, create generic column names
-        first_row = rows[0] if rows else []
-        columns = [f"column_{i+1}" for i in range(len(first_row))]
+    # For paginated results, get total count
+    if result.data.get("is_paginated", False):
+        row_count = result.data.get("total_row_count", row_count)
 
-    # Create a formatted table representation
-    table_lines = []
-
-    # Determine column widths dynamically
-    col_widths = []
-    if columns:
-        for i, col in enumerate(columns):
-            max_width = len(str(col))  # Start with header width
-            # Check data widths (sample first 10 rows)
-            sample_rows = rows[:10] if len(rows) > 10 else rows
-            for row in sample_rows:
-                if isinstance(row, list) and i < len(row):
-                    val_width = len(str(row[i] if row[i] is not None else ""))
-                    max_width = max(max_width, val_width)
-            # Cap width at 25 characters for readability
-            col_widths.append(min(max_width + 2, 25))
-
-    # Add header
-    if columns:
-        header = " | ".join(
-            str(col).ljust(col_widths[i]) for i, col in enumerate(columns)
-        )
-        table_lines.append(header)
-        table_lines.append("-" * len(header))
-
-    # Add rows (limit to first 10 for readability)
-    display_rows = rows[:10] if len(rows) > 10 else rows
-    for row in display_rows:
-        if isinstance(row, list):
-            formatted_cells = []
-            for i, val in enumerate(row[: len(columns)]):
-                val_str = str(val if val is not None else "")
-                # Truncate if too long
-                if len(val_str) > col_widths[i] - 2:
-                    val_str = val_str[: col_widths[i] - 5] + "..."
-                formatted_cells.append(val_str.ljust(col_widths[i]))
-            table_lines.append(" | ".join(formatted_cells))
-
-    if len(rows) > 10:
-        table_lines.append(f"\n... and {len(rows) - 10} more rows")
-
-    table_output = "\n".join(table_lines)
-
-    # Format the response
-    response = {
+    # Return simple success confirmation since TUI handles the actual display
+    return {
         "success": True,
         "message": result.message or "Query executed successfully",
-        "results_table": table_output,
         "summary": {
             "total_rows": row_count,
-            "columns": columns,
+            "total_columns": len(columns),
             "execution_time_ms": execution_time,
         },
     }
-
-    # Also include raw data for programmatic access
-    if len(rows) <= 50:  # Only include raw data for smaller result sets
-        response["raw_data"] = {"columns": columns, "rows": rows}
-
-    return response
 
 
 def _create_display_table(formatted_results: Dict[str, Any]) -> str:
@@ -361,109 +308,24 @@ def _format_paginated_results_for_agent(result: CommandResult) -> Dict[str, Any]
     """
     Format paginated SQL results for agent consumption.
 
-    For paginated results, we fetch the first page to show a sample,
-    but inform the agent about the full result set size.
+    Since paginated results are displayed via TUI, this provides a simple success confirmation.
     """
-    from chuck_data.commands.sql_external_data import PaginatedSQLResult
-
     data = result.data
     columns = data.get("columns", [])
-    external_links = data.get("external_links", [])
     total_row_count = data.get("total_row_count", 0)
-    chunks = data.get("chunks", [])
     execution_time = data.get("execution_time_ms")
 
-    try:
-        # Create paginated result handler
-        paginated_result = PaginatedSQLResult(
-            columns=columns,
-            external_links=external_links,
-            total_row_count=total_row_count,
-            chunks=chunks,
-        )
-
-        # Fetch first page as a sample
-        sample_rows, has_more = paginated_result.get_next_page()
-
-        # Create formatted table for the sample
-        table_lines = []
-        col_widths = []
-
-        if columns:
-            for i, col in enumerate(columns):
-                max_width = len(str(col))
-                # Check data widths in sample
-                for row in sample_rows[:10]:
-                    if isinstance(row, list) and i < len(row):
-                        val_width = len(str(row[i] if row[i] is not None else ""))
-                        max_width = max(max_width, val_width)
-                col_widths.append(min(max_width + 2, 25))
-
-            # Add header
-            header = " | ".join(
-                str(col).ljust(col_widths[i]) for i, col in enumerate(columns)
-            )
-            table_lines.append(header)
-            table_lines.append("-" * len(header))
-
-            # Add sample rows
-            display_rows = sample_rows[:10]
-            for row in display_rows:
-                if isinstance(row, list):
-                    formatted_cells = []
-                    for i, val in enumerate(row[: len(columns)]):
-                        val_str = str(val if val is not None else "")
-                        if len(val_str) > col_widths[i] - 2:
-                            val_str = val_str[: col_widths[i] - 5] + "..."
-                        formatted_cells.append(val_str.ljust(col_widths[i]))
-                    table_lines.append(" | ".join(formatted_cells))
-
-        if total_row_count > len(sample_rows):
-            table_lines.append(
-                f"\n... and {total_row_count - len(sample_rows)} more rows (use interactive display to see all)"
-            )
-
-        table_output = "\n".join(table_lines)
-
-        # Format the response for agent
-        response = {
-            "success": True,
-            "message": result.message or "Large result set query executed successfully",
-            "results_table": table_output,
-            "summary": {
-                "total_rows": total_row_count,
-                "sample_rows_shown": len(sample_rows),
-                "columns": columns,
-                "execution_time_ms": execution_time,
-                "is_paginated": True,
-                "note": "This is a large result set. Full results available in interactive display.",
-            },
-        }
-
-        # Include sample data for programmatic access
-        if sample_rows:
-            response["raw_data"] = {
-                "columns": columns,
-                "sample_rows": sample_rows,
-                "total_row_count": total_row_count,
-            }
-
-        return response
-
-    except Exception as e:
-        logging.error(f"Error formatting paginated results for agent: {e}")
-        return {
-            "success": True,
-            "message": result.message or "Large result set query executed successfully",
-            "results_table": f"Large result set with {total_row_count} rows available.\nError fetching sample: {str(e)}",
-            "summary": {
-                "total_rows": total_row_count,
-                "columns": columns,
-                "execution_time_ms": execution_time,
-                "is_paginated": True,
-                "error": str(e),
-            },
-        }
+    return {
+        "success": True,
+        "message": result.message or "Large result set query executed successfully",
+        "summary": {
+            "total_rows": total_row_count,
+            "total_columns": len(columns),
+            "execution_time_ms": execution_time,
+            "is_paginated": True,
+            "note": "Large result set displayed in interactive table view.",
+        },
+    }
 
 
 DEFINITION = CommandDefinition(

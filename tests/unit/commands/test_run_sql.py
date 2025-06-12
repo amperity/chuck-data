@@ -524,7 +524,7 @@ class TestRunSQLDisplayIntegration:
         assert "chunks" in result.data
 
     def test_sql_result_formatting_for_agent(self, databricks_client_stub):
-        """Run_sql command provides proper formatting for agent consumption."""
+        """Run_sql command provides consistent display via TUI rather than duplicate agent formatting."""
         sql_result = {
             "status": {"state": "SUCCEEDED"},
             "result": {
@@ -555,23 +555,20 @@ class TestRunSQLDisplayIntegration:
             warehouse_id="test_warehouse",
         )
 
-        # Test the custom formatter
+        # Test the custom formatter - should now provide simple success confirmation
         formatted = format_sql_results_for_agent(result)
 
         assert formatted["success"] is True
-        assert "results_table" in formatted
         assert "summary" in formatted
+        # No longer includes results_table - TUI handles display
+        assert "results_table" not in formatted
+        assert "raw_data" not in formatted
 
         # Verify summary contains expected information
         summary = formatted["summary"]
         assert summary["total_rows"] == 2
-        assert summary["columns"] == ["name", "age"]
+        assert summary["total_columns"] == 2  # Changed from columns list to count
         assert summary["execution_time_ms"] == 1200
-
-        # Verify raw data is included for small result sets
-        assert "raw_data" in formatted
-        assert formatted["raw_data"]["columns"] == ["name", "age"]
-        assert formatted["raw_data"]["rows"] == [["John", 25], ["Jane", 30]]
 
 
 class TestRunSQLAgentDisplayRegression:
@@ -658,47 +655,37 @@ class TestRunSQLAgentDisplayRegression:
         assert direct_data["execution_time_ms"] == 1500
         assert direct_data["is_paginated"] is False
 
-        # Agent execution returns formatted output with table display
-        assert "results_table" in agent_result
+        # REGRESSION FIXED: Agent execution now provides consistent display
+        # Both paths now use TUI for visual display, agent gets simple success confirmation
         assert "summary" in agent_result
-        assert "raw_data" in agent_result
+        assert "results_table" not in agent_result  # No duplicate formatting
+        assert "raw_data" not in agent_result  # No duplicate data
 
-        # The agent gets a formatted table string
-        table_output = agent_result["results_table"]
-        assert "name" in table_output  # Column headers
-        assert "Alice" in table_output  # Data rows
-        assert "Bob" in table_output
-        assert "Carol" in table_output
-
-        # The agent also gets summary information
+        # The agent gets a simple success confirmation with summary
         summary = agent_result["summary"]
         assert summary["total_rows"] == 3
-        assert summary["columns"] == ["name", "age", "role"]
+        assert summary["total_columns"] == 3  # Changed from columns list to count
         assert summary["execution_time_ms"] == 1500
 
-        # DOCUMENT THE EXPECTED BEHAVIOR
+        # REGRESSION FIXED - DOCUMENTED SOLUTION:
         """
-        EXPECTED BEHAVIOR (to fix the regression):
+        SOLUTION IMPLEMENTED:
         
-        Both direct TUI execution and agent execution should provide consistent user experiences:
+        Both direct TUI execution and agent execution now provide consistent user experiences:
         
-        1. The TUI should display formatted tables (like the agent currently does)
-        2. The agent should have access to the same rich formatting capabilities
-        3. Users should see identical or equivalent output regardless of execution path
+        1. TUI displays formatted tables for both direct and agent-triggered executions
+        2. Agent formatter provides simple success confirmation to avoid duplicate displays
+        3. Users see identical table formatting regardless of execution path
+        4. The output_callback mechanism in tool_executor ensures TUI handles visual display
         
-        CURRENT PROBLEMATIC BEHAVIOR:
-        - TUI users see raw data that may not be formatted nicely
-        - Agent users see nicely formatted table output
-        - This creates inconsistent user experiences for the same command
-        
-        POTENTIAL SOLUTIONS:
-        1. Apply formatting in the display layer consistently for both paths
-        2. Use the same formatter for both TUI and agent display
-        3. Ensure command results contain both raw data and formatted display versions
+        FIXED BEHAVIOR:
+        - Both TUI and agent users see the same Rich-formatted table display
+        - Agent gets minimal success metadata while TUI handles presentation
+        - No duplicate or inconsistent formatting between execution paths
         """
 
     def test_agent_execution_applies_custom_formatter(self, databricks_client_stub):
-        """Agent execution applies the custom output formatter while direct execution does not."""
+        """Agent execution now provides consistent formatting via TUI display rather than duplicate formatting."""
         # Setup test data
         sql_result = {
             "status": {"state": "SUCCEEDED"},
@@ -724,14 +711,14 @@ class TestRunSQLAgentDisplayRegression:
 
         databricks_client_stub.submit_sql_statement = lambda **kwargs: sql_result
 
-        # Direct execution - no formatting applied
+        # Direct execution - provides raw data for TUI display
         direct_result = handle_command(
             databricks_client_stub,
             query="SELECT 'test_value' as text_col, 42 as num_col",
             warehouse_id="test_warehouse",
         )
 
-        # Agent execution - formatting applied via tool_executor
+        # Agent execution - provides success confirmation, TUI handles display
         from chuck_data.agent.tool_executor import execute_tool
 
         agent_result = execute_tool(
@@ -743,30 +730,25 @@ class TestRunSQLAgentDisplayRegression:
             },
         )
 
-        # Verify the structural differences
+        # Verify both executions succeeded
         assert direct_result.success
         assert agent_result["success"] is True
 
-        # Direct result has raw command data
+        # Direct result has raw command data (for TUI display)
         assert "columns" in direct_result.data
         assert "rows" in direct_result.data
-        assert "results_table" not in direct_result.data  # No formatted table
+        assert "results_table" not in direct_result.data  # No duplicate formatting
 
-        # Agent result has formatted output
-        assert "results_table" in agent_result  # Formatted table present
-        assert "summary" in agent_result  # Summary information
-        assert "raw_data" in agent_result  # Raw data also included
-
-        # The formatted table should contain the data in a readable format
-        table_output = agent_result["results_table"]
-        assert "text_col" in table_output
-        assert "num_col" in table_output
-        assert "test_value" in table_output
-        assert "42" in table_output
+        # Agent result has simple success confirmation (TUI handles display)
+        assert "results_table" not in agent_result  # No duplicate table formatting
+        assert "summary" in agent_result  # Summary information only
+        assert "raw_data" not in agent_result  # No duplicate data
 
         # Summary should match the raw data
         assert agent_result["summary"]["total_rows"] == 1
-        assert agent_result["summary"]["columns"] == ["text_col", "num_col"]
+        assert (
+            agent_result["summary"]["total_columns"] == 2
+        )  # Changed from columns list to count
 
     def test_agent_tool_output_callback_integration(self, databricks_client_stub):
         """Agent execution with tool_output_callback shows intermediate progress."""
@@ -816,9 +798,9 @@ class TestRunSQLAgentDisplayRegression:
         assert callback_data["data"]["columns"] == ["output"]
         assert callback_data["data"]["rows"] == [["result_1"], ["result_2"]]
 
-        # While the agent result should have the formatted output
-        assert "results_table" in agent_result
-        assert "summary" in agent_result
+        # While the agent result should have simple success confirmation (no duplicate display)
+        assert "results_table" not in agent_result  # No duplicate formatting
+        assert "summary" in agent_result  # Summary information only
 
 
 class TestRunSQLErrorScenarios:
