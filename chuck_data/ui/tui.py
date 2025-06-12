@@ -680,6 +680,24 @@ class ChuckTUI:
         """Display full detailed tool output using view registry when available."""
         from chuck_data.ui.view_registry import get_view
         
+        # Handle special case mappings for list-* commands that need specific handling
+        # These exact mappings are critical for agents to see formatted tables
+        list_command_mapping = {
+            "list-schemas": "_display_schemas",
+            "list-catalogs": "_display_catalogs",
+            "list-tables": "_display_tables",
+            "list-models": "_display_models_consolidated", 
+            "list-warehouses": "_display_warehouses",
+            "list-volumes": "_display_volumes",
+        }
+        
+        # Direct function calls for list-* commands to ensure compatibility
+        if tool_name in list_command_mapping:
+            method_name = list_command_mapping[tool_name]
+            method = getattr(self, method_name)
+            method(tool_result)
+            return
+            
         # Map legacy tool names to their updated equivalents for routing
         tool_name_mapping = {
             "get_catalog_details": "catalog",
@@ -697,6 +715,14 @@ class ChuckTUI:
         if view_cls:
             # Use registered view class
             view_cls(self.console).render(tool_result)
+            return
+        
+        # Handle special cases that might not be migrated to view classes yet
+        if tool_name == "run-sql":
+            self._display_sql_results(tool_result)
+            return
+        elif tool_name == "scan-pii":
+            self._display_pii_scan_results(tool_result)
             return
         
         # Fallback for tools without registered views - display as JSON panel
