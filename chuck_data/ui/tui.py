@@ -862,8 +862,14 @@ class ChuckTUI:
         # This prevents agent from continuing processing after catalog display is complete
         raise PaginationCancelled()
 
+    # >>> NEW SHIM for schemas view
     def _display_schemas(self, data: Dict[str, Any]) -> None:
-        """Display schemas in a nicely formatted way."""
+        """Shim: delegate to SchemasTableView for backwards compatibility."""
+        from chuck_data.ui.views.schemas import SchemasTableView
+        SchemasTableView(self.console).render(data)
+
+    def _display_schemas_legacy(self, data: Dict[str, Any]) -> None:
+        """Display schemas in a nicely formatted way (legacy)."""
         from chuck_data.ui.table_formatter import display_table
         from chuck_data.exceptions import PaginationCancelled
 
