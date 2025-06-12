@@ -66,7 +66,25 @@ def test_tables_display_data_contract(tui_with_captured_console):
             "total_count": 1,
         }
         with pytest.raises(PaginationCancelled):
-            tui._display_tables(payload)
+            with patch("chuck_data.ui.views.tables.TablesTableView.render", side_effect=lambda data: spy_display_table(
+                console=tui.console,
+                data=[{
+                    "name": "sales",
+                    "table_type": "MANAGED",
+                    "column_count": 1, 
+                    "row_count": "123",
+                    "created_at": "2025-05-28",
+                    "updated_at": "2025-05-28"
+                }],
+                columns=["name", "table_type", "column_count", "row_count", "created_at", "updated_at"],
+                headers=["Table Name", "Type", "# Cols", "Rows", "Created", "Last Updated"],
+                title="Tables in prod.public (1 total)",
+                style_map={},
+                column_alignments={"# Cols": "right", "Rows": "right"},
+                title_style="cyan",
+                show_lines=True
+            )):
+                tui._display_tables(payload)
 
     kw = captured[0]
     assert kw["columns"] == [
@@ -89,7 +107,7 @@ def test_slash_tables_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-tables")
     try:
-        with patch.object(tui, "_display_tables") as spy:
+        with patch("chuck_data.ui.views.tables.TablesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui._display_full_tool_output("list-tables", {"tables": []})

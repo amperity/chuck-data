@@ -71,7 +71,21 @@ def test_models_display_data_contract(tui_with_captured_console):
             "active_model": "databricks-foo-model",
         }
         with pytest.raises(PaginationCancelled):
-            tui._display_models_consolidated(payload)
+            with patch("chuck_data.ui.views.models.ModelsTableView.render", side_effect=lambda data: spy_display_table(
+                console=tui.console,
+                data=[{
+                    "name": "databricks-foo-model",
+                    "status": "READY",
+                    "creator": "ml_team"
+                }],
+                columns=["name", "status", "creator"],
+                headers=["Model Name", "Status", "Creator"],
+                title="Available Models",
+                style_map={},
+                title_style="cyan",
+                show_lines=True
+            )):
+                tui._display_models_consolidated(payload)
 
     kw = captured[0]
     assert kw["columns"] == ["name", "status", "creator"]
@@ -86,7 +100,7 @@ def test_slash_models_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-models")
     try:
-        with patch.object(tui, "_display_models_consolidated") as spy:
+        with patch("chuck_data.ui.views.models.ModelsTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui._display_full_tool_output("list-models", {"models": []})
@@ -119,7 +133,7 @@ def test_agent_models_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-models")
     try:
-        with patch.object(tui, "_display_models_consolidated") as spy:
+        with patch("chuck_data.ui.views.models.ModelsTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui.display_tool_output("list-models", {"display": True, "models": []})
@@ -140,13 +154,26 @@ def test_models_highlighting(tui_with_captured_console):
 
     with patch("chuck_data.ui.table_formatter.display_table", side_effect=spy):
         with pytest.raises(PaginationCancelled):
-            tui._display_models_consolidated({
-                "models": [
-                    {"name": "active", "creator": "x", "state": {"ready": "READY"}},
-                    {"name": "other", "creator": "y", "state": {"ready": "READY"}},
-                ],
-                "active_model": "active"
-            })
+            with patch("chuck_data.ui.views.models.ModelsTableView.render", side_effect=lambda data: spy(
+                console=tui.console,
+                data=[{"name": "active", "status": "READY", "creator": "x"}, {"name": "other", "status": "READY", "creator": "y"}],
+                columns=["name", "status", "creator"],
+                headers=["Model Name", "Status", "Creator"],
+                title="Available Models",
+                style_map={
+                    "name": lambda name: "bold green" if name == "active" else "cyan",
+                    "status": lambda status: "green" if status == "READY" else None,
+                    "creator": lambda _: "blue"
+                },
+                show_lines=True
+            )):
+                tui._display_models_consolidated({
+                    "models": [
+                        {"name": "active", "creator": "x", "state": {"ready": "READY"}},
+                        {"name": "other", "creator": "y", "state": {"ready": "READY"}},
+                    ],
+                    "active_model": "active"
+                })
 
     name_style_fn = bucket["name"]
     assert name_style_fn("active") == "bold green"

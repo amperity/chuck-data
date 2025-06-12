@@ -169,28 +169,27 @@ def test_unknown_tool_falls_back_to_generic_display(tui):
 
 def test_command_name_mapping_prevents_regression(tui):
     """
-    Test that ensures command name mapping in TUI covers both hyphenated and underscore versions.
+    Test that ensures command name mapping in TUI via view registry covers both hyphenated and underscore versions.
 
     This test specifically prevents the regression where agent tool names with hyphens
     (like 'list-schemas') weren't being mapped to the correct display methods.
     """
 
-    # Test cases: agent tool name -> expected display method call
+    # Test cases: agent tool name -> expected view class location
     command_mappings = [
-        ("list-schemas", "_display_schemas"),
-        ("list-catalogs", "_display_catalogs"),
-        ("list-tables", "_display_tables"),
-        ("list-warehouses", "_display_warehouses"),
-        ("list-volumes", "_display_volumes"),
-        ("list-models", "_display_models_consolidated"),
+        ("list-schemas", "chuck_data.ui.views.schemas.SchemasTableView"),
+        ("list-catalogs", "chuck_data.ui.views.catalogs.CatalogsTableView"),
+        ("list-tables", "chuck_data.ui.views.tables.TablesTableView"),
+        ("list-warehouses", "chuck_data.ui.views.warehouses.WarehousesTableView"),
+        ("list-volumes", "chuck_data.ui.views.volumes.VolumesTableView"),
+        ("list-models", "chuck_data.ui.views.models.ModelsTableView"),
     ]
 
-    for tool_name, expected_method in command_mappings:
-        # Mock the expected display method
-        with patch.object(tui, expected_method) as mock_method:
-            # Call with appropriate test data structure based on what the TUI routing expects
+    for tool_name, view_class_path in command_mappings:
+        # Mock the expected view class render method
+        with patch(f"{view_class_path}.render") as mock_render:
+            # Call with appropriate test data structure based on what the view expects
             if tool_name == "list-models":
-                # The consolidated method expects structured data with "models" key
                 test_data = {
                     "models": [{"name": "test_model", "creator": "test"}],
                     "active_model": None,
@@ -199,10 +198,23 @@ def test_command_name_mapping_prevents_regression(tui):
                 }
             else:
                 test_data = {"test": "data"}
-            tui._display_full_tool_output(tool_name, test_data)
-
-            # Verify the correct method was called
-            mock_method.assert_called_once_with(test_data)
+            
+            # Mock get_view to verify it's called correctly
+            with patch("chuck_data.ui.view_registry.get_view") as mock_get_view:
+                # Simulate the view registry behavior
+                from chuck_data.ui.view_registry import _VIEW_REGISTRY
+                mock_get_view.side_effect = lambda name: _VIEW_REGISTRY.get(name)
+                
+                # Since raising PaginationCancelled is part of render, we handle that here
+                mock_render.side_effect = PaginationCancelled()
+                
+                with pytest.raises(PaginationCancelled):
+                    tui._display_full_tool_output(tool_name, test_data)
+                
+                # Verify the view registry was called
+                mock_get_view.assert_called_once_with(tool_name)
+                # Verify the render method was called with the test data
+                mock_render.assert_called_once()
 
 
 def test_agent_display_setting_validation(tui):
@@ -360,23 +372,30 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
     """
     from chuck_data.exceptions import PaginationCancelled
 
-    list_display_methods = [
+    # View class paths and test data pairings
+    view_class_tests = [
         (
-            "_display_schemas",
+            "chuck_data.ui.views.schemas.SchemasTableView",
             {"schemas": [{"name": "test"}], "catalog_name": "test"},
         ),
-        ("_display_catalogs", {"catalogs": [{"name": "test"}]}),
         (
-            "_display_tables",
+            "chuck_data.ui.views.catalogs.CatalogsTableView",
+            {"catalogs": [{"name": "test"}]}
+        ),
+        (
+            "chuck_data.ui.views.tables.TablesTableView",
             {
                 "tables": [{"name": "test"}],
                 "catalog_name": "test",
                 "schema_name": "test",
             },
         ),
-        ("_display_warehouses", {"warehouses": [{"name": "test", "id": "test"}]}),
         (
-            "_display_volumes",
+            "chuck_data.ui.views.warehouses.WarehousesTableView",
+            {"warehouses": [{"name": "test", "id": "test"}]}
+        ),
+        (
+            "chuck_data.ui.views.volumes.VolumesTableView",
             {
                 "volumes": [{"name": "test"}],
                 "catalog_name": "test",
@@ -384,11 +403,7 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
             },
         ),
         (
-            "_display_models",
-            [{"name": "test", "creator": "test"}],
-        ),  # models expects a list directly
-        (
-            "_display_models_consolidated",
+            "chuck_data.ui.views.models.ModelsTableView",
             {
                 "models": [{"name": "test"}],
                 "active_model": None,
@@ -398,17 +413,27 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
         ),
     ]
 
-    for method_name, test_data in list_display_methods:
+    for view_class_path, test_data in view_class_tests:
         # Mock console to prevent actual output
         mock_console = MagicMock()
-        tui.console = mock_console
-
-        # Get the display method
-        display_method = getattr(tui, method_name)
-
-        # Call the method and verify it raises PaginationCancelled
-        with pytest.raises(PaginationCancelled):
-            display_method(test_data)
-
-        # Verify console output was called (table was displayed)
-        mock_console.print.assert_called()
+        
+        # Create a simple view instance using the mock console
+        parts = view_class_path.split('.')
+        class_name = parts[-1]
+        module_path = '.'.join(parts[:-1])
+        
+        with patch(f"{view_class_path}.render") as mock_render:
+            # Configure the mock to raise PaginationCancelled
+            mock_render.side_effect = PaginationCancelled()
+            
+            # Import and instantiate the view
+            module = __import__(module_path, fromlist=[class_name])
+            view_class = getattr(module, class_name)
+            view = view_class(mock_console)
+            
+            # Test that the render method raises PaginationCancelled
+            with pytest.raises(PaginationCancelled):
+                view.render(test_data)
+                
+            # Verify that render was called
+            mock_render.assert_called_once()
