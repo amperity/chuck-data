@@ -392,6 +392,11 @@ class ChuckService:
 
         # Handler Execution
         try:
+            # Merge raw_kwargs that weren't processed by the schema into args_for_handler
+            # This handles special parameters like 'display' that aren't part of the command schema
+            # but still need to be passed to command handlers
+            args_for_handler.update(raw_kwargs)
+
             # All handlers now expect (client, **kwargs)
             result: CommandResult = command_def.handler(
                 effective_client, **args_for_handler

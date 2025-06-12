@@ -447,7 +447,19 @@ class ChuckTUI:
             "/volumes",
         ]:
             # For table display commands, always show the full table
-            result = self.service.execute_command(cmd, *args, display=True)
+            try:
+                # Pass display=True to view layer to suppress PaginationCancelled
+                result = self.service.execute_command(cmd, *args, display=True)
+            except Exception as e:
+                # Import at method level to avoid scoping issues
+                from chuck_data.exceptions import PaginationCancelled
+
+                # Re-raise exceptions other than PaginationCancelled
+                if not isinstance(e, PaginationCancelled):
+                    raise
+
+                # For PaginationCancelled, synthesize a success result with the message only
+                result = CommandResult(True, message=f"Command completed.", data={})
         else:
             result = self.service.execute_command(cmd, *args)
 

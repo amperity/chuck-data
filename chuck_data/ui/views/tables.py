@@ -31,7 +31,7 @@ class TablesTableView(BaseView, TableViewMixin):
     def render(self, data: dict[str, Any]) -> None:
         """
         Render tables data to console.
-        
+
         Args:
             data: A dictionary containing table data and rendering options
                  If data["display"] is True, rendering will complete without raising PaginationCancelled
@@ -42,7 +42,9 @@ class TablesTableView(BaseView, TableViewMixin):
         catalog_name = data.get("catalog_name", "")
         schema_name = data.get("schema_name", "")
         total_count = data.get("total_count", len(tables))
-        display_mode = data.get("display", False)  # If True, suppress PaginationCancelled
+        display_mode = data.get(
+            "display", False
+        )  # If True, suppress PaginationCancelled
 
         if not tables:
             self.console.print(

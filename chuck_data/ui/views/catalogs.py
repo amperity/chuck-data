@@ -13,14 +13,30 @@ class CatalogsTableView(BaseView, TableViewMixin):
     headers = ["Name", "Type", "Comment", "Owner"]
 
     def render(self, data: dict[str, Any]):
+        """
+        Render catalogs data to console.
+
+        Args:
+            data: A dictionary containing catalog data and rendering options
+                 If data["display"] is True, rendering will complete without raising PaginationCancelled
+        """
         from chuck_data.ui.table_formatter import display_table
 
         catalogs = data.get("catalogs", [])
         current_catalog = data.get("current_catalog")
+        display_mode = data.get(
+            "display", False
+        )  # If True, suppress PaginationCancelled
+        # Add debug to see if display flag is actually coming through
+        print(
+            f"DEBUG: CatalogsView display_mode={display_mode}, got display={data.get('display')}"
+        )
 
         if not catalogs:
             self.console.print(f"[{WARNING_STYLE}]No catalogs found.[/{WARNING_STYLE}]")
-            raise PaginationCancelled()
+            if not display_mode:
+                raise PaginationCancelled()
+            return
 
         def name_style(name):
             return "bold green" if name == current_catalog else None
@@ -47,7 +63,9 @@ class CatalogsTableView(BaseView, TableViewMixin):
                 f"\nCurrent catalog: [bold green]{current_catalog}[/bold green]"
             )
 
-        raise PaginationCancelled()
+        # Only raise PaginationCancelled if display_mode is False
+        if not display_mode:
+            raise PaginationCancelled()
 
 
 # --- auto-registration -----------------

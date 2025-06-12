@@ -1,46 +1,45 @@
-"""Tests for view initialization and registration."""
+"""
+Tests that views are properly imported and registered with the view registry.
+"""
 
-import unittest
-from chuck_data.ui.view_registry import get_view
 
+def test_views_are_properly_registered():
+    """Verify all views are properly registered with the view registry."""
+    from chuck_data.ui import view_registry
 
-class TestViewInitialization(unittest.TestCase):
-    """Test that views are properly registered."""
+    # Import these to ensure registration happens
+    import chuck_data.ui.views  # noqa: F401
 
-    def test_tables_view_registration(self):
-        """Test that the TablesTableView is properly registered."""
-        view_cls = get_view("list-tables")
-        self.assertIsNotNone(view_cls, "TablesTableView should be registered under 'list-tables'")
-        self.assertEqual(view_cls.__name__, "TablesTableView", 
-                         "Registered view should be TablesTableView")
-        
-        # Check alternate name registration
-        view_cls_alt = get_view("tables")
-        self.assertIsNotNone(view_cls_alt, "TablesTableView should be registered under 'tables'")
-        self.assertIs(view_cls, view_cls_alt, 
-                      "Both 'list-tables' and 'tables' should reference the same view class")
+    # List of expected views and their registrations
+    expected_views = [
+        ("list-tables", "TablesTableView"),
+        ("tables", "TablesTableView"),
+        ("list-schemas", "SchemasTableView"),
+        ("schemas", "SchemasTableView"),
+        ("list-catalogs", "CatalogsTableView"),
+        ("catalogs", "CatalogsTableView"),
+        ("list-warehouses", "WarehousesTableView"),
+        ("warehouses", "WarehousesTableView"),
+        ("list-volumes", "VolumesTableView"),
+        ("volumes", "VolumesTableView"),
+        ("list-models", "ModelsTableView"),
+        ("models", "ModelsTableView"),
+        ("status", "StatusTableView"),
+    ]
 
-    def test_all_views_registration(self):
-        """Test that all critical views are registered."""
-        # Test each view is properly registered
-        expected_views = {
-            "list-catalogs": "CatalogsTableView",
-            "catalogs": "CatalogsTableView",
-            "list-schemas": "SchemasTableView", 
-            "schemas": "SchemasTableView",
-            "list-tables": "TablesTableView",
-            "tables": "TablesTableView",
-            "list-models": "ModelsTableView",
-            "models": "ModelsTableView",
-            "list-warehouses": "WarehousesTableView",
-            "warehouses": "WarehousesTableView",
-            "list-volumes": "VolumesTableView",
-            "volumes": "VolumesTableView",
-            "status": "StatusTableView"
-        }
-        
-        for key, expected_classname in expected_views.items():
-            view_cls = get_view(key)
-            self.assertIsNotNone(view_cls, f"{expected_classname} should be registered under '{key}'")
-            self.assertEqual(view_cls.__name__, expected_classname, 
-                           f"Registered view for '{key}' should be {expected_classname}")
+    for view_name, expected_class_name in expected_views:
+        view_class = view_registry.get_view(view_name)
+        assert view_class is not None, f"View {view_name} not registered"
+        assert (
+            view_class.__name__ == expected_class_name
+        ), f"View {view_name} registered as wrong class"
+
+    # Ensure import system registers the views
+    import importlib
+
+    importlib.reload(chuck_data.ui.views)
+
+    # Check again after reload
+    for view_name, expected_class_name in expected_views:
+        view_class = view_registry.get_view(view_name)
+        assert view_class is not None, f"View {view_name} not registered after reload"
