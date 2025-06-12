@@ -810,7 +810,13 @@ class ChuckTUI:
             # Use Rich's traceback rendering for better formatting
             self.console.print_exception(show_locals=True)
 
+    # >>> NEW SHIM using view layer
     def _display_catalogs(self, data: Dict[str, Any]) -> None:
+        """Shim: delegate to CatalogsTableView for backwards compatibility."""
+        from chuck_data.ui.views.catalogs import CatalogsTableView
+        CatalogsTableView(self.console).render(data)
+
+    def _display_catalogs_legacy(self, data: Dict[str, Any]) -> None:
         """Display catalogs in a nicely formatted way."""
         from chuck_data.ui.table_formatter import display_table
         from chuck_data.exceptions import PaginationCancelled
