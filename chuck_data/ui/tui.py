@@ -661,36 +661,26 @@ class ChuckTUI:
     def _display_full_tool_output(
         self, tool_name: str, tool_result: Dict[str, Any]
     ) -> None:
-        """Display full detailed tool output (existing behavior)."""
-        # Map tool names to their display methods
-        # This reuses existing display logic to maintain consistency
-        if tool_name in ["list-catalogs", "list_catalogs", "catalogs"]:
-            self._display_catalogs(tool_result)
-        elif tool_name in ["list-schemas", "list_schemas", "schemas"]:
-            self._display_schemas(tool_result)
-        elif tool_name in ["list-tables", "list_tables", "tables"]:
-            self._display_tables(tool_result)
-        elif tool_name in ["get_catalog_details", "catalog"]:
+        """Display full detailed tool output using view registry when available."""
+        from chuck_data.ui.view_registry import get_view
+        view_cls = get_view(tool_name)
+        
+        if view_cls:
+            view_cls(self.console).render(tool_result)
+            return
+        
+        # Fallback for tools without registered views
+        # Special cases for a few legacy displays
+        if tool_name in ["get_catalog_details", "catalog"]:
             self._display_catalog_details(tool_result)
         elif tool_name in ["get_schema_details", "schema"]:
             self._display_schema_details(tool_result)
-        elif tool_name in ["detailed-models", "list-models", "list_models", "models"]:
-            if "models" in tool_result:
-                self._display_models_consolidated(tool_result)
-            else:
-                self._display_models(tool_result)
-        elif tool_name in ["list-warehouses", "list_warehouses", "warehouses"]:
-            self._display_warehouses(tool_result)
-        elif tool_name in ["list-volumes", "list_volumes", "volumes"]:
-            self._display_volumes(tool_result)
         elif tool_name in ["get_table_info", "table", "show_table"]:
             self._display_table_details(tool_result)
         elif tool_name in ["scan-schema-for-pii", "scan_schema_for_pii", "scan_pii"]:
             self._display_pii_scan_results(tool_result)
         elif tool_name == "run-sql":
             self._display_sql_results_formatted(tool_result)
-        elif tool_name in ["status", "get_status"]:
-            self._display_status(tool_result)
         else:
             # For unknown tools, display a generic panel with the data
             from rich.panel import Panel
@@ -912,7 +902,12 @@ class ChuckTUI:
         # This prevents agent from continuing processing after schema display is complete
         raise PaginationCancelled()
 
+    # >>> NEW SHIM for tables view
     def _display_tables(self, data: Dict[str, Any]) -> None:
+        from chuck_data.ui.views.tables import TablesTableView
+        TablesTableView(self.console).render(data)
+
+    def _display_tables_legacy(self, data: Dict[str, Any]) -> None:
         """Display tables in a nicely formatted way."""
         from chuck_data.ui.table_formatter import display_table
         from chuck_data.exceptions import PaginationCancelled
@@ -1108,338 +1103,24 @@ class ChuckTUI:
         raise PaginationCancelled()
 
     def _display_models_consolidated(self, data: Dict[str, Any]) -> None:
-        """Display models with detailed information and filtering."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
-
-        models = data.get("models", [])
-        active_model = data.get("active_model")
-        detailed = data.get("detailed", False)
-        filter_text = data.get("filter")
-
-        # If no models, display the help message
-        if not models:
-            self.console.print(
-                f"[{WARNING_STYLE}]No models found in workspace.[/{WARNING_STYLE}]"
-            )
-            if data.get("message"):
-                self.console.print("\n" + data.get("message"))
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Display header with filter information if applicable
-        title = "Available Models"
-        if filter_text:
-            title += f" matching '{filter_text}'"
-
-        # Process model data for display
-        processed_models = []
-        for model in models:
-            # Create a processed model entry
-            processed = {
-                "name": model.get("name", "N/A"),
-                "creator": model.get("creator", "N/A"),
-            }
-
-            # Get state information
-            state = model.get("state", {})
-            ready_status = state.get("ready", "UNKNOWN").upper()
-            processed["status"] = ready_status
-
-            # Add detailed fields if requested
-            if detailed:
-                processed["endpoint_type"] = model.get("endpoint_type", "Unknown")
-                processed["last_modified"] = model.get("last_updated", "Unknown")
-
-                # Add any additional details from the details field
-                details = model.get("details", {})
-                if details:
-                    for key, value in details.items():
-                        # Only add if not already present and meaningful
-                        if key not in processed and value is not None and key != "name":
-                            processed[key] = value
-
-            # Add to our list
-            processed_models.append(processed)
-
-        # Process model names to add recommended tag
-        for model in processed_models:
-            if model["name"] in [
-                "databricks-claude-3-7-sonnet",
-            ]:
-                model["name"] = f"{model['name']} (recommended)"
-
-        # Define column styling functions
-        def status_style(status):
-            if status == "READY":
-                return "green"
-            elif status == "NOT_READY" or status == "UNKNOWN":
-                return "yellow"
-            elif "ERROR" in status:
-                return "red"
-            return None
-
-        # Define styling function for the name to highlight active model
-        def name_style(name):
-            if active_model and (
-                name == active_model or name.startswith(active_model + " ")
-            ):
-                return "bold green"
-            return "cyan"
-
-        # Set up style map with appropriate styles for each column
-        style_map = {
-            "name": name_style,
-            "status": status_style,
-            "creator": lambda _: f"{INFO}",
-            "endpoint_type": lambda _: f"{WARNING}",
-            "last_modified": lambda _: f"{DIALOG_BORDER}",
-        }
-
-        # Define columns and headers based on detail level
-        if detailed:
-            columns = ["name", "status", "creator", "endpoint_type", "last_modified"]
-            headers = ["Name", "Status", "Creator", "Type", "Last Modified"]
-        else:
-            columns = ["name", "status", "creator"]
-            headers = ["Model Name", "Status", "Creator"]
-
-        # Display the table using our formatter
-        display_table(
-            console=self.console,
-            data=processed_models,
-            columns=columns,
-            headers=headers,
-            title=title,
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=True,
-            box_style="ROUNDED",
-        )
-
-        # Display current active model
-        if active_model:
-            self.console.print(
-                f"\nCurrent model: [bold green]{active_model}[/bold green]"
-            )
-        else:
-            self.console.print("\nCurrent model: [dim]None[/dim]")
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after detailed model display is complete
-        raise PaginationCancelled()
+        """Shim delegate to ModelsTableView."""
+        from chuck_data.ui.views.models import ModelsTableView
+        ModelsTableView(self.console).render(data)
 
     def _display_warehouses(self, data: Dict[str, Any]) -> None:
-        """Display SQL warehouses in a nicely formatted way."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
-
-        # This method is only called when we actually want to display the table
-        # The conditional display logic handles the display/no-display decision
-
-        warehouses = data.get("warehouses", [])
-        current_warehouse_id = data.get("current_warehouse_id")
-
-        if not warehouses:
-            self.console.print(
-                f"[{WARNING_STYLE}]No SQL warehouses found.[/{WARNING_STYLE}]"
-            )
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Process warehouse data for display
-        processed_warehouses = []
-        for warehouse in warehouses:
-            # Determine warehouse type: show 'serverless' if serverless is enabled, otherwise show warehouse_type
-            warehouse_type = (
-                "serverless"
-                if warehouse.get("enable_serverless_compute", False)
-                else warehouse.get("warehouse_type", "").lower()
-            )
-
-            # Create a processed warehouse with formatted fields
-            processed = {
-                "name": warehouse.get("name", ""),
-                "id": warehouse.get("id", ""),
-                "size": warehouse.get("size", "").lower(),  # Lowercase size field
-                "type": warehouse_type,
-                "state": warehouse.get("state", "").lower(),  # Lowercase state field
-            }
-            processed_warehouses.append(processed)
-
-        # Define styling function for name based on current warehouse
-        def name_style(name, row):
-            if row.get("id") == current_warehouse_id:
-                return "bold green"
-            return None
-
-        # Define styling function for ID based on current warehouse
-        def id_style(id_val):
-            if id_val == current_warehouse_id:
-                return "bold green"
-            return None
-
-        # Define styling function for state
-        def state_style(state):
-            if state == "running":
-                return "green"
-            elif state == "stopped":
-                return "red"
-            elif state in ["starting", "stopping", "deleting", "resizing"]:
-                return "yellow"
-            return "dim"
-
-        # Set up style map
-        style_map = {
-            "name": lambda name, row=None: name_style(name, row),
-            "id": id_style,
-            "state": state_style,
-        }
-
-        # Set maximum lengths for fields
-
-        # Display the table
-        display_table(
-            console=self.console,
-            data=processed_warehouses,
-            columns=["name", "id", "size", "type", "state"],
-            headers=["Name", "ID", "Size", "Type", "State"],
-            title="Available SQL Warehouses",
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=False,
-        )
-
-        # Display current warehouse ID if set
-        if current_warehouse_id:
-            self.console.print(
-                f"\nCurrent SQL warehouse ID: [{SUCCESS_STYLE}]{current_warehouse_id}[/{SUCCESS_STYLE}]"
-            )
-
-        # Always raise PaginationCancelled when we actually display the table
-        # (we already returned early if display=false)
-        raise PaginationCancelled()
+        """Shim delegate to WarehousesTableView."""
+        from chuck_data.ui.views.warehouses import WarehousesTableView
+        WarehousesTableView(self.console).render(data)
 
     def _display_volumes(self, data: Dict[str, Any]) -> None:
-        """Display volumes in a nicely formatted way."""
-        from chuck_data.ui.table_formatter import display_table
-        from chuck_data.exceptions import PaginationCancelled
-
-        volumes = data.get("volumes", [])
-        catalog_name = data.get("catalog_name", "")
-        schema_name = data.get("schema_name", "")
-
-        if not volumes:
-            self.console.print(
-                f"[{WARNING_STYLE}]No volumes found in {catalog_name}.{schema_name}.[/{WARNING_STYLE}]"
-            )
-            # Raise PaginationCancelled to return to chuck > prompt immediately
-            raise PaginationCancelled()
-
-        # Process volume data for display
-        processed_volumes = []
-        for volume in volumes:
-            # Create a processed volume with normalized fields
-            processed = {
-                "name": volume.get("name", ""),
-                "type": volume.get(
-                    "volume_type", ""
-                ).upper(),  # Use upper for consistency
-                "comment": volume.get("comment", ""),
-            }
-            processed_volumes.append(processed)
-
-        # Define styling for volume types
-        def type_style(volume_type):
-            if volume_type == "EXTERNAL":  # Example conditional styling
-                return "yellow"
-            elif volume_type == "MANAGED":  # Example conditional styling
-                return "blue"
-            return None
-
-        # Set up style map
-        style_map = {"type": type_style}
-
-        # Display the table
-        display_table(
-            console=self.console,
-            data=processed_volumes,
-            columns=["name", "type", "comment"],
-            headers=["Name", "Type", "Comment"],
-            title=f"Volumes in {catalog_name}.{schema_name}",
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=False,
-        )
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after volume display is complete
-        raise PaginationCancelled()
+        """Shim delegate to VolumesTableView."""
+        from chuck_data.ui.views.volumes import VolumesTableView
+        VolumesTableView(self.console).render(data)
 
     def _display_status(self, data: Dict[str, Any]) -> None:
-        """Display current status information including connection status and permissions."""
-        from chuck_data.ui.table_formatter import display_table
-
-        workspace_url = data.get("workspace_url", "Not set")
-        active_catalog = data.get("active_catalog", "Not set")
-        active_schema = data.get("active_schema", "Not set")
-        active_model = data.get("active_model", "Not set")
-        warehouse_id = data.get("warehouse_id", "Not set")
-        connection_status = data.get("connection_status", "Unknown")
-
-        # Prepare settings for display
-        status_items = [
-            {"setting": "Workspace URL", "value": workspace_url},
-            {"setting": "Active Catalog", "value": active_catalog},
-            {"setting": "Active Schema", "value": active_schema},
-            {"setting": "Active Model", "value": active_model},
-            {"setting": "Active Warehouse", "value": warehouse_id},
-            {"setting": "Connection Status", "value": connection_status},
-        ]
-
-        # Define styling functions
-        def value_style(value, row):
-            setting = row.get("setting", "")
-
-            # Special handling for connection status
-            if setting == "Connection Status":
-                if value == "Connected - token is valid":
-                    return "green"
-                elif "Invalid" in value or "Not connected" in value:
-                    return "red"
-                else:
-                    return "yellow"
-            # General styling for values
-            elif value != "Not set":
-                return "green"
-            else:
-                return "yellow"
-
-        # Set up style map
-        style_map = {"value": lambda value, row: value_style(value, row)}
-
-        # Display the status table
-        display_table(
-            console=self.console,
-            data=status_items,
-            columns=["setting", "value"],
-            headers=["Setting", "Value"],
-            title="Current Configuration",
-            style_map=style_map,
-            title_style=TABLE_TITLE_STYLE,
-            show_lines=False,
-        )
-
-        # If permissions data is available, display it
-        permissions_data = data.get("permissions")
-        if permissions_data:
-            self._display_permissions(permissions_data)
-
-        # Raise PaginationCancelled to return to chuck > prompt immediately
-        # This prevents agent from continuing processing after status display is complete
-        from chuck_data.exceptions import PaginationCancelled
-
-        raise PaginationCancelled()
+        """Shim delegate to StatusTableView."""
+        from chuck_data.ui.views.status import StatusTableView
+        StatusTableView(self.console).render(data)
 
     def _display_permissions(self, permissions_data: Dict[str, Any]) -> None:
         """
