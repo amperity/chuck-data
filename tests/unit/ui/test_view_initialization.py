@@ -25,6 +25,10 @@ def test_views_are_properly_registered():
         ("list-models", "ModelsTableView"),
         ("models", "ModelsTableView"),
         ("status", "StatusTableView"),
+        # Detail views (newly added)
+        ("table-details", "TableDetailsView"),
+        ("catalog-details", "CatalogDetailsView"),
+        ("schema-details", "SchemaDetailsView"),
     ]
 
     for view_name, expected_class_name in expected_views:

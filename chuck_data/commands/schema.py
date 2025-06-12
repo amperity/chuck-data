@@ -35,6 +35,7 @@ def handle_command(
     # Extract parameters
     schema_name = kwargs.get("name")
     catalog_name = kwargs.get("catalog_name")
+    display = kwargs.get("display", False)  # Extract display parameter
 
     # If catalog_name not provided, try to use active catalog
     if not catalog_name:
@@ -58,8 +59,12 @@ def handle_command(
                 message=f"Schema '{schema_name}' not found in catalog '{catalog_name}'.",
             )
 
+        # Add display parameter to the data
+        schema_data = schema.copy() if schema else {}
+        schema_data["display"] = display
+        
         return CommandResult(
-            True, data=schema, message=f"Schema details for '{full_name}'."
+            True, data=schema_data, message=f"Schema details for '{full_name}'."
         )
     except Exception as e:
         logging.error(f"Error getting schema details: {str(e)}")

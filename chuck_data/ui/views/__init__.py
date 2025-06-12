@@ -13,3 +13,4 @@ from . import models  # noqa: F401
 from . import warehouses  # noqa: F401
 from . import volumes  # noqa: F401
 from . import status  # noqa: F401
+from . import detail_views  # noqa: F401

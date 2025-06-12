@@ -32,6 +32,7 @@ def handle_command(
 
     # Extract parameters
     catalog_name = kwargs.get("name")
+    display = kwargs.get("display", False)  # Extract display parameter
 
     try:
         # Get catalog details
@@ -40,9 +41,13 @@ def handle_command(
         if not catalog:
             return CommandResult(False, message=f"Catalog '{catalog_name}' not found.")
 
+        # Add display parameter to the data
+        catalog_data = catalog.copy() if catalog else {}
+        catalog_data["display"] = display
+        
         return CommandResult(
             True,
-            data=catalog,
+            data=catalog_data,
             message=f"Catalog details for '{catalog_name}' (Type: {catalog.get('type', 'Unknown')}).",
         )
     except Exception as e:

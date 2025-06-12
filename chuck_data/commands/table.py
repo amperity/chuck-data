@@ -39,6 +39,7 @@ def handle_command(
     schema_name = kwargs.get("schema_name")
     catalog_name = kwargs.get("catalog_name")
     include_delta_metadata = kwargs.get("include_delta_metadata", False)
+    display = kwargs.get("display", False)  # Extract display parameter
 
     # If schema_name not provided, try to use active schema
     if not schema_name:
@@ -110,6 +111,9 @@ def handle_command(
             data={
                 "table": table_info,
                 "raw_table": table,  # Include the raw table data as well for completeness
+                "full_name": full_name,
+                "display": display,  # Pass display parameter for view to use
+                "has_delta_metadata": include_delta_metadata and "delta" in table,
             },
             message=f"Table details for '{full_name}' ({len(formatted_columns)} columns).",
         )
