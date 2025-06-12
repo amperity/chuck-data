@@ -140,7 +140,7 @@ def test_agent_tables_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-tables")
     try:
-        with patch.object(tui, "_display_tables") as spy:
+        with patch("chuck_data.ui.views.tables.TablesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui.display_tool_output("list-tables", {"display": True, "tables": []})

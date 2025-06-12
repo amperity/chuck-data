@@ -230,6 +230,7 @@ def test_command_name_mapping_prevents_regression(tui):
                 mock_get_view.side_effect = lambda name: _VIEW_REGISTRY.get(name)
                 
                 # Since raising PaginationCancelled is part of render, we handle that here
+                from chuck_data.exceptions import PaginationCancelled
                 mock_render.side_effect = PaginationCancelled()
                 
                 with pytest.raises(PaginationCancelled):
