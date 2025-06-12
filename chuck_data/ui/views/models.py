@@ -1,9 +1,16 @@
 """View for list-models command."""
+
 from __future__ import annotations
 from typing import Any
 
 from chuck_data.ui.view_base import BaseView, TableViewMixin
-from chuck_data.ui.theme import TABLE_TITLE_STYLE, SUCCESS_STYLE, INFO, WARNING, DIALOG_BORDER
+from chuck_data.ui.theme import (
+    TABLE_TITLE_STYLE,
+    SUCCESS_STYLE,
+    INFO,
+    WARNING,
+    DIALOG_BORDER,
+)
 from chuck_data.ui.styles import table_type_style
 from chuck_data.exceptions import PaginationCancelled
 from chuck_data.config import get_active_model
@@ -135,6 +142,7 @@ class ModelsTableView(BaseView, TableViewMixin):
 
 
 from chuck_data.ui import view_registry  # noqa: E402
+
 view_registry.register_view("list-models", ModelsTableView)
 view_registry.register_view("models", ModelsTableView)
 view_registry.register_view("detailed-models", ModelsTableView)

@@ -1,4 +1,5 @@
 """View for status command."""
+
 from __future__ import annotations
 from typing import Any
 
@@ -71,7 +72,7 @@ class StatusTableView(BaseView, TableViewMixin):
 
         # Raise PaginationCancelled to return to chuck > prompt immediately
         raise PaginationCancelled()
-    
+
     def _display_permissions(self, permissions_data: dict[str, Any]) -> None:
         """
         Display detailed permission check results.
@@ -82,9 +83,7 @@ class StatusTableView(BaseView, TableViewMixin):
         from chuck_data.ui.table_formatter import display_table
 
         if not permissions_data:
-            self.console.print(
-                "[yellow]No permission data available.[/yellow]"
-            )
+            self.console.print("[yellow]No permission data available.[/yellow]")
             return
 
         # Format permission data for display
@@ -137,4 +136,5 @@ class StatusTableView(BaseView, TableViewMixin):
 
 
 from chuck_data.ui import view_registry  # noqa: E402
+
 view_registry.register_view("status", StatusTableView)

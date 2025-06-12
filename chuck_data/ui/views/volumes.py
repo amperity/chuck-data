@@ -1,4 +1,5 @@
 """View for list-volumes command."""
+
 from __future__ import annotations
 from typing import Any
 
@@ -66,5 +67,6 @@ class VolumesTableView(BaseView, TableViewMixin):
 
 
 from chuck_data.ui import view_registry  # noqa: E402
+
 view_registry.register_view("list-volumes", VolumesTableView)
 view_registry.register_view("volumes", VolumesTableView)

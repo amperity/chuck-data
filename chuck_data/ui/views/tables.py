@@ -1,4 +1,5 @@
 """Table view for list-tables command."""
+
 from __future__ import annotations
 from typing import Any, List
 

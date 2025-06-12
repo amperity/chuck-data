@@ -1,4 +1,5 @@
 """Minimal base classes for new TUI view layer."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

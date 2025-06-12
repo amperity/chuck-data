@@ -36,10 +36,12 @@ def register_temp_cmd(agent_display="conditional", name="list-tables"):
             TUI_COMMAND_MAP.pop(name, None)
         else:
             TUI_COMMAND_MAP[name] = original
+
     return tmp_def, restore
 
 
 # ---------------- T1 ---------------- #
+
 
 def test_tables_display_data_contract(tui_with_captured_console):
     tui = tui_with_captured_console
@@ -49,7 +51,9 @@ def test_tables_display_data_contract(tui_with_captured_console):
         captured.append(kw)
         raise PaginationCancelled()
 
-    with patch("chuck_data.ui.table_formatter.display_table", side_effect=spy_display_table):
+    with patch(
+        "chuck_data.ui.table_formatter.display_table", side_effect=spy_display_table
+    ):
         payload = {
             "tables": [
                 {
@@ -66,24 +70,43 @@ def test_tables_display_data_contract(tui_with_captured_console):
             "total_count": 1,
         }
         with pytest.raises(PaginationCancelled):
-            with patch("chuck_data.ui.views.tables.TablesTableView.render", side_effect=lambda data: spy_display_table(
-                console=tui.console,
-                data=[{
-                    "name": "sales",
-                    "table_type": "MANAGED",
-                    "column_count": 1, 
-                    "row_count": "123",
-                    "created_at": "2025-05-28",
-                    "updated_at": "2025-05-28"
-                }],
-                columns=["name", "table_type", "column_count", "row_count", "created_at", "updated_at"],
-                headers=["Table Name", "Type", "# Cols", "Rows", "Created", "Last Updated"],
-                title="Tables in prod.public (1 total)",
-                style_map={},
-                column_alignments={"# Cols": "right", "Rows": "right"},
-                title_style="cyan",
-                show_lines=True
-            )):
+            with patch(
+                "chuck_data.ui.views.tables.TablesTableView.render",
+                side_effect=lambda data: spy_display_table(
+                    console=tui.console,
+                    data=[
+                        {
+                            "name": "sales",
+                            "table_type": "MANAGED",
+                            "column_count": 1,
+                            "row_count": "123",
+                            "created_at": "2025-05-28",
+                            "updated_at": "2025-05-28",
+                        }
+                    ],
+                    columns=[
+                        "name",
+                        "table_type",
+                        "column_count",
+                        "row_count",
+                        "created_at",
+                        "updated_at",
+                    ],
+                    headers=[
+                        "Table Name",
+                        "Type",
+                        "# Cols",
+                        "Rows",
+                        "Created",
+                        "Last Updated",
+                    ],
+                    title="Tables in prod.public (1 total)",
+                    style_map={},
+                    column_alignments={"# Cols": "right", "Rows": "right"},
+                    title_style="cyan",
+                    show_lines=True,
+                ),
+            ):
                 tui._display_tables(payload)
 
     kw = captured[0]
@@ -103,6 +126,7 @@ def test_tables_display_data_contract(tui_with_captured_console):
 
 # ---------------- T2 ---------------- #
 
+
 def test_slash_tables_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-tables")
@@ -118,13 +142,14 @@ def test_slash_tables_calls_full(tui_with_captured_console):
 
 # ---------------- T3 ---------------- #
 
+
 def test_agent_tables_condensed_default(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-tables")
     try:
         calls = {"n": 0}
         original = tui._display_condensed_tool_output
-        tui._display_condensed_tool_output = lambda n, d: calls.update(n=calls["n"]+1)
+        tui._display_condensed_tool_output = lambda n, d: calls.update(n=calls["n"] + 1)
         try:
             tui.display_tool_output("list-tables", {"tables": []})
             assert calls["n"] == 1
@@ -135,6 +160,7 @@ def test_agent_tables_condensed_default(tui_with_captured_console):
 
 
 # ---------------- T4 ---------------- #
+
 
 def test_agent_tables_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console

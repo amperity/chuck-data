@@ -1,4 +1,5 @@
 """Global registry for mapping command/tool names to View classes."""
+
 from __future__ import annotations
 
 from typing import Dict, Type

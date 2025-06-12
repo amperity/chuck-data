@@ -1,4 +1,5 @@
 """View for list-warehouses command."""
+
 from __future__ import annotations
 from typing import Any
 
@@ -87,5 +88,6 @@ class WarehousesTableView(BaseView, TableViewMixin):
 
 
 from chuck_data.ui import view_registry  # noqa: E402
+
 view_registry.register_view("list-warehouses", WarehousesTableView)
 view_registry.register_view("warehouses", WarehousesTableView)

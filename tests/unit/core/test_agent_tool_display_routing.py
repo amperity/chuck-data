@@ -63,7 +63,7 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
 
     # Register our test views
     view_registry.register_view("list-schemas", TestSchemasView)
-    view_registry.register_view("list-catalogs", TestCatalogsView) 
+    view_registry.register_view("list-catalogs", TestCatalogsView)
     view_registry.register_view("list-tables", TestTablesView)
 
     try:
@@ -124,17 +124,17 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
                 tui.display_tool_output(case["tool_name"], case["test_data"])
             except PaginationCancelled:
                 pass  # Expected when tables are displayed
-            
+
             # Verify that the console received output
             mock_console.print.assert_called()
-            
+
             # Verify the output was processed by checking the call arguments
             print_calls = mock_console.print.call_args_list
-            
+
             # Verify that Rich Table objects were printed (not raw JSON strings)
             table_objects_found = False
             raw_json_found = False
-            
+
             for call in print_calls:
                 args, kwargs = call
                 for arg in args:
@@ -143,13 +143,19 @@ def test_agent_list_commands_display_tables_not_raw_json(tui):
                         table_objects_found = True
                     # Check if we're printing raw JSON strings (bad)
                     elif isinstance(arg, str) and (
-                        '"schemas":' in arg or '"catalogs":' in arg or '"tables":' in arg
+                        '"schemas":' in arg
+                        or '"catalogs":' in arg
+                        or '"tables":' in arg
                     ):
                         raw_json_found = True
-            
-            assert table_objects_found, f"No Rich Table objects found in {case['tool_name']} output"
-            assert not raw_json_found, f"Raw JSON strings found in {case['tool_name']} output"
-    
+
+            assert (
+                table_objects_found
+            ), f"No Rich Table objects found in {case['tool_name']} output"
+            assert (
+                not raw_json_found
+            ), f"Raw JSON strings found in {case['tool_name']} output"
+
     finally:
         # Restore original views
         for name, view in original_views.items():
@@ -204,23 +210,32 @@ def test_command_name_mapping_prevents_regression(tui):
                 }
             else:
                 test_data = {"test": "data"}
-            
+
             # Mock get_view to verify it's called correctly
             with patch("chuck_data.ui.view_registry.get_view") as mock_get_view:
                 # Simulate the view registry behavior
                 from chuck_data.ui.view_registry import _VIEW_REGISTRY
+
                 mock_get_view.side_effect = lambda name: _VIEW_REGISTRY.get(name)
-                
+
                 # Since raising PaginationCancelled is part of render, we handle that here
                 from chuck_data.exceptions import PaginationCancelled
+
                 mock_render.side_effect = PaginationCancelled()
-                
+
                 with pytest.raises(PaginationCancelled):
                     tui._display_full_tool_output(tool_name, test_data)
-                
+
                 # We have special handling for list-* commands in _display_full_tool_output
                 # which bypasses get_view for direct method calls, so we don't expect get_view to be called
-                if tool_name in ["list-schemas", "list-catalogs", "list-tables", "list-models", "list-warehouses", "list-volumes"]:
+                if tool_name in [
+                    "list-schemas",
+                    "list-catalogs",
+                    "list-tables",
+                    "list-models",
+                    "list-warehouses",
+                    "list-volumes",
+                ]:
                     # Verify direct view method calls by checking render was called
                     mock_render.assert_called_once()
                 else:
@@ -291,7 +306,7 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
 
     This test goes through the complete flow: agent calls tool -> tool executes ->
     output callback triggers -> TUI displays formatted table.
-    
+
     The test verifies both with display=True (should show tables) and without display parameter
     (should not show raw JSON). This test is critical for catching regressions where
     list-* commands might display raw JSON instead of formatted tables.
@@ -322,11 +337,11 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
                 {"name": "bronze", "comment": "Bronze layer"},
                 {"name": "silver", "comment": "Silver layer"},
             ],
-            "catalog_name": "test_catalog", 
+            "catalog_name": "test_catalog",
             "total_count": 2,
             "display": True,  # This triggers the full display
         }
-        
+
         test_data_without_display = {
             "schemas": [
                 {"name": "bronze", "comment": "Bronze layer"},
@@ -364,11 +379,11 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
 
             # Verify table-formatted output was displayed
             print_calls = mock_console.print.call_args_list
-            
+
             # Verify that Rich Table objects were printed (not raw JSON strings)
             table_objects_found = False
             raw_json_found = False
-            
+
             for call in print_calls:
                 args, kwargs = call
                 for arg in args:
@@ -380,11 +395,13 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
                         '"schemas":' in arg or '"total_count":' in arg
                     ):
                         raw_json_found = True
-            
+
             # WITH display=True, we should see tables and not raw JSON
-            assert table_objects_found, "Case with display=True: No Rich Table objects found"
+            assert (
+                table_objects_found
+            ), "Case with display=True: No Rich Table objects found"
             assert not raw_json_found, "Case with display=True: Raw JSON strings found"
-        
+
         # Test 2: WITHOUT display parameter - check for raw JSON (which is a failure case)
         with patch.object(schemas_def, "handler") as mock_handler:
             mock_handler.__name__ = "mock_handler"
@@ -402,7 +419,7 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
             with patch("chuck_data.agent.tool_executor.jsonschema.validate"):
                 # Should not raise PaginationCancelled since we're using condensed display
                 execute_tool(
-                    mock_client, 
+                    mock_client,
                     "list-schemas",
                     {"catalog_name": "test_catalog"},  # No display parameter
                     output_callback=output_callback,
@@ -410,11 +427,11 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
 
             # Verify the callback triggered some output
             mock_console.print.assert_called()
-            
+
             print_calls = mock_console.print.call_args_list
             panel_objects_found = False
             raw_json_found = False
-            
+
             for call in print_calls:
                 args, kwargs = call
                 for arg in args:
@@ -425,15 +442,23 @@ def test_end_to_end_agent_tool_execution_with_table_display(tui):
                             raw_json_found = True
                     # Check if we're printing raw JSON strings directly
                     elif isinstance(arg, str) and (
-                        '"schemas":' in arg or '"catalog_name":' in arg or '"total_count":' in arg
+                        '"schemas":' in arg
+                        or '"catalog_name":' in arg
+                        or '"total_count":' in arg
                     ):
                         raw_json_found = True
-            
+
             # WITHOUT display param, we should NOT see raw JSON in any form
-            condensed_output_found = any('→' in str(arg) for args, _ in print_calls for arg in args)
-            
-            assert not raw_json_found, "Case without display param: Raw JSON strings found (bug)"
-            assert condensed_output_found, "Case without display param: No condensed output found (should show arrow prefix)"
+            condensed_output_found = any(
+                "→" in str(arg) for args, _ in print_calls for arg in args
+            )
+
+            assert (
+                not raw_json_found
+            ), "Case without display param: Raw JSON strings found (bug)"
+            assert (
+                condensed_output_found
+            ), "Case without display param: No condensed output found (should show arrow prefix)"
 
 
 def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
@@ -454,7 +479,7 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
         ),
         (
             "chuck_data.ui.views.catalogs.CatalogsTableView",
-            {"catalogs": [{"name": "test"}]}
+            {"catalogs": [{"name": "test"}]},
         ),
         (
             "chuck_data.ui.views.tables.TablesTableView",
@@ -466,7 +491,7 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
         ),
         (
             "chuck_data.ui.views.warehouses.WarehousesTableView",
-            {"warehouses": [{"name": "test", "id": "test"}]}
+            {"warehouses": [{"name": "test", "id": "test"}]},
         ),
         (
             "chuck_data.ui.views.volumes.VolumesTableView",
@@ -490,24 +515,24 @@ def test_list_commands_raise_pagination_cancelled_like_run_sql(tui):
     for view_class_path, test_data in view_class_tests:
         # Mock console to prevent actual output
         mock_console = MagicMock()
-        
+
         # Create a simple view instance using the mock console
-        parts = view_class_path.split('.')
+        parts = view_class_path.split(".")
         class_name = parts[-1]
-        module_path = '.'.join(parts[:-1])
-        
+        module_path = ".".join(parts[:-1])
+
         with patch(f"{view_class_path}.render") as mock_render:
             # Configure the mock to raise PaginationCancelled
             mock_render.side_effect = PaginationCancelled()
-            
+
             # Import and instantiate the view
             module = __import__(module_path, fromlist=[class_name])
             view_class = getattr(module, class_name)
             view = view_class(mock_console)
-            
+
             # Test that the render method raises PaginationCancelled
             with pytest.raises(PaginationCancelled):
                 view.render(test_data)
-                
+
             # Verify that render was called
             mock_render.assert_called_once()

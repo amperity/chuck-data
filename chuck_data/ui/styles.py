@@ -1,4 +1,5 @@
 """Common Rich style helper functions reused by multiple views."""
+
 from __future__ import annotations
 
 __all__ = [

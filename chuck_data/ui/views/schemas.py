@@ -1,4 +1,5 @@
 """View for list-schemas command."""
+
 from __future__ import annotations
 from typing import Any
 from chuck_data.ui.view_base import BaseView, TableViewMixin
@@ -48,5 +49,6 @@ class SchemasTableView(BaseView, TableViewMixin):
 
 
 from chuck_data.ui import view_registry  # noqa: E402
+
 view_registry.register_view("list-schemas", SchemasTableView)
 view_registry.register_view("schemas", SchemasTableView)

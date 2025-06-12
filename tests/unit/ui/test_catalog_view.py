@@ -9,9 +9,7 @@ from chuck_data.exceptions import PaginationCancelled
 
 
 PAYLOAD = {
-    "catalogs": [
-        {"name": "main", "type": "UC", "comment": "prod", "owner": "data"}
-    ],
+    "catalogs": [{"name": "main", "type": "UC", "comment": "prod", "owner": "data"}],
     "current_catalog": "main",
 }
 

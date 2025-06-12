@@ -476,10 +476,12 @@ class ChuckTUI:
 
             # Use the view registry to route display requests
             from chuck_data.ui.view_registry import get_view
-            
+
             # Try to get the appropriate view from the registry
-            cmd_without_slash = cmd[1:] if cmd.startswith("/") else cmd  # Remove leading slash
-            
+            cmd_without_slash = (
+                cmd[1:] if cmd.startswith("/") else cmd
+            )  # Remove leading slash
+
             # Command name mappings to standardize the lookup
             cmd_mapping = {
                 "catalogs": "list-catalogs",
@@ -492,16 +494,16 @@ class ChuckTUI:
                 "schema": "schema-details",
                 "models": "list-models",
                 "warehouses": "list-warehouses",
-                "volumes": "list-volumes", 
+                "volumes": "list-volumes",
                 "table": "table-details",
                 "show_table": "table-details",
                 "run-sql": "sql",
             }
-            
+
             # Standardize command name for lookup
             standard_cmd = cmd_mapping.get(cmd_without_slash, cmd_without_slash)
             view_cls = get_view(standard_cmd)
-            
+
             if view_cls:
                 # Use the view class to render the data
                 try:
@@ -509,7 +511,7 @@ class ChuckTUI:
                     return  # View handled the display
                 except Exception as e:
                     logging.warning(f"Failed to render view for {cmd}: {e}")
-            
+
             # Fallback for commands without views - handle special cases
             if cmd == "/auth" and "permissions" in result.data:
                 self._display_permissions(result.data["permissions"])
@@ -679,25 +681,25 @@ class ChuckTUI:
     ) -> None:
         """Display full detailed tool output using view registry when available."""
         from chuck_data.ui.view_registry import get_view
-        
+
         # Handle special case mappings for list-* commands that need specific handling
         # These exact mappings are critical for agents to see formatted tables
         list_command_mapping = {
             "list-schemas": "_display_schemas",
             "list-catalogs": "_display_catalogs",
             "list-tables": "_display_tables",
-            "list-models": "_display_models_consolidated", 
+            "list-models": "_display_models_consolidated",
             "list-warehouses": "_display_warehouses",
             "list-volumes": "_display_volumes",
         }
-        
+
         # Direct function calls for list-* commands to ensure compatibility
         if tool_name in list_command_mapping:
             method_name = list_command_mapping[tool_name]
             method = getattr(self, method_name)
             method(tool_result)
             return
-            
+
         # Map legacy tool names to their updated equivalents for routing
         tool_name_mapping = {
             "get_catalog_details": "catalog",
@@ -705,18 +707,18 @@ class ChuckTUI:
             "scan_schema_for_pii": "scan-pii",
             "scan_pii": "scan-pii",
         }
-        
+
         # Apply tool name mapping if needed
         mapped_tool_name = tool_name_mapping.get(tool_name, tool_name)
-        
+
         # Try to get the view class from registry
         view_cls = get_view(mapped_tool_name)
-        
+
         if view_cls:
             # Use registered view class
             view_cls(self.console).render(tool_result)
             return
-        
+
         # Handle special cases that might not be migrated to view classes yet
         if tool_name == "run-sql":
             self._display_sql_results(tool_result)
@@ -724,7 +726,7 @@ class ChuckTUI:
         elif tool_name == "scan-pii":
             self._display_pii_scan_results(tool_result)
             return
-        
+
         # Fallback for tools without registered views - display as JSON panel
         from rich.panel import Panel
         import json
@@ -847,41 +849,44 @@ class ChuckTUI:
     def _display_catalogs(self, data: Dict[str, Any]) -> None:
         """Shim: delegate to CatalogsTableView for backwards compatibility."""
         from chuck_data.ui.views.catalogs import CatalogsTableView
-        CatalogsTableView(self.console).render(data)
 
+        CatalogsTableView(self.console).render(data)
 
     # >>> NEW SHIM for schemas view
     def _display_schemas(self, data: Dict[str, Any]) -> None:
         """Shim: delegate to SchemasTableView for backwards compatibility."""
         from chuck_data.ui.views.schemas import SchemasTableView
-        SchemasTableView(self.console).render(data)
 
+        SchemasTableView(self.console).render(data)
 
     # >>> NEW SHIM for tables view
     def _display_tables(self, data: Dict[str, Any]) -> None:
         from chuck_data.ui.views.tables import TablesTableView
+
         TablesTableView(self.console).render(data)
-
-
 
     def _display_models_consolidated(self, data: Dict[str, Any]) -> None:
         """Shim delegate to ModelsTableView."""
         from chuck_data.ui.views.models import ModelsTableView
+
         ModelsTableView(self.console).render(data)
 
     def _display_warehouses(self, data: Dict[str, Any]) -> None:
         """Shim delegate to WarehousesTableView."""
         from chuck_data.ui.views.warehouses import WarehousesTableView
+
         WarehousesTableView(self.console).render(data)
 
     def _display_volumes(self, data: Dict[str, Any]) -> None:
         """Shim delegate to VolumesTableView."""
         from chuck_data.ui.views.volumes import VolumesTableView
+
         VolumesTableView(self.console).render(data)
 
     def _display_status(self, data: Dict[str, Any]) -> None:
         """Shim delegate to StatusTableView."""
         from chuck_data.ui.views.status import StatusTableView
+
         StatusTableView(self.console).render(data)
 
     def _display_permissions(self, permissions_data: Dict[str, Any]) -> None:

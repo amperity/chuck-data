@@ -19,7 +19,9 @@ def tui_with_captured_console():
         return tui
 
 
-def register_temp_cmd(agent_display: str = "conditional", name: str = "list-warehouses"):
+def register_temp_cmd(
+    agent_display: str = "conditional", name: str = "list-warehouses"
+):
     """Temporarily register a CommandDefinition in TUI_COMMAND_MAP for routing tests."""
 
     def dummy(**kwargs):
@@ -45,6 +47,7 @@ def register_temp_cmd(agent_display: str = "conditional", name: str = "list-ware
 
 # ------------- T1 ------------- #
 
+
 def test_warehouses_display_data_contract(tui_with_captured_console):
     tui = tui_with_captured_console
 
@@ -54,7 +57,9 @@ def test_warehouses_display_data_contract(tui_with_captured_console):
         captured.append(kw)
         raise PaginationCancelled()
 
-    with patch("chuck_data.ui.table_formatter.display_table", side_effect=spy_display_table):
+    with patch(
+        "chuck_data.ui.table_formatter.display_table", side_effect=spy_display_table
+    ):
         payload = {
             "warehouses": [
                 {
@@ -69,21 +74,26 @@ def test_warehouses_display_data_contract(tui_with_captured_console):
             "current_warehouse_id": "wh-123",
         }
         with pytest.raises(PaginationCancelled):
-            with patch("chuck_data.ui.views.warehouses.WarehousesTableView.render", side_effect=lambda data: spy_display_table(
-                console=tui.console,
-                data=[{
-                    "name": "Test WH",
-                    "id": "wh-123",
-                    "size": "small",
-                    "type": "serverless",
-                    "state": "running"
-                }],
-                columns=["name", "id", "size", "type", "state"],
-                headers=["Name", "ID", "Size", "Type", "State"],
-                title="Available SQL Warehouses",
-                style_map={},
-                show_lines=False
-            )):
+            with patch(
+                "chuck_data.ui.views.warehouses.WarehousesTableView.render",
+                side_effect=lambda data: spy_display_table(
+                    console=tui.console,
+                    data=[
+                        {
+                            "name": "Test WH",
+                            "id": "wh-123",
+                            "size": "small",
+                            "type": "serverless",
+                            "state": "running",
+                        }
+                    ],
+                    columns=["name", "id", "size", "type", "state"],
+                    headers=["Name", "ID", "Size", "Type", "State"],
+                    title="Available SQL Warehouses",
+                    style_map={},
+                    show_lines=False,
+                ),
+            ):
                 tui._display_warehouses(payload)
 
     kw = captured[0]
@@ -100,6 +110,7 @@ def test_warehouses_display_data_contract(tui_with_captured_console):
 
 # ------------- T2 ------------- #
 
+
 def test_slash_warehouses_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-warehouses")
@@ -114,6 +125,7 @@ def test_slash_warehouses_calls_full(tui_with_captured_console):
 
 
 # ------------- T3 ------------- #
+
 
 def test_agent_warehouses_condensed_default(tui_with_captured_console):
     tui = tui_with_captured_console
@@ -133,6 +145,7 @@ def test_agent_warehouses_condensed_default(tui_with_captured_console):
 
 # ------------- T4 ------------- #
 
+
 def test_agent_warehouses_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-warehouses")
@@ -140,7 +153,9 @@ def test_agent_warehouses_full_when_requested(tui_with_captured_console):
         with patch("chuck_data.ui.views.warehouses.WarehousesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
-                tui.display_tool_output("list-warehouses", {"display": True, "warehouses": []})
+                tui.display_tool_output(
+                    "list-warehouses", {"display": True, "warehouses": []}
+                )
             spy.assert_called_once()
     finally:
         restore()

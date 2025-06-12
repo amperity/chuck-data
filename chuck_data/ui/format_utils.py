@@ -3,6 +3,7 @@
 This module is *pure* (no Rich / prompt-toolkit imports) so it can be unit-
 tested independently and reused both in application code and tests.
 """
+
 from __future__ import annotations
 
 from datetime import datetime

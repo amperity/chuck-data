@@ -1,4 +1,5 @@
 """Table view for list-catalogs command."""
+
 from __future__ import annotations
 from typing import Any
 
@@ -18,9 +19,7 @@ class CatalogsTableView(BaseView, TableViewMixin):
         current_catalog = data.get("current_catalog")
 
         if not catalogs:
-            self.console.print(
-                f"[{WARNING_STYLE}]No catalogs found.[/{WARNING_STYLE}]"
-            )
+            self.console.print(f"[{WARNING_STYLE}]No catalogs found.[/{WARNING_STYLE}]")
             raise PaginationCancelled()
 
         def name_style(name):
@@ -53,5 +52,6 @@ class CatalogsTableView(BaseView, TableViewMixin):
 
 # --- auto-registration -----------------
 from chuck_data.ui import view_registry  # noqa: E402, I001
+
 view_registry.register_view("list-catalogs", CatalogsTableView)
 view_registry.register_view("catalogs", CatalogsTableView)
