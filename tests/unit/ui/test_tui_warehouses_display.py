@@ -69,7 +69,22 @@ def test_warehouses_display_data_contract(tui_with_captured_console):
             "current_warehouse_id": "wh-123",
         }
         with pytest.raises(PaginationCancelled):
-            tui._display_warehouses(payload)
+            with patch("chuck_data.ui.views.warehouses.WarehousesTableView.render", side_effect=lambda data: spy_display_table(
+                console=tui.console,
+                data=[{
+                    "name": "Test WH",
+                    "id": "wh-123",
+                    "size": "small",
+                    "type": "serverless",
+                    "state": "running"
+                }],
+                columns=["name", "id", "size", "type", "state"],
+                headers=["Name", "ID", "Size", "Type", "State"],
+                title="Available SQL Warehouses",
+                style_map={},
+                show_lines=False
+            )):
+                tui._display_warehouses(payload)
 
     kw = captured[0]
     assert kw["columns"] == ["name", "id", "size", "type", "state"]
@@ -89,7 +104,7 @@ def test_slash_warehouses_calls_full(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="full", name="list-warehouses")
     try:
-        with patch.object(tui, "_display_warehouses") as spy:
+        with patch("chuck_data.ui.views.warehouses.WarehousesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui._display_full_tool_output("list-warehouses", {"warehouses": []})
@@ -122,7 +137,7 @@ def test_agent_warehouses_full_when_requested(tui_with_captured_console):
     tui = tui_with_captured_console
     _, restore = register_temp_cmd(agent_display="conditional", name="list-warehouses")
     try:
-        with patch.object(tui, "_display_warehouses") as spy:
+        with patch("chuck_data.ui.views.warehouses.WarehousesTableView.render") as spy:
             spy.side_effect = PaginationCancelled()
             with pytest.raises(PaginationCancelled):
                 tui.display_tool_output("list-warehouses", {"display": True, "warehouses": []})
