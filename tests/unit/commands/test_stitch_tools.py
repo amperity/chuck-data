@@ -5,7 +5,7 @@ This module contains tests for the Stitch integration utilities.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from chuck_data.commands.stitch_tools import _helper_setup_stitch_logic
 from tests.fixtures.llm import LLMClientStub
@@ -355,26 +355,35 @@ def test_versioned_init_script_upload_error(
             # Volume exists
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
-            # For this test, we need to mock the upload cluster init logic to fail
-            # since it's complex internal logic, but this represents a compromise
-            with patch(
-                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
-            ) as mock_upload:
-                mock_upload.return_value = {
-                    "error": "Failed to upload versioned init script"
+            # Mock fetch_amperity_job_init to return job-id
+            with patch.object(
+                databricks_client_stub, "fetch_amperity_job_init"
+            ) as mock_fetch:
+                mock_fetch.return_value = {
+                    "cluster-init": "#!/bin/bash\necho 'init script'",
+                    "job-id": "test-job-123",
                 }
 
-                # Call function
-                result = _helper_setup_stitch_logic(
-                    databricks_client_stub,
-                    llm_client_stub,
-                    "test_catalog",
-                    "test_schema",
-                )
+                # For this test, we need to mock the upload cluster init logic to fail
+                # since it's complex internal logic, but this represents a compromise
+                with patch(
+                    "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+                ) as mock_upload:
+                    mock_upload.return_value = {
+                        "error": "Failed to upload versioned init script"
+                    }
 
-                # Verify results
-                assert "error" in result
-                assert result["error"] == "Failed to upload versioned init script"
+                    # Call function
+                    result = _helper_setup_stitch_logic(
+                        databricks_client_stub,
+                        llm_client_stub,
+                        "test_catalog",
+                        "test_schema",
+                    )
+
+                    # Verify results
+                    assert "error" in result
+                    assert result["error"] == "Failed to upload versioned init script"
 
 
 def test_successful_setup(
@@ -435,44 +444,53 @@ def test_successful_setup(
             # Volume exists
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
-            # For the upload logic, we'll mock it since it's complex file handling
-            with patch(
-                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
-            ) as mock_upload:
-                mock_upload.return_value = {
-                    "success": True,
-                    "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
-                    "filename": "cluster_init-2025-06-02_14-30.sh",
-                    "timestamp": "2025-06-02_14-30",
+            # Mock fetch_amperity_job_init to return job-id
+            with patch.object(
+                databricks_client_stub, "fetch_amperity_job_init"
+            ) as mock_fetch:
+                mock_fetch.return_value = {
+                    "cluster-init": "#!/bin/bash\necho 'init script'",
+                    "job-id": "test-job-456",
                 }
 
-                # Call function - should succeed with real business logic
-                result = _helper_setup_stitch_logic(
-                    databricks_client_stub,
-                    llm_client_stub,
-                    "test_catalog",
-                    "test_schema",
-                )
+                # For the upload logic, we'll mock it since it's complex file handling
+                with patch(
+                    "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+                ) as mock_upload:
+                    mock_upload.return_value = {
+                        "success": True,
+                        "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
+                        "filename": "cluster_init-2025-06-02_14-30.sh",
+                        "timestamp": "2025-06-02_14-30",
+                    }
 
-                # Verify results
-                assert result.get("success")
-                assert "stitch_config" in result
-                assert "metadata" in result
-                metadata = result["metadata"]
-                assert "config_file_path" in metadata
-                assert "init_script_path" in metadata
-                assert (
-                    metadata["init_script_path"]
-                    == "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh"
-                )
+                    # Call function - should succeed with real business logic
+                    result = _helper_setup_stitch_logic(
+                        databricks_client_stub,
+                        llm_client_stub,
+                        "test_catalog",
+                        "test_schema",
+                    )
 
-                # Verify versioned init script upload was called with real business logic
-                mock_upload.assert_called_once_with(
-                    client=databricks_client_stub,
-                    target_catalog="test_catalog",
-                    target_schema="test_schema",
-                    init_script_content="echo 'Amperity init script'",
-                )
+                    # Verify results
+                    assert result.get("success")
+                    assert "stitch_config" in result
+                    assert "metadata" in result
+                    metadata = result["metadata"]
+                    assert "config_file_path" in metadata
+                    assert "init_script_path" in metadata
+                    assert (
+                        metadata["init_script_path"]
+                        == "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh"
+                    )
+
+                    # Verify versioned init script upload was called with content from mocked API
+                    mock_upload.assert_called_once_with(
+                        client=databricks_client_stub,
+                        target_catalog="test_catalog",
+                        target_schema="test_schema",
+                        init_script_content="#!/bin/bash\necho 'init script'",
+                    )
 
                 # Verify no unsupported columns warning when all columns are supported
                 assert "unsupported_columns" in metadata
@@ -534,27 +552,36 @@ def test_unsupported_types_filtered(
             # Volume exists
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
-            # Mock upload logic
-            with patch(
-                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
-            ) as mock_upload:
-                mock_upload.return_value = {
-                    "success": True,
-                    "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
-                    "filename": "cluster_init-2025-06-02_14-30.sh",
-                    "timestamp": "2025-06-02_14-30",
+            # Mock fetch_amperity_job_init to return job-id
+            with patch.object(
+                databricks_client_stub, "fetch_amperity_job_init"
+            ) as mock_fetch:
+                mock_fetch.return_value = {
+                    "cluster-init": "#!/bin/bash\necho 'init script'",
+                    "job-id": "test-job-789",
                 }
 
-                # Call function - real business logic should filter unsupported types
-                result = _helper_setup_stitch_logic(
-                    databricks_client_stub,
-                    llm_client_stub,
-                    "test_catalog",
-                    "test_schema",
-                )
+                # Mock upload logic
+                with patch(
+                    "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+                ) as mock_upload:
+                    mock_upload.return_value = {
+                        "success": True,
+                        "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
+                        "filename": "cluster_init-2025-06-02_14-30.sh",
+                        "timestamp": "2025-06-02_14-30",
+                    }
 
-                # Verify results
-                assert result.get("success")
+                    # Call function - real business logic should filter unsupported types
+                    result = _helper_setup_stitch_logic(
+                        databricks_client_stub,
+                        llm_client_stub,
+                        "test_catalog",
+                        "test_schema",
+                    )
+
+                    # Verify results
+                    assert result.get("success")
 
                 # Get the generated config content
                 import json
@@ -647,3 +674,414 @@ def test_all_columns_unsupported_types(databricks_client_stub, llm_client_stub):
             # Verify results - should fail because no supported columns remain after filtering
             assert "error" in result
             assert "No tables with PII found" in result["error"]
+
+
+class TestJobIdTracking:
+    """Test job-id tracking from Amperity API in stitch_tools."""
+
+    @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    def test_prepare_stitch_config_tracks_job_id(
+        self,
+        mock_pii_scan,
+        mock_upload_init,
+        mock_get_token,
+        databricks_client_stub,
+    ):
+        """Test that _helper_prepare_stitch_config captures job-id from API."""
+        from chuck_data.commands.stitch_tools import _helper_prepare_stitch_config
+
+        # Mock token
+        mock_get_token.return_value = "test-token"
+
+        # Mock PII scan
+        mock_pii_scan.return_value = {
+            "tables_successfully_processed": 1,
+            "results_detail": [
+                {
+                    "full_name": "catalog.schema.table",
+                    "has_pii": True,
+                    "skipped": False,
+                    "columns": [
+                        {"name": "email", "type": "string", "semantic": "email"}
+                    ],
+                }
+            ],
+        }
+
+        # Mock upload init script
+        mock_upload_init.return_value = {
+            "volume_path": "/Volumes/catalog/schema/chuck/init.sh"
+        }
+
+        # Mock fetch_amperity_job_init to return job-id
+        def mock_fetch_init(token):
+            return {
+                "cluster-init": "#!/bin/bash\necho 'init'",
+                "job-id": "chk-test-123",
+            }
+
+        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
+        databricks_client_stub.add_volume("catalog", "schema", "chuck")
+
+        result = _helper_prepare_stitch_config(
+            databricks_client_stub, None, "catalog", "schema"
+        )
+
+        assert result.get("success") is True
+        assert "metadata" in result
+        assert result["metadata"]["job_id"] == "chk-test-123"
+
+    @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    def test_prepare_stitch_config_fails_without_job_id(
+        self,
+        mock_pii_scan,
+        mock_upload_init,
+        mock_get_token,
+        databricks_client_stub,
+    ):
+        """Test that _helper_prepare_stitch_config fails if job-id is missing."""
+        from chuck_data.commands.stitch_tools import _helper_prepare_stitch_config
+
+        # Mock token
+        mock_get_token.return_value = "test-token"
+
+        # Mock PII scan
+        mock_pii_scan.return_value = {
+            "tables_successfully_processed": 1,
+            "results_detail": [
+                {
+                    "full_name": "catalog.schema.table",
+                    "has_pii": True,
+                    "skipped": False,
+                    "columns": [
+                        {"name": "email", "type": "string", "semantic": "email"}
+                    ],
+                }
+            ],
+        }
+
+        # Mock fetch_amperity_job_init WITHOUT job-id
+        def mock_fetch_init(token):
+            return {
+                "cluster-init": "#!/bin/bash\necho 'init'",
+                # job-id is missing
+            }
+
+        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
+        databricks_client_stub.add_volume("catalog", "schema", "chuck")
+
+        result = _helper_prepare_stitch_config(
+            databricks_client_stub, None, "catalog", "schema"
+        )
+
+        assert "error" in result
+        assert "job-id" in result["error"]
+
+    @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
+    @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
+    def test_launch_stitch_job_returns_job_id(
+        self,
+        mock_pii_scan,
+        mock_upload_init,
+        mock_get_token,
+        databricks_client_stub,
+    ):
+        """Test that _helper_launch_stitch_job returns job-id from metadata."""
+        from chuck_data.commands.stitch_tools import _helper_launch_stitch_job
+
+        # Mock token
+        mock_get_token.return_value = "test-token"
+
+        stitch_config = {
+            "name": "test-job",
+            "tables": [
+                {
+                    "path": "catalog.schema.table",
+                    "fields": [
+                        {
+                            "field-name": "email",
+                            "type": "string",
+                            "semantics": ["email"],
+                        }
+                    ],
+                }
+            ],
+            "settings": {
+                "output_catalog_name": "catalog",
+                "output_schema_name": "stitch_outputs",
+            },
+        }
+
+        metadata = {
+            "target_catalog": "catalog",
+            "target_schema": "schema",
+            "volume_name": "chuck",
+            "stitch_job_name": "test-job",
+            "config_file_path": "/Volumes/catalog/schema/chuck/test-job.json",
+            "init_script_path": "/Volumes/catalog/schema/chuck/init.sh",
+            "init_script_content": "#!/bin/bash\necho 'init'",
+            "amperity_token": "test-token",
+            "job_id": "chk-test-456",  # Job ID from prepare phase
+            "pii_scan_output": {"message": "PII scan complete"},
+            "unsupported_columns": [],
+        }
+
+        # Mock upload and submit
+        databricks_client_stub.upload_file = lambda path, content, overwrite: True
+
+        def mock_submit(config_path, init_script_path, run_name):
+            return {"run_id": "run-789"}
+
+        databricks_client_stub.submit_job_run = mock_submit
+
+        # Mock notebook creation
+        databricks_client_stub.create_stitch_notebook = lambda **kwargs: {
+            "notebook_path": "/Workspace/Users/test/notebook"
+        }
+
+        result = _helper_launch_stitch_job(
+            databricks_client_stub, stitch_config, metadata
+        )
+
+        assert result["success"] is True
+        assert result["job_id"] == "chk-test-456"
+        assert result["run_id"] == "run-789"
+
+    @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient")
+    def test_launch_stitch_job_records_submission(
+        self,
+        mock_amperity_client_class,
+        databricks_client_stub,
+    ):
+        """Test that _helper_launch_stitch_job calls record_job_submission."""
+        from chuck_data.commands.stitch_tools import _helper_launch_stitch_job
+
+        # Mock Amperity client
+        mock_client = Mock()
+        mock_client.record_job_submission.return_value = True
+        mock_amperity_client_class.return_value = mock_client
+
+        stitch_config = {
+            "name": "test-job",
+            "tables": [
+                {
+                    "path": "catalog.schema.table",
+                    "fields": [
+                        {
+                            "field-name": "email",
+                            "type": "string",
+                            "semantics": ["email"],
+                        }
+                    ],
+                }
+            ],
+            "settings": {
+                "output_catalog_name": "catalog",
+                "output_schema_name": "stitch_outputs",
+            },
+        }
+
+        metadata = {
+            "target_catalog": "catalog",
+            "target_schema": "schema",
+            "volume_name": "chuck",
+            "stitch_job_name": "test-job",
+            "config_file_path": "/Volumes/catalog/schema/chuck/test-job.json",
+            "init_script_path": "/Volumes/catalog/schema/chuck/init.sh",
+            "init_script_content": "#!/bin/bash\necho 'init'",
+            "amperity_token": "test-token",
+            "job_id": "chk-test-789",
+            "pii_scan_output": {"message": "PII scan complete"},
+            "unsupported_columns": [],
+        }
+
+        # Mock upload and submit
+        databricks_client_stub.upload_file = lambda path, content, overwrite: True
+
+        def mock_submit(config_path, init_script_path, run_name):
+            return {"run_id": "run-456"}
+
+        databricks_client_stub.submit_job_run = mock_submit
+
+        # Mock notebook creation
+        databricks_client_stub.create_stitch_notebook = lambda **kwargs: {
+            "notebook_path": "/Workspace/Users/test/notebook"
+        }
+
+        result = _helper_launch_stitch_job(
+            databricks_client_stub, stitch_config, metadata
+        )
+
+        assert result["success"] is True
+        assert result["job_id"] == "chk-test-789"
+        assert result["run_id"] == "run-456"
+
+        # Verify AmperityAPIClient was instantiated and record_job_submission was called
+        # with job_id from metadata
+        mock_amperity_client_class.assert_called_once()
+        mock_client.record_job_submission.assert_called_once_with(
+            databricks_run_id="run-456", token="test-token", job_id="chk-test-789"
+        )
+
+    @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient")
+    def test_launch_stitch_job_records_submission_no_job_id(
+        self,
+        mock_amperity_client_class,
+        databricks_client_stub,
+    ):
+        """Test that record_job_submission is not called when job_id is missing."""
+        from chuck_data.commands.stitch_tools import _helper_launch_stitch_job
+
+        # Mock Amperity client
+        mock_client = Mock()
+        mock_client.record_job_submission.return_value = True
+        mock_amperity_client_class.return_value = mock_client
+
+        stitch_config = {
+            "name": "test-job",
+            "tables": [
+                {
+                    "path": "catalog.schema.table",
+                    "fields": [
+                        {
+                            "field-name": "email",
+                            "type": "string",
+                            "semantics": ["email"],
+                        }
+                    ],
+                }
+            ],
+            "settings": {
+                "output_catalog_name": "catalog",
+                "output_schema_name": "stitch_outputs",
+            },
+        }
+
+        # Metadata without job_id
+        metadata = {
+            "target_catalog": "catalog",
+            "target_schema": "schema",
+            "volume_name": "chuck",
+            "stitch_job_name": "test-job",
+            "config_file_path": "/Volumes/catalog/schema/chuck/test-job.json",
+            "init_script_path": "/Volumes/catalog/schema/chuck/init.sh",
+            "init_script_content": "#!/bin/bash\necho 'init'",
+            "amperity_token": "test-token",
+            # No job_id here
+            "pii_scan_output": {"message": "PII scan complete"},
+            "unsupported_columns": [],
+        }
+
+        # Mock upload and submit
+        databricks_client_stub.upload_file = lambda path, content, overwrite: True
+
+        def mock_submit(config_path, init_script_path, run_name):
+            return {"run_id": "run-999"}
+
+        databricks_client_stub.submit_job_run = mock_submit
+
+        # Mock notebook creation
+        databricks_client_stub.create_stitch_notebook = lambda **kwargs: {
+            "notebook_path": "/Workspace/Users/test/notebook"
+        }
+
+        result = _helper_launch_stitch_job(
+            databricks_client_stub, stitch_config, metadata
+        )
+
+        assert result["success"] is True
+        assert result["run_id"] == "run-999"
+
+        # Verify record_job_submission was NOT called (missing job_id)
+        mock_client.record_job_submission.assert_not_called()
+
+    @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.commands.stitch_tools.get_amperity_token")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient")
+    def test_launch_stitch_job_records_submission_no_token(
+        self,
+        mock_amperity_client_class,
+        mock_get_token,
+        databricks_client_stub,
+    ):
+        """Test that record_job_submission is not called when token is not available."""
+        from chuck_data.commands.stitch_tools import _helper_launch_stitch_job
+
+        # Mock get_amperity_token to return None (no token configured)
+        mock_get_token.return_value = None
+
+        # Mock Amperity client
+        mock_client = Mock()
+        mock_client.record_job_submission.return_value = True
+        mock_amperity_client_class.return_value = mock_client
+
+        stitch_config = {
+            "name": "test-job",
+            "tables": [
+                {
+                    "path": "catalog.schema.table",
+                    "fields": [
+                        {
+                            "field-name": "email",
+                            "type": "string",
+                            "semantics": ["email"],
+                        }
+                    ],
+                }
+            ],
+            "settings": {
+                "output_catalog_name": "catalog",
+                "output_schema_name": "stitch_outputs",
+            },
+        }
+
+        # Metadata without token
+        metadata = {
+            "target_catalog": "catalog",
+            "target_schema": "schema",
+            "volume_name": "chuck",
+            "stitch_job_name": "test-job",
+            "config_file_path": "/Volumes/catalog/schema/chuck/test-job.json",
+            "init_script_path": "/Volumes/catalog/schema/chuck/init.sh",
+            "init_script_content": "#!/bin/bash\necho 'init'",
+            # No amperity_token here
+            "job_id": "chk-test-999",
+            "pii_scan_output": {"message": "PII scan complete"},
+            "unsupported_columns": [],
+        }
+
+        # Mock upload and submit
+        databricks_client_stub.upload_file = lambda path, content, overwrite: True
+
+        def mock_submit(config_path, init_script_path, run_name):
+            return {"run_id": "run-888"}
+
+        databricks_client_stub.submit_job_run = mock_submit
+
+        # Mock notebook creation
+        databricks_client_stub.create_stitch_notebook = lambda **kwargs: {
+            "notebook_path": "/Workspace/Users/test/notebook"
+        }
+
+        result = _helper_launch_stitch_job(
+            databricks_client_stub, stitch_config, metadata
+        )
+
+        assert result["success"] is True
+        assert result["run_id"] == "run-888"
+
+        # Verify get_amperity_token was called as fallback
+        mock_get_token.assert_called_once()
+
+        # Verify record_job_submission was NOT called (no token available)
+        mock_client.record_job_submission.assert_not_called()

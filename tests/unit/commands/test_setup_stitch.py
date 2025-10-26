@@ -52,7 +52,8 @@ def setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub):
 
     # Set up other required API responses
     databricks_client_stub.fetch_amperity_job_init_response = {
-        "cluster-init": "#!/bin/bash\necho init"
+        "cluster-init": "#!/bin/bash\necho init",
+        "job-id": "test-job-setup-123",
     }
     databricks_client_stub.submit_job_run_response = {"run_id": "12345"}
     databricks_client_stub.create_stitch_notebook_response = {
