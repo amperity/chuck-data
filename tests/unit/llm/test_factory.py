@@ -56,3 +56,49 @@ class TestLLMProviderFactory:
         ):
             config = LLMProviderFactory._get_provider_config("databricks")
             assert config == {}
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_create_aws_bedrock_provider(self, mock_boto3):
+        """Factory can create AWS Bedrock provider."""
+        mock_boto3.client.return_value = MagicMock()
+
+        provider = LLMProviderFactory.create("aws_bedrock")
+
+        assert provider is not None
+        # Verify it's the right type
+        from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+
+        assert isinstance(provider, AWSBedrockProvider)
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_create_aws_bedrock_provider_with_config(self, mock_boto3):
+        """Factory passes configuration to AWS Bedrock provider."""
+        mock_boto3.client.return_value = MagicMock()
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            # Mock config with AWS provider settings
+            mock_config.return_value.get_config.return_value = MagicMock(
+                llm_provider="aws_bedrock",
+                llm_provider_config={
+                    "aws_bedrock": {
+                        "region": "us-west-2",
+                        "model_id": "anthropic.claude-3-haiku-20240307-v1:0",
+                    }
+                },
+            )
+
+            provider = LLMProviderFactory.create("aws_bedrock")
+
+            assert provider is not None
+            # Verify configuration was passed correctly
+            from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+
+            assert isinstance(provider, AWSBedrockProvider)
+            assert provider.region == "us-west-2"
+            assert provider.default_model == "anthropic.claude-3-haiku-20240307-v1:0"
+
+    def test_create_aws_bedrock_without_boto3_raises_error(self):
+        """Factory raises ImportError when boto3 not available."""
+        with patch("chuck_data.llm.providers.aws_bedrock.boto3", None):
+            with pytest.raises(ImportError, match="boto3"):
+                LLMProviderFactory.create("aws_bedrock")

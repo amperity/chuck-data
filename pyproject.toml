@@ -49,6 +49,9 @@ dependencies = [
 chuck = "chuck_data.__main__:main"
 
 [project.optional-dependencies]
+aws = [
+    "boto3>=1.28.0",
+]
 dev = [
     "black",
     "ruff",
