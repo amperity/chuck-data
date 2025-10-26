@@ -633,6 +633,7 @@ def _build_post_launch_guidance_message(launch_result, metadata, client=None):
 
     # Extract key information from launch result
     run_id = launch_result.get("run_id")
+    job_id = metadata.get("job_id")
     notebook_result = launch_result.get("notebook_result")
 
     lines.append("")
@@ -640,8 +641,14 @@ def _build_post_launch_guidance_message(launch_result, metadata, client=None):
     lines.append("What you can do now:")
 
     # Option 1: Check job status
+    if job_id:
+        lines.append(
+            f"• you can ask me about the status of the Chuck job (job-id: {job_id})"
+        )
     if run_id:
-        lines.append(f"• you can ask me about the status of the job (id {run_id})")
+        lines.append(
+            f"• you can ask me about the status of the Databricks job run (run-id: {run_id})"
+        )
 
     # Get workspace URL for constructing browser links
     workspace_url = get_workspace_url()
