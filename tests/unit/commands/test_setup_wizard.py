@@ -99,9 +99,10 @@ class TestWizardComponents:
         validator = InputValidator()
         models = [{"name": "model1"}, {"name": "model2"}, {"name": "test-model-name"}]
 
-        # Test empty input
+        # Test empty input - should default to first model
         result = validator.validate_model_selection("", models)
-        assert not result.is_valid
+        assert result.is_valid
+        assert result.processed_value == "model1"  # First model is the default
 
         # Test valid index
         result = validator.validate_model_selection("1", models)

@@ -115,16 +115,23 @@ class InputValidator:
     def validate_model_selection(
         self, model_input: str, models: List[Dict[str, Any]]
     ) -> ValidationResult:
-        """Validate model selection input."""
-        if not model_input or not model_input.strip():
-            return ValidationResult(
-                is_valid=False,
-                message="Please select a model by entering its number or name",
-            )
+        """Validate model selection input.
 
+        If input is empty, defaults to the first model (which is the default model
+        since the list is pre-sorted with default model first).
+        """
         if not models:
             return ValidationResult(
                 is_valid=False, message="No models available for selection"
+            )
+
+        # Empty input defaults to first model (the default)
+        if not model_input or not model_input.strip():
+            default_model = models[0]["name"]
+            return ValidationResult(
+                is_valid=True,
+                message=f"Using default model '{default_model}'",
+                processed_value=default_model,
             )
 
         model_input = model_input.strip()
