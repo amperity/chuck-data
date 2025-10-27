@@ -2,52 +2,54 @@
 Command handler for listing models.
 
 This module contains the handler for listing available models
-in a Databricks workspace.
+from the LLM provider.
 """
 
 import logging
 from typing import Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.models import list_models as list_models_api
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.config import get_active_model
+from chuck_data.llm.factory import LLMProviderFactory
 from .base import CommandResult
 
 
 def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandResult:
     """
-    List available models with optional filtering and detailed information.
+    List available models with optional filtering.
+
     Args:
-        client: API client instance
+        client: API client instance (injected for testing, otherwise creates via factory)
         **kwargs:
-            detailed (bool): Whether to show detailed information. Defaults to False.
             filter (str, optional): Filter string for model names.
     """
-    detailed: bool = kwargs.get("detailed", False)
     filter_str: Optional[str] = kwargs.get("filter")
 
     try:
-        models_list = list_models_api(client)
+        # Create provider - inject client if provided (for testing)
+        if client:
+            from chuck_data.llm.providers.databricks import DatabricksProvider
+            provider = DatabricksProvider(client=client)
+        else:
+            provider = LLMProviderFactory.create()
+
+        # Get models from provider
+        models_list = provider.list_models()
+
+        # Apply filter if provided
         if filter_str:
             normalized_filter = filter_str.lower()
             models_list = [
-                m for m in models_list if normalized_filter in m.get("name", "").lower()
+                m for m in models_list
+                if normalized_filter in m.get("model_name", "").lower()
+                or normalized_filter in m.get("model_id", "").lower()
             ]
-
-        if detailed and models_list:
-            for model_item in models_list:
-                from chuck_data.models import get_model
-
-                model_details = get_model(client, model_item["name"])
-                if model_details:
-                    model_item["details"] = model_details
 
         active_model_name = get_active_model()
         result_data = {
             "models": models_list,
             "active_model": active_model_name,
-            "detailed": detailed,
             "filter": filter_str,
         }
 
@@ -67,13 +69,9 @@ After deployment, run the models command again to verify availability."""
 
 DEFINITION = CommandDefinition(
     name="list-models",
-    description="List available language models in the Databricks workspace",
+    description="List available language models from the LLM provider",
     handler=handle_command,
     parameters={
-        "detailed": {
-            "type": "boolean",
-            "description": "Show detailed information about each model",
-        },
         "filter": {
             "type": "string",
             "description": "Filter string to match against model names",
