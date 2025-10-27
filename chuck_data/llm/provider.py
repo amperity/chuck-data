@@ -1,7 +1,22 @@
 """LLM Provider Protocol."""
 
-from typing import Protocol, Optional, List, Dict, Any
+from typing import Protocol, Optional, List, Dict, Any, TypedDict
 from openai.types.chat import ChatCompletion
+
+
+class ModelInfo(TypedDict, total=False):
+    """Unified model information across LLM providers.
+
+    All providers must return model information in this format.
+    """
+
+    model_id: str  # Provider-specific model identifier
+    model_name: str  # Human-readable model name
+    provider_name: str  # Provider name (e.g., "databricks", "aws_bedrock")
+    supports_tool_use: bool  # Whether model supports function calling
+    state: Optional[str]  # Model state (e.g., "READY", "NOT_READY")
+    endpoint_type: Optional[str]  # Endpoint type (provider-specific)
+    description: Optional[str]  # Model description
 
 
 class LLMProvider(Protocol):
@@ -26,5 +41,13 @@ class LLMProvider(Protocol):
 
         Returns:
             OpenAI ChatCompletion object
+        """
+        ...
+
+    def list_models(self) -> List[ModelInfo]:
+        """List available models from this provider.
+
+        Returns:
+            List of ModelInfo dicts containing model metadata
         """
         ...

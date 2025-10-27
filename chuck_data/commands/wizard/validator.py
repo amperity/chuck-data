@@ -115,16 +115,23 @@ class InputValidator:
     def validate_model_selection(
         self, model_input: str, models: List[Dict[str, Any]]
     ) -> ValidationResult:
-        """Validate model selection input."""
-        if not model_input or not model_input.strip():
-            return ValidationResult(
-                is_valid=False,
-                message="Please select a model by entering its number or name",
-            )
+        """Validate model selection input.
 
+        If input is empty, defaults to the first model (which is the default model
+        since the list is pre-sorted with default model first).
+        """
         if not models:
             return ValidationResult(
                 is_valid=False, message="No models available for selection"
+            )
+
+        # Empty input defaults to first model (the default)
+        if not model_input or not model_input.strip():
+            default_model = models[0]["model_id"]
+            return ValidationResult(
+                is_valid=True,
+                message=f"Using default model '{default_model}'",
+                processed_value=default_model,
             )
 
         model_input = model_input.strip()
@@ -133,7 +140,7 @@ class InputValidator:
         if model_input.isdigit():
             index = int(model_input) - 1  # Convert to 0-based index
             if 0 <= index < len(models):
-                selected_model = models[index]["name"]
+                selected_model = models[index]["model_id"]
                 return ValidationResult(
                     is_valid=True,
                     message=f"Model '{selected_model}' selected",
@@ -145,20 +152,20 @@ class InputValidator:
                     message=f"Invalid model number. Please enter a number between 1 and {len(models)}",
                 )
 
-        # Try to find by exact name (case-insensitive)
+        # Try to find by exact model_id (case-insensitive)
         for model in models:
-            if model_input.lower() == model["name"].lower():
+            if model_input.lower() == model["model_id"].lower():
                 return ValidationResult(
                     is_valid=True,
-                    message=f"Model '{model['name']}' selected",
-                    processed_value=model["name"],
+                    message=f"Model '{model['model_id']}' selected",
+                    processed_value=model["model_id"],
                 )
 
-        # Try substring match
+        # Try substring match on model_id
         matches = []
         for model in models:
-            if model_input.lower() in model["name"].lower():
-                matches.append(model["name"])
+            if model_input.lower() in model["model_id"].lower():
+                matches.append(model["model_id"])
 
         if len(matches) == 1:
             return ValidationResult(

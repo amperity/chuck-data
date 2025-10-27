@@ -318,23 +318,22 @@ class OutputFormatter:
 
         # Define a style map for conditional formatting
         def style_name(row):
-            model_name = row.get("name")
-            # Check if this is a recommended model
-            is_recommended = model_name in [
-                "databricks-meta-llama-3-3-70b-instruct",
-                "databricks-claude-3-7-sonnet",
-            ]
+            from chuck_data.constants import DEFAULT_MODELS
 
-            if model_name == current_model:
-                if is_recommended:
-                    return f"[bold green]{model_name} (recommended)[/bold green]"
-                return f"[bold green]{model_name}[/bold green]"
-            elif is_recommended:
-                return f"{model_name} [green](recommended)[/green]"
-            return model_name
+            model_id = row.get("model_id", row.get("model_name", ""))
+            # Check if this is a default model
+            is_default = model_id in DEFAULT_MODELS
+
+            if model_id == current_model:
+                if is_default:
+                    return f"[bold green]{model_id} (default)[/bold green]"
+                return f"[bold green]{model_id}[/bold green]"
+            elif is_default:
+                return f"{model_id} [green](default)[/green]"
+            return model_id
 
         style_map = {
-            "name": style_name,
+            "model_id": style_name,
         }
 
         if is_detailed:
@@ -342,8 +341,20 @@ class OutputFormatter:
             display_table(
                 console=console,
                 data=models,
-                columns=["name", "creator", "created", "status", "description"],
-                headers=["Model Name", "Created By", "Date", "Status", "Description"],
+                columns=[
+                    "model_id",
+                    "provider_name",
+                    "state",
+                    "endpoint_type",
+                    "supports_tool_use",
+                ],
+                headers=[
+                    "Model ID",
+                    "Provider",
+                    "Status",
+                    "Endpoint Type",
+                    "Tool Support",
+                ],
                 title="Available Models",
                 style_map=style_map,
                 title_style=TABLE_TITLE_STYLE,
@@ -354,8 +365,8 @@ class OutputFormatter:
             display_table(
                 console=console,
                 data=models,
-                columns=["name", "created", "status"],
-                headers=["Model Name", "Created", "Status"],
+                columns=["model_id", "state", "supports_tool_use"],
+                headers=["Model ID", "Status", "Tool Support"],
                 title="Available Models",
                 style_map=style_map,
                 title_style=TABLE_TITLE_STYLE,

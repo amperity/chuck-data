@@ -26,34 +26,31 @@ def test_direct_command_lists_models_basic_format(databricks_client_stub, temp_c
         assert result.success
         assert len(result.data["models"]) == 2
         assert result.data["active_model"] == "claude-v1"
-        assert not result.data["detailed"]
         assert result.data["filter"] is None
         assert result.message is None
 
+        # Verify ModelInfo format
+        assert result.data["models"][0]["model_id"] == "claude-v1"
+        assert result.data["models"][0]["provider_name"] == "databricks"
 
-def test_direct_command_shows_detailed_information_when_requested(
-    databricks_client_stub, temp_config
-):
-    """Direct command shows detailed model information when requested."""
+
+def test_direct_command_lists_multiple_models(databricks_client_stub, temp_config):
+    """Direct command lists multiple models correctly."""
     with patch("chuck_data.config._config_manager", temp_config):
-        # Setup test data with details
-        databricks_client_stub.add_model(
-            "claude-v1", created_timestamp=123456789, details="claude details"
-        )
-        databricks_client_stub.add_model(
-            "gpt-4", created_timestamp=987654321, details="gpt details"
-        )
+        # Setup test data with multiple models
+        databricks_client_stub.add_model("claude-v1", created_timestamp=123456789)
+        databricks_client_stub.add_model("gpt-4", created_timestamp=987654321)
         set_active_model("claude-v1")
 
-        # Execute command with detailed flag
-        result = handle_command(databricks_client_stub, detailed=True)
+        # Execute command
+        result = handle_command(databricks_client_stub)
 
-        # Verify detailed behavioral outcome
+        # Verify multiple models returned
         assert result.success
         assert len(result.data["models"]) == 2
-        assert result.data["detailed"]
-        assert "details" in result.data["models"][0]
-        assert "details" in result.data["models"][1]
+        model_ids = [m["model_id"] for m in result.data["models"]]
+        assert "claude-v1" in model_ids
+        assert "gpt-4" in model_ids
 
 
 def test_direct_command_filters_models_by_name_pattern(
@@ -73,7 +70,11 @@ def test_direct_command_filters_models_by_name_pattern(
         # Verify filtering behavior
         assert result.success
         assert len(result.data["models"]) == 2
-        assert all("claude" in model["name"] for model in result.data["models"])
+        assert all(
+            "claude" in model["model_name"].lower()
+            or "claude" in model["model_id"].lower()
+            for model in result.data["models"]
+        )
         assert result.data["filter"] == "claude"
 
 
