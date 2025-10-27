@@ -318,19 +318,17 @@ class OutputFormatter:
 
         # Define a style map for conditional formatting
         def style_name(row):
+            from chuck_data.constants import DEFAULT_MODELS
             model_name = row.get("name")
-            # Check if this is a recommended model
-            is_recommended = model_name in [
-                "databricks-meta-llama-3-3-70b-instruct",
-                "databricks-claude-3-7-sonnet",
-            ]
+            # Check if this is a default model
+            is_default = model_name in DEFAULT_MODELS
 
             if model_name == current_model:
-                if is_recommended:
-                    return f"[bold green]{model_name} (recommended)[/bold green]"
+                if is_default:
+                    return f"[bold green]{model_name} (default)[/bold green]"
                 return f"[bold green]{model_name}[/bold green]"
-            elif is_recommended:
-                return f"{model_name} [green](recommended)[/green]"
+            elif is_default:
+                return f"{model_name} [green](default)[/green]"
             return model_name
 
         style_map = {

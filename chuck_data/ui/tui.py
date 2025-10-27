@@ -1063,12 +1063,11 @@ class ChuckTUI:
                 return "bold green"
             return None
 
-        # Process model names to add recommended tag
+        # Process model names to add default tag
+        from chuck_data.constants import DEFAULT_MODELS
         for model in processed_models:
-            if model["name"] in [
-                "databricks-claude-3-7-sonnet",
-            ]:
-                model["name"] = f"{model['name']} (recommended)"
+            if model["name"] in DEFAULT_MODELS:
+                model["name"] = f"{model['name']} (default)"
 
         # Set up style map
         style_map = {"name": name_style, "status": status_style}
@@ -1150,12 +1149,11 @@ class ChuckTUI:
             # Add to our list
             processed_models.append(processed)
 
-        # Process model names to add recommended tag
+        # Process model names to add default tag
+        from chuck_data.constants import DEFAULT_MODELS
         for model in processed_models:
-            if model["name"] in [
-                "databricks-claude-3-7-sonnet",
-            ]:
-                model["name"] = f"{model['name']} (recommended)"
+            if model["name"] in DEFAULT_MODELS:
+                model["name"] = f"{model['name']} (default)"
 
         # Define column styling functions
         def status_style(status):

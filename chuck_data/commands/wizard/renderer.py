@@ -113,31 +113,30 @@ class WizardRenderer:
 
         self.console.print("\nAvailable models:")
 
-        # Define recommended models
-        recommended_models = [
-            "databricks-claude-3-7-sonnet",
-        ]
+        # Define default models
+        from chuck_data.constants import DEFAULT_MODELS
+        default_models = DEFAULT_MODELS
 
-        # Sort models - recommended first
+        # Sort models - default first
         sorted_models = []
 
-        # Add recommended models first
-        for rec_model in recommended_models:
+        # Add default models first
+        for default_model in default_models:
             for model in models:
-                if model["name"] == rec_model:
+                if model["name"] == default_model:
                     sorted_models.append(model)
                     break
 
         # Add remaining models
         for model in models:
-            if model["name"] not in recommended_models:
+            if model["name"] not in default_models:
                 sorted_models.append(model)
 
         # Display the models
         for i, model in enumerate(sorted_models, 1):
             model_name = model["name"]
-            if model_name in recommended_models:
-                self.console.print(f"{i}. {model_name} [green](recommended)[/green]")
+            if model_name in default_models:
+                self.console.print(f"{i}. {model_name} [green](default)[/green]")
             else:
                 self.console.print(f"{i}. {model_name}")
 

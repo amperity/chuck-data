@@ -287,23 +287,22 @@ class ModelSelectionStep(SetupStep):
                 action=WizardAction.CONTINUE,
             )
 
-        # Sort models the same way as display (recommended first)
-        recommended_models = [
-            "databricks-claude-3-7-sonnet",
-        ]
+        # Sort models the same way as display (default first)
+        from chuck_data.constants import DEFAULT_MODELS
+        default_models = DEFAULT_MODELS
 
         sorted_models = []
 
-        # Add recommended models first
-        for rec_model in recommended_models:
+        # Add default models first
+        for default_model in default_models:
             for model in state.models:
-                if model["name"] == rec_model:
+                if model["name"] == default_model:
                     sorted_models.append(model)
                     break
 
         # Add remaining models
         for model in state.models:
-            if model["name"] not in recommended_models:
+            if model["name"] not in default_models:
                 sorted_models.append(model)
 
         # Validate the selection
