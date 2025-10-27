@@ -1028,25 +1028,33 @@ class ChuckTUI:
             # Raise PaginationCancelled to return to chuck > prompt immediately
             raise PaginationCancelled()
 
-        # Process model data for display
+        # Process model data for display (using ModelInfo structure)
         processed_models = []
         for model in models:
-            # Create a processed model with clear fields
+            # Create a processed model entry using ModelInfo fields
             processed = {
-                "name": model.get("name", "N/A"),
-                "creator": model.get("creator", "N/A"),
+                "model_id": model.get("model_id", model.get("name", "N/A")),
+                "provider_name": model.get("provider_name", "N/A"),
             }
 
-            # Extract and process state information
-            state = model.get("state", {})
-            ready_status = state.get("ready", "UNKNOWN").upper()
-            processed["status"] = ready_status
+            # Get state information (now a string in ModelInfo)
+            state = model.get("state", "UNKNOWN")
+            if isinstance(state, dict):
+                # Old format: {"ready": "READY"}
+                ready_status = state.get("ready", "UNKNOWN").upper()
+            else:
+                # New format: "READY" or "NOT_READY"
+                ready_status = state.upper() if state else "UNKNOWN"
+            processed["state"] = ready_status
+
+            # Add tool support info
+            processed["supports_tool_use"] = model.get("supports_tool_use", False)
 
             # Add to our list
             processed_models.append(processed)
 
-        # Define styling function for status
-        def status_style(status):
+        # Define styling function for state
+        def state_style(status):
             if status == "READY":
                 return "green"
             elif status == "NOT_READY":
@@ -1055,35 +1063,33 @@ class ChuckTUI:
                 return "red"
             return None
 
-        # Define styling function for the name to highlight active model
-        def name_style(name):
+        # Define styling function for model_id to highlight active model
+        def model_id_style(model_id):
             if active_model and (
-                name == active_model or name.startswith(active_model + " ")
+                model_id == active_model or model_id.startswith(active_model + " ")
             ):
                 return "bold green"
             return None
 
-        # Process model names to add default tag
+        # Process model IDs to add default tag
         from chuck_data.constants import DEFAULT_MODELS
 
         for model in processed_models:
-            model_id = model.get("model_id", model.get("model_name", ""))
-            if model_id in DEFAULT_MODELS:
-                # Add default tag to display name
-                if "model_name" in model:
-                    model["model_name"] = f"{model['model_name']} (default)"
-                elif "model_id" in model:
-                    model["model_id"] = f"{model['model_id']} (default)"
+            model_id = model.get("model_id", "")
+            # Remove any existing (default) tag before checking
+            model_id_clean = model_id.replace(" (default)", "")
+            if model_id_clean in DEFAULT_MODELS:
+                model["model_id"] = f"{model_id_clean} (default)"
 
         # Set up style map
-        style_map = {"name": name_style, "status": status_style}
+        style_map = {"model_id": model_id_style, "state": state_style}
 
         # Display the table using our formatter
         display_table(
             console=self.console,
             data=processed_models,
-            columns=["name", "creator", "status"],
-            headers=["Endpoint Name", "Creator", "State"],
+            columns=["model_id", "state", "supports_tool_use"],
+            headers=["Model ID", "State", "Tool Support"],
             title="Available Model Serving Endpoints",
             style_map=style_map,
             title_style=TABLE_TITLE_STYLE,
@@ -1125,50 +1131,47 @@ class ChuckTUI:
         if filter_text:
             title += f" matching '{filter_text}'"
 
-        # Process model data for display
+        # Process model data for display (using ModelInfo structure)
         processed_models = []
         for model in models:
-            # Create a processed model entry
+            # Create a processed model entry using ModelInfo fields
             processed = {
-                "name": model.get("name", "N/A"),
-                "creator": model.get("creator", "N/A"),
+                "model_id": model.get("model_id", model.get("model_name", "N/A")),
+                "provider_name": model.get("provider_name", "N/A"),
             }
 
-            # Get state information
-            state = model.get("state", {})
-            ready_status = state.get("ready", "UNKNOWN").upper()
-            processed["status"] = ready_status
+            # Get state information (now a string in ModelInfo)
+            state = model.get("state", "UNKNOWN")
+            if isinstance(state, dict):
+                # Old format: {"ready": "READY"}
+                ready_status = state.get("ready", "UNKNOWN").upper()
+            else:
+                # New format: "READY" or "NOT_READY"
+                ready_status = state.upper() if state else "UNKNOWN"
+            processed["state"] = ready_status
+
+            # Add tool support info
+            processed["supports_tool_use"] = model.get("supports_tool_use", False)
 
             # Add detailed fields if requested
             if detailed:
                 processed["endpoint_type"] = model.get("endpoint_type", "Unknown")
-                processed["last_modified"] = model.get("last_updated", "Unknown")
-
-                # Add any additional details from the details field
-                details = model.get("details", {})
-                if details:
-                    for key, value in details.items():
-                        # Only add if not already present and meaningful
-                        if key not in processed and value is not None and key != "name":
-                            processed[key] = value
 
             # Add to our list
             processed_models.append(processed)
 
-        # Process model names to add default tag
+        # Process model IDs to add default tag
         from chuck_data.constants import DEFAULT_MODELS
 
         for model in processed_models:
-            model_id = model.get("model_id", model.get("model_name", ""))
-            if model_id in DEFAULT_MODELS:
-                # Add default tag to display name
-                if "model_name" in model:
-                    model["model_name"] = f"{model['model_name']} (default)"
-                elif "model_id" in model:
-                    model["model_id"] = f"{model['model_id']} (default)"
+            model_id = model.get("model_id", "")
+            # Remove any existing (default) tag before checking
+            model_id_clean = model_id.replace(" (default)", "")
+            if model_id_clean in DEFAULT_MODELS:
+                model["model_id"] = f"{model_id_clean} (default)"
 
         # Define column styling functions
-        def status_style(status):
+        def state_style(status):
             if status == "READY":
                 return "green"
             elif status == "NOT_READY" or status == "UNKNOWN":
@@ -1177,30 +1180,42 @@ class ChuckTUI:
                 return "red"
             return None
 
-        # Define styling function for the name to highlight active model
-        def name_style(name):
+        # Define styling function for model_id to highlight active model
+        def model_id_style(model_id):
             if active_model and (
-                name == active_model or name.startswith(active_model + " ")
+                model_id == active_model or model_id.startswith(active_model + " ")
             ):
                 return "bold green"
             return "cyan"
 
         # Set up style map with appropriate styles for each column
         style_map = {
-            "name": name_style,
-            "status": status_style,
-            "creator": lambda _: f"{INFO}",
+            "model_id": model_id_style,
+            "state": state_style,
+            "provider_name": lambda _: f"{INFO}",
             "endpoint_type": lambda _: f"{WARNING}",
-            "last_modified": lambda _: f"{DIALOG_BORDER}",
+            "supports_tool_use": lambda _: f"{SUCCESS_STYLE}",
         }
 
         # Define columns and headers based on detail level
         if detailed:
-            columns = ["name", "status", "creator", "endpoint_type", "last_modified"]
-            headers = ["Name", "Status", "Creator", "Type", "Last Modified"]
+            columns = [
+                "model_id",
+                "provider_name",
+                "state",
+                "endpoint_type",
+                "supports_tool_use",
+            ]
+            headers = [
+                "Model ID",
+                "Provider",
+                "Status",
+                "Endpoint Type",
+                "Tool Support",
+            ]
         else:
-            columns = ["name", "status", "creator"]
-            headers = ["Model Name", "Status", "Creator"]
+            columns = ["model_id", "state", "supports_tool_use"]
+            headers = ["Model ID", "Status", "Tool Support"]
 
         # Display the table using our formatter
         display_table(
