@@ -320,17 +320,17 @@ class OutputFormatter:
         def style_name(row):
             from chuck_data.constants import DEFAULT_MODELS
 
-            model_name = row.get("name")
+            model_id = row.get("model_id", row.get("model_name", ""))
             # Check if this is a default model
-            is_default = model_name in DEFAULT_MODELS
+            is_default = model_id in DEFAULT_MODELS
 
-            if model_name == current_model:
+            if model_id == current_model:
                 if is_default:
-                    return f"[bold green]{model_name} (default)[/bold green]"
-                return f"[bold green]{model_name}[/bold green]"
+                    return f"[bold green]{model_id} (default)[/bold green]"
+                return f"[bold green]{model_id}[/bold green]"
             elif is_default:
-                return f"{model_name} [green](default)[/green]"
-            return model_name
+                return f"{model_id} [green](default)[/green]"
+            return model_id
 
         style_map = {
             "name": style_name,

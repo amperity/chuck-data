@@ -124,22 +124,22 @@ class WizardRenderer:
         # Add default models first
         for default_model in default_models:
             for model in models:
-                if model["name"] == default_model:
+                if model["model_id"] == default_model:
                     sorted_models.append(model)
                     break
 
         # Add remaining models
         for model in models:
-            if model["name"] not in default_models:
+            if model["model_id"] not in default_models:
                 sorted_models.append(model)
 
         # Display the models
         for i, model in enumerate(sorted_models, 1):
-            model_name = model["name"]
-            if model_name in default_models:
-                self.console.print(f"{i}. {model_name} [green](default)[/green]")
+            model_id = model["model_id"]
+            if model_id in default_models:
+                self.console.print(f"{i}. {model_id} [green](default)[/green]")
             else:
-                self.console.print(f"{i}. {model_name}")
+                self.console.print(f"{i}. {model_id}")
 
     def _render_usage_consent_info(self):
         """Render usage consent information."""

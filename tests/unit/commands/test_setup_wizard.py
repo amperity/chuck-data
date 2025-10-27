@@ -97,7 +97,11 @@ class TestWizardComponents:
     def test_input_validator_model_selection(self):
         """Test model selection validation with real logic."""
         validator = InputValidator()
-        models = [{"name": "model1"}, {"name": "model2"}, {"name": "test-model-name"}]
+        models = [
+            {"model_id": "model1", "model_name": "Model 1"},
+            {"model_id": "model2", "model_name": "Model 2"},
+            {"model_id": "test-model-name", "model_name": "Test Model"},
+        ]
 
         # Test empty input - should default to first model
         result = validator.validate_model_selection("", models)
@@ -109,7 +113,7 @@ class TestWizardComponents:
         assert result.is_valid
         assert result.processed_value == "model1"
 
-        # Test valid name (case insensitive)
+        # Test valid model_id (case insensitive)
         result = validator.validate_model_selection("MODEL2", models)
         assert result.is_valid
         assert result.processed_value == "model2"
@@ -118,7 +122,7 @@ class TestWizardComponents:
         result = validator.validate_model_selection("10", models)
         assert not result.is_valid
 
-        # Test invalid name
+        # Test invalid model_id
         result = validator.validate_model_selection("nonexistent", models)
         assert not result.is_valid
 
@@ -169,7 +173,7 @@ class TestWizardComponents:
         assert result.processed_value == "yes"
 
         # Test case insensitive model matching
-        models = [{"name": "Test-Model"}]
+        models = [{"model_id": "Test-Model", "model_name": "Test Model"}]
         result = validator.validate_model_selection("test-model", models)
         assert result.is_valid
         assert result.processed_value == "Test-Model"
@@ -273,7 +277,10 @@ class TestStepHandlers:
         """Test model selection step with real validation."""
         validator = InputValidator()
         step = ModelSelectionStep(validator)
-        models = [{"name": "model1"}, {"name": "model2"}]
+        models = [
+            {"model_id": "model1", "model_name": "Model 1"},
+            {"model_id": "model2", "model_name": "Model 2"},
+        ]
         state = WizardState(models=models)
 
         # Only mock external config setting
@@ -286,7 +293,7 @@ class TestStepHandlers:
             assert result.next_step == WizardStep.USAGE_CONSENT
             assert result.data["selected_model"] == "model1"
 
-            # Test valid name (uses real validation)
+            # Test valid model_id (uses real validation)
             result = step.handle_input("model2", state)
             assert result.success
             assert result.data["selected_model"] == "model2"
@@ -878,7 +885,11 @@ class TestSecurityFixes:
             context.store_context_data("/setup", "current_step", "usage_consent")
             context.store_context_data("/setup", "workspace_url", "test-workspace")
             context.store_context_data("/setup", "token", "test-token")
-            context.store_context_data("/setup", "models", [{"name": "test-model"}])
+            context.store_context_data(
+                "/setup",
+                "models",
+                [{"model_id": "test-model", "model_name": "Test Model"}],
+            )
             context.store_context_data("/setup", "selected_model", "test-model")
 
             # Test invalid input on usage consent step

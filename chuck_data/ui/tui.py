@@ -1067,8 +1067,13 @@ class ChuckTUI:
         from chuck_data.constants import DEFAULT_MODELS
 
         for model in processed_models:
-            if model["name"] in DEFAULT_MODELS:
-                model["name"] = f"{model['name']} (default)"
+            model_id = model.get("model_id", model.get("model_name", ""))
+            if model_id in DEFAULT_MODELS:
+                # Add default tag to display name
+                if "model_name" in model:
+                    model["model_name"] = f"{model['model_name']} (default)"
+                elif "model_id" in model:
+                    model["model_id"] = f"{model['model_id']} (default)"
 
         # Set up style map
         style_map = {"name": name_style, "status": status_style}
@@ -1154,8 +1159,13 @@ class ChuckTUI:
         from chuck_data.constants import DEFAULT_MODELS
 
         for model in processed_models:
-            if model["name"] in DEFAULT_MODELS:
-                model["name"] = f"{model['name']} (default)"
+            model_id = model.get("model_id", model.get("model_name", ""))
+            if model_id in DEFAULT_MODELS:
+                # Add default tag to display name
+                if "model_name" in model:
+                    model["model_name"] = f"{model['model_name']} (default)"
+                elif "model_id" in model:
+                    model["model_id"] = f"{model['model_id']} (default)"
 
         # Define column styling functions
         def status_style(status):

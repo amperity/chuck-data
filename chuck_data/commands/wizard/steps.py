@@ -17,7 +17,6 @@ from chuck_data.config import (
     set_usage_tracking_consent,
 )
 from chuck_data.ui.tui import get_chuck_service
-from chuck_data.models import list_models
 
 
 class SetupStep(ABC):
@@ -216,9 +215,17 @@ class TokenInputStep(SetupStep):
                         data={"token": validation.processed_value, "models": []},
                     )
 
-                # Try to list models
+                # Try to list models using provider interface
                 try:
-                    models = list_models(service.client)
+                    from chuck_data.llm.providers.databricks import DatabricksProvider
+
+                    # Create provider with the validated credentials
+                    provider = DatabricksProvider(
+                        workspace_url=state.workspace_url,
+                        token=validation.processed_value,
+                        client=service.client,
+                    )
+                    models = provider.list_models()
                     logging.debug(f"Found {len(models)} models")
 
                     if models:
@@ -297,13 +304,13 @@ class ModelSelectionStep(SetupStep):
         # Add default models first
         for default_model in default_models:
             for model in state.models:
-                if model["name"] == default_model:
+                if model["model_id"] == default_model:
                     sorted_models.append(model)
                     break
 
         # Add remaining models
         for model in state.models:
-            if model["name"] not in default_models:
+            if model["model_id"] not in default_models:
                 sorted_models.append(model)
 
         # Validate the selection
