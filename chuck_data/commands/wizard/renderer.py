@@ -115,6 +115,7 @@ class WizardRenderer:
 
         # Define default models
         from chuck_data.constants import DEFAULT_MODELS
+
         default_models = DEFAULT_MODELS
 
         # Sort models - default first

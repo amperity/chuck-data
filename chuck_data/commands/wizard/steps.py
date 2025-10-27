@@ -289,6 +289,7 @@ class ModelSelectionStep(SetupStep):
 
         # Sort models the same way as display (default first)
         from chuck_data.constants import DEFAULT_MODELS
+
         default_models = DEFAULT_MODELS
 
         sorted_models = []

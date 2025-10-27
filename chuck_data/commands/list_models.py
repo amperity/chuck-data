@@ -30,6 +30,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         # Create provider - inject client if provided (for testing)
         if client:
             from chuck_data.llm.providers.databricks import DatabricksProvider
+
             provider = DatabricksProvider(client=client)
         else:
             provider = LLMProviderFactory.create()
@@ -41,7 +42,8 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         if filter_str:
             normalized_filter = filter_str.lower()
             models_list = [
-                m for m in models_list
+                m
+                for m in models_list
                 if normalized_filter in m.get("model_name", "").lower()
                 or normalized_filter in m.get("model_id", "").lower()
             ]

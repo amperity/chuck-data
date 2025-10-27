@@ -34,9 +34,7 @@ def test_direct_command_lists_models_basic_format(databricks_client_stub, temp_c
         assert result.data["models"][0]["provider_name"] == "databricks"
 
 
-def test_direct_command_lists_multiple_models(
-    databricks_client_stub, temp_config
-):
+def test_direct_command_lists_multiple_models(databricks_client_stub, temp_config):
     """Direct command lists multiple models correctly."""
     with patch("chuck_data.config._config_manager", temp_config):
         # Setup test data with multiple models
@@ -72,8 +70,11 @@ def test_direct_command_filters_models_by_name_pattern(
         # Verify filtering behavior
         assert result.success
         assert len(result.data["models"]) == 2
-        assert all("claude" in model["model_name"].lower() or "claude" in model["model_id"].lower()
-                   for model in result.data["models"])
+        assert all(
+            "claude" in model["model_name"].lower()
+            or "claude" in model["model_id"].lower()
+            for model in result.data["models"]
+        )
         assert result.data["filter"] == "claude"
 
 

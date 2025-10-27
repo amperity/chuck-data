@@ -319,6 +319,7 @@ class OutputFormatter:
         # Define a style map for conditional formatting
         def style_name(row):
             from chuck_data.constants import DEFAULT_MODELS
+
             model_name = row.get("name")
             # Check if this is a default model
             is_default = model_name in DEFAULT_MODELS

@@ -9,13 +9,14 @@ class ModelInfo(TypedDict, total=False):
 
     All providers must return model information in this format.
     """
-    model_id: str              # Provider-specific model identifier
-    model_name: str            # Human-readable model name
-    provider_name: str         # Provider name (e.g., "databricks", "aws_bedrock")
-    supports_tool_use: bool    # Whether model supports function calling
-    state: Optional[str]       # Model state (e.g., "READY", "NOT_READY")
+
+    model_id: str  # Provider-specific model identifier
+    model_name: str  # Human-readable model name
+    provider_name: str  # Provider name (e.g., "databricks", "aws_bedrock")
+    supports_tool_use: bool  # Whether model supports function calling
+    state: Optional[str]  # Model state (e.g., "READY", "NOT_READY")
     endpoint_type: Optional[str]  # Endpoint type (provider-specific)
-    description: Optional[str]    # Model description
+    description: Optional[str]  # Model description
 
 
 class LLMProvider(Protocol):

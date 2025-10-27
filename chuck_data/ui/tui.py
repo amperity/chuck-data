@@ -1065,6 +1065,7 @@ class ChuckTUI:
 
         # Process model names to add default tag
         from chuck_data.constants import DEFAULT_MODELS
+
         for model in processed_models:
             if model["name"] in DEFAULT_MODELS:
                 model["name"] = f"{model['name']} (default)"
@@ -1151,6 +1152,7 @@ class ChuckTUI:
 
         # Process model names to add default tag
         from chuck_data.constants import DEFAULT_MODELS
+
         for model in processed_models:
             if model["name"] in DEFAULT_MODELS:
                 model["name"] = f"{model['name']} (default)"

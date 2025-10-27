@@ -112,8 +112,7 @@ class DatabricksProvider:
             client = self._client
         else:
             client = DatabricksAPIClient(
-                workspace_url=self.workspace_url,
-                token=self.token
+                workspace_url=self.workspace_url, token=self.token
             )
 
         # Fetch models from Databricks API
