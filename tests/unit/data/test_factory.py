@@ -14,7 +14,9 @@ class TestDataProviderFactory:
     def test_factory_creates_databricks_provider_by_default(self):
         """Factory creates Databricks provider when no config specified."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}')
+            f.write(
+                '{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}'
+            )
             temp_path = f.name
 
         with patch("chuck_data.config.get_config_manager") as mock_get_cm:
@@ -28,7 +30,9 @@ class TestDataProviderFactory:
     def test_factory_respects_explicit_provider_name(self):
         """Explicit provider_name parameter takes precedence."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}')
+            f.write(
+                '{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}'
+            )
             temp_path = f.name
 
         with patch("chuck_data.config.get_config_manager") as mock_get_cm:
@@ -41,7 +45,9 @@ class TestDataProviderFactory:
     def test_factory_resolves_from_environment_variable(self):
         """CHUCK_DATA_PROVIDER environment variable is respected."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}')
+            f.write(
+                '{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}'
+            )
             temp_path = f.name
 
         with patch.dict("os.environ", {"CHUCK_DATA_PROVIDER": "databricks"}):
@@ -66,7 +72,9 @@ class TestDataProviderFactory:
     def test_factory_resolves_precedence_explicit_over_env(self):
         """Explicit provider_name takes precedence over environment."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}')
+            f.write(
+                '{"workspace_url": "https://test.databricks.com", "databricks_token": "test-token"}'
+            )
             temp_path = f.name
 
         with patch.dict("os.environ", {"CHUCK_DATA_PROVIDER": "something_else"}):
@@ -81,7 +89,8 @@ class TestDataProviderFactory:
     def test_factory_loads_provider_specific_config(self):
         """Factory loads provider-specific configuration from config file."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('''{
+            f.write(
+                """{
                 "workspace_url": "https://test.databricks.com",
                 "databricks_token": "test-token",
                 "data_provider": "databricks",
@@ -91,7 +100,8 @@ class TestDataProviderFactory:
                         "token": "configured-token"
                     }
                 }
-            }''')
+            }"""
+            )
             temp_path = f.name
 
         with patch("chuck_data.config.get_config_manager") as mock_get_cm:
@@ -105,10 +115,12 @@ class TestDataProviderFactory:
     def test_factory_allows_kwargs_to_override_config(self):
         """Factory allows kwargs to override config values."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('''{
+            f.write(
+                """{
                 "workspace_url": "https://config.databricks.com",
                 "databricks_token": "config-token"
-            }''')
+            }"""
+            )
             temp_path = f.name
 
         with patch("chuck_data.config.get_config_manager") as mock_get_cm:
@@ -119,6 +131,6 @@ class TestDataProviderFactory:
             provider = DataProviderFactory.create(
                 provider_name="databricks",
                 workspace_url="https://override.databricks.com",
-                token="override-token"
+                token="override-token",
             )
             assert provider.get_provider_name() == "databricks"

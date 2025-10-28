@@ -77,10 +77,30 @@ class DataProviderFactory:
             from chuck_data.config import get_config_manager
 
             chuck_config = get_config_manager().get_config()
+
+            # First try provider-specific config
             if hasattr(chuck_config, "data_provider_config"):
                 provider_configs = chuck_config.data_provider_config or {}
                 config = provider_configs.get(provider_name, {})
-                logger.debug(f"Loaded config for data provider: {provider_name}")
+                if config:
+                    logger.debug(f"Loaded config for data provider: {provider_name}")
+
+            # For Databricks, also check root-level config for backward compatibility
+            if provider_name == "databricks" and not config:
+                if (
+                    hasattr(chuck_config, "workspace_url")
+                    and chuck_config.workspace_url
+                ):
+                    config["workspace_url"] = chuck_config.workspace_url
+                if (
+                    hasattr(chuck_config, "databricks_token")
+                    and chuck_config.databricks_token
+                ):
+                    config["token"] = chuck_config.databricks_token
+                if config:
+                    logger.debug(
+                        f"Using root-level config for data provider: {provider_name}"
+                    )
         except Exception as e:
             logger.debug(f"Could not load data provider config: {e}")
 

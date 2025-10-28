@@ -1,11 +1,9 @@
 """Tests for Databricks Data Provider."""
 
 import pytest
-import tempfile
 from unittest.mock import patch
 from chuck_data.data.providers.databricks import DatabricksDataProvider
 from chuck_data.data.provider import DataProvider
-from chuck_data.config import ConfigManager
 from tests.fixtures.databricks import DatabricksDataProviderStub
 
 
@@ -98,7 +96,9 @@ class TestDatabricksDataProvider:
         stub = DatabricksDataProviderStub()
         stub.add_catalog("test_catalog")
         stub.add_schema("test_schema", "test_catalog")
-        stub.add_table("test_table", "test_schema", "test_catalog", table_type="MANAGED")
+        stub.add_table(
+            "test_table", "test_schema", "test_catalog", table_type="MANAGED"
+        )
 
         table = stub.get_table("test_catalog", "test_schema", "test_table")
         assert table is not None
@@ -113,7 +113,9 @@ class TestDatabricksDataProvider:
         """Provider executes SQL queries."""
         stub = DatabricksDataProviderStub()
 
-        result = stub.execute_query("SELECT * FROM table", warehouse_id="test-warehouse")
+        result = stub.execute_query(
+            "SELECT * FROM table", warehouse_id="test-warehouse"
+        )
         assert result is not None
         assert "status" in result or "state" in result
 
@@ -138,41 +140,49 @@ class TestDatabricksDataProvider:
 
     def test_databricks_provider_raises_error_without_credentials(self):
         """Provider raises ValueError when credentials are not available."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            # Empty config - no credentials
-            f.write('{}')
-            temp_path = f.name
-
-        with patch("chuck_data.data.providers.databricks.get_workspace_url", return_value=None):
-            with patch("chuck_data.data.providers.databricks.get_databricks_token", return_value=None):
-                with pytest.raises(ValueError, match="Databricks workspace URL and token required"):
+        with patch(
+            "chuck_data.data.providers.databricks.get_workspace_url", return_value=None
+        ):
+            with patch(
+                "chuck_data.data.providers.databricks.get_databricks_token",
+                return_value=None,
+            ):
+                with pytest.raises(
+                    ValueError, match="Databricks workspace URL and token required"
+                ):
                     DatabricksDataProvider()
 
     def test_databricks_provider_uses_config_credentials(self):
         """Provider uses credentials from config when not provided."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('''{
-                "workspace_url": "https://test.databricks.com",
-                "databricks_token": "test-token"
-            }''')
-            temp_path = f.name
-
-        with patch("chuck_data.data.providers.databricks.get_workspace_url", return_value="https://test.databricks.com"):
-            with patch("chuck_data.data.providers.databricks.get_databricks_token", return_value="test-token"):
-                with patch("chuck_data.data.providers.databricks.DatabricksAPIClient") as mock_client:
-                    provider = DatabricksDataProvider()
+        with patch(
+            "chuck_data.data.providers.databricks.get_workspace_url",
+            return_value="https://test.databricks.com",
+        ):
+            with patch(
+                "chuck_data.data.providers.databricks.get_databricks_token",
+                return_value="test-token",
+            ):
+                with patch(
+                    "chuck_data.data.providers.databricks.DatabricksAPIClient"
+                ) as mock_client:
+                    DatabricksDataProvider()
                     # Should have created client with config credentials
-                    mock_client.assert_called_once_with("https://test.databricks.com", "test-token")
+                    mock_client.assert_called_once_with(
+                        "https://test.databricks.com", "test-token"
+                    )
 
     def test_databricks_provider_accepts_explicit_credentials(self):
         """Provider accepts explicit credentials over config."""
-        with patch("chuck_data.data.providers.databricks.DatabricksAPIClient") as mock_client:
-            provider = DatabricksDataProvider(
-                workspace_url="https://explicit.databricks.com",
-                token="explicit-token"
+        with patch(
+            "chuck_data.data.providers.databricks.DatabricksAPIClient"
+        ) as mock_client:
+            DatabricksDataProvider(
+                workspace_url="https://explicit.databricks.com", token="explicit-token"
             )
             # Should have created client with explicit credentials
-            mock_client.assert_called_once_with("https://explicit.databricks.com", "explicit-token")
+            mock_client.assert_called_once_with(
+                "https://explicit.databricks.com", "explicit-token"
+            )
 
     def test_databricks_provider_accepts_injected_client(self):
         """Provider accepts injected client for testing."""

@@ -1,7 +1,6 @@
 """Databricks Data Provider Implementation."""
 
 from typing import Optional, List, Dict, Any
-from chuck_data.data.provider import DataProvider
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.config import get_workspace_url, get_databricks_token
 
@@ -306,7 +305,13 @@ class DatabricksDataProvider:
         """
         return self._client.get_job_run_status(run_id)
 
-    def upload_file(self, path: str, file_path: str = None, content: str = None, overwrite: bool = True):
+    def upload_file(
+        self,
+        path: str,
+        file_path: str = None,
+        content: str = None,
+        overwrite: bool = True,
+    ):
         """Upload file to Databricks (Databricks-specific).
 
         Args:
@@ -354,7 +359,11 @@ class DatabricksDataProvider:
         return self._client.fetch_amperity_job_init(token, api_url)
 
     def create_stitch_notebook(
-        self, table_path: str, notebook_name: str, stitch_config: dict, datasources: list
+        self,
+        table_path: str,
+        notebook_name: str,
+        stitch_config: dict,
+        datasources: list,
     ):
         """Create Stitch notebook (Databricks-specific).
 

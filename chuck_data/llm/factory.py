@@ -99,7 +99,7 @@ class LLMProviderFactory:
                 return AWSBedrockProvider(**config)
             except ImportError as e:
                 raise ImportError(
-                    f"AWS Bedrock provider requires boto3: pip install boto3"
+                    "AWS Bedrock provider requires boto3: pip install boto3"
                 ) from e
 
         elif provider_name == "openai":
@@ -109,7 +109,7 @@ class LLMProviderFactory:
                 return OpenAIProvider(**config)
             except ImportError as e:
                 raise ImportError(
-                    f"OpenAI provider requires openai: pip install openai"
+                    "OpenAI provider requires openai: pip install openai"
                 ) from e
 
         elif provider_name == "anthropic":
@@ -119,7 +119,7 @@ class LLMProviderFactory:
                 return AnthropicProvider(**config)
             except ImportError as e:
                 raise ImportError(
-                    f"Anthropic provider requires anthropic: pip install anthropic"
+                    "Anthropic provider requires anthropic: pip install anthropic"
                 ) from e
 
         elif provider_name == "mock":
