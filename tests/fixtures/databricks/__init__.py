@@ -12,6 +12,7 @@ from .pii_stub import PIIStubMixin
 from .connection_stub import ConnectionStubMixin
 from .file_stub import FileStubMixin
 from .client import DatabricksClientStub
+from .provider_stub import DatabricksDataProviderStub
 
 __all__ = [
     "CatalogStubMixin",
@@ -26,4 +27,5 @@ __all__ = [
     "ConnectionStubMixin",
     "FileStubMixin",
     "DatabricksClientStub",
+    "DatabricksDataProviderStub",
 ]

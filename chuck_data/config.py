@@ -6,7 +6,7 @@ import json
 import os
 import logging
 import tempfile
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from chuck_data.databricks.url_utils import validate_workspace_url
 
@@ -37,6 +37,14 @@ class ChuckConfig(BaseModel):
     )
     usage_tracking_consent: Optional[bool] = Field(
         default=False, description="User consent for usage tracking"
+    )
+
+    # Data provider configuration
+    data_provider: Optional[str] = Field(
+        default="databricks", description="Active data provider"
+    )
+    data_provider_config: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict, description="Provider-specific configuration"
     )
 
     # No validator - use defaults instead of failing
@@ -142,6 +150,7 @@ class ConfigManager:
             "amperity_token": ["CHUCK_AMPERITY_TOKEN"],
             "databricks_token": ["CHUCK_DATABRICKS_TOKEN"],
             "usage_tracking_consent": ["CHUCK_USAGE_TRACKING_CONSENT"],
+            "data_provider": ["CHUCK_DATA_PROVIDER"],
         }
 
         for field, env_vars in env_mappings.items():
