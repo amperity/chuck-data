@@ -8,6 +8,7 @@ of the application to help improve its features and performance.
 import json
 import logging
 from typing import Any, Dict, List, Optional, Union
+from pydantic.json import pydantic_encoder
 from chuck_data.clients.amperity import AmperityAPIClient
 
 from chuck_data.config import get_config_manager, get_amperity_token
@@ -116,11 +117,16 @@ class MetricsCollector:
                 logging.debug("Cannot send metrics - no authentication token available")
                 return False
 
+            # Sanitize the payload to ensure it's JSON serializable using Pydantic's encoder
+            sanitized_payload = json.loads(
+                json.dumps(payload, default=pydantic_encoder)
+            )
+
             # Convert the payload to a JSON string for logging
-            payload_str = json.dumps(payload)
+            payload_str = json.dumps(sanitized_payload)
             logging.debug(f"Sending metric: {payload_str[:100]}...")
 
-            return self._client.submit_metrics(payload, token)
+            return self._client.submit_metrics(sanitized_payload, token)
         except Exception as e:
             logging.debug(f"Error sending metrics: {e}", exc_info=True)
             return False
