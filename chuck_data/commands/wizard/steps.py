@@ -241,24 +241,67 @@ class LLMProviderSelectionStep(SetupStep):
             # Fetch AWS Bedrock models
             try:
                 from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+                import os
+
+                # Show AWS configuration being used
+                aws_profile = os.getenv("AWS_PROFILE", "not set")
+                aws_region = os.getenv(
+                    "AWS_REGION", "not set (defaulting to us-east-1)"
+                )
+                logging.info(f"AWS_PROFILE: {aws_profile}, AWS_REGION: {aws_region}")
 
                 bedrock_provider = AWSBedrockProvider()
                 models = bedrock_provider.list_models()
                 logging.info(f"Found {len(models)} Bedrock models")
 
                 if not models:
+                    error_msg = (
+                        "No Bedrock models found. Possible causes:\n"
+                        f"  1. AWS credentials not configured (AWS_PROFILE={aws_profile}, AWS_REGION={aws_region})\n"
+                        "  2. Need to request model access in AWS Bedrock console\n"
+                        "  3. Using wrong AWS region\n\n"
+                        "To fix:\n"
+                        "  - Configure AWS SSO: aws sso login --profile your-profile\n"
+                        "  - Set environment variables: export AWS_PROFILE=your-profile AWS_REGION=us-east-1\n"
+                        "  - Enable Bedrock models at: https://console.aws.amazon.com/bedrock"
+                    )
                     return StepResult(
                         success=False,
-                        message="No Bedrock models found. Please check your AWS credentials and try again.",
+                        message=error_msg,
                         action=WizardAction.RETRY,
                     )
 
                 message = "AWS Bedrock selected for LLM. Proceeding to model selection."
             except Exception as e:
                 logging.error(f"Error listing Bedrock models: {e}", exc_info=True)
+
+                # Check for common AWS errors
+                error_msg = str(e)
+                if (
+                    "UnrecognizedClientException" in error_msg
+                    or "InvalidSignatureException" in error_msg
+                ):
+                    helpful_msg = (
+                        f"AWS credentials error: {error_msg}\n\n"
+                        "This usually means expired credentials. To fix:\n"
+                        "  1. Run: aws sso login --profile your-profile\n"
+                        "  2. Set: export AWS_PROFILE=your-profile AWS_REGION=us-east-1\n"
+                        "  3. Restart Chuck"
+                    )
+                elif "AccessDeniedException" in error_msg:
+                    helpful_msg = (
+                        f"AWS access denied: {error_msg}\n\n"
+                        "You need to request access to Bedrock models:\n"
+                        "  1. Go to: https://console.aws.amazon.com/bedrock\n"
+                        "  2. Navigate to 'Model access' in left sidebar\n"
+                        "  3. Request access for Claude, Llama, and Nova models"
+                    )
+                else:
+                    helpful_msg = f"Error listing Bedrock models: {error_msg}"
+
                 return StepResult(
                     success=False,
-                    message=f"Error listing Bedrock models: {str(e)}. Please check your AWS credentials.",
+                    message=helpful_msg,
                     action=WizardAction.RETRY,
                 )
         else:
