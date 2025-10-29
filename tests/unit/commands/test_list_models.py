@@ -89,7 +89,9 @@ def test_direct_command_handles_empty_model_list(databricks_client_stub, temp_co
         # Verify graceful handling of empty list
         assert result.success
         assert len(result.data["models"]) == 0
-        assert "No models found" in result.message
+        # Updated message includes provider-specific guidance
+        assert "No Databricks models found" in result.message
+        assert "Model Serving" in result.message
 
 
 def test_databricks_api_errors_handled_gracefully(databricks_client_stub, temp_config):

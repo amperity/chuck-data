@@ -10,7 +10,7 @@ from typing import Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.command_registry import CommandDefinition
-from chuck_data.config import get_active_model
+from chuck_data.config import get_active_model, get_llm_provider
 from chuck_data.llm.factory import LLMProviderFactory
 from .base import CommandResult
 
@@ -20,19 +20,24 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
     List available models with optional filtering.
 
     Args:
-        client: API client instance (injected for testing, otherwise creates via factory)
+        client: API client instance (used for Databricks provider if needed)
         **kwargs:
             filter (str, optional): Filter string for model names.
     """
     filter_str: Optional[str] = kwargs.get("filter")
 
     try:
-        # Create provider - inject client if provided (for testing)
-        if client:
+        # Get configured LLM provider
+        configured_provider = get_llm_provider() or "databricks"
+
+        # If Databricks is configured and we have an injected client, use it
+        # This supports both testing and production use
+        if configured_provider == "databricks" and client:
             from chuck_data.llm.providers.databricks import DatabricksProvider
 
             provider = DatabricksProvider(client=client)
         else:
+            # Use factory for non-Databricks providers or when no client injected
             provider = LLMProviderFactory.create()
 
         # Get models from provider
@@ -57,12 +62,22 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
         message = None
         if not models_list:
-            message = """No models found. To set up a model in Databricks:
-1. Go to the Databricks Model Serving page in your workspace.
-2. Click 'Create Model'.
-3. Choose a model (e.g., Claude, OpenAI, or another supported LLM).
-4. Configure the model settings and deploy the model.
+            current_provider = get_llm_provider() or "databricks"
+
+            if current_provider == "aws_bedrock":
+                message = """No AWS Bedrock models found. Please check:
+1. AWS credentials are configured (aws sso login)
+2. AWS_PROFILE and AWS_REGION environment variables are set
+3. Bedrock model access is enabled in AWS Console
+4. Using a region that supports Bedrock (us-east-1, us-west-2, etc.)"""
+            else:  # databricks
+                message = """No Databricks models found. To set up a model:
+1. Go to the Databricks Model Serving page in your workspace
+2. Click 'Create Model'
+3. Choose a model (e.g., Claude, OpenAI, or another supported LLM)
+4. Configure the model settings and deploy the model
 After deployment, run the models command again to verify availability."""
+
         return CommandResult(True, data=result_data, message=message)
     except Exception as e:
         logging.error(f"Failed to list models: {e}", exc_info=True)
