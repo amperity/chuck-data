@@ -209,7 +209,23 @@ class AgentManager:
             # Check if the response contains tool calls
             if response_message.tool_calls:
                 # Add the assistant's response (requesting tool calls) to history
-                self.conversation_history.append(response_message)
+                # Convert ChatCompletionMessage to dict format for consistency
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": response_message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": getattr(tc, "type", "function"),
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in response_message.tool_calls
+                    ],
+                }
+                self.conversation_history.append(assistant_msg)
 
                 # Execute each tool call
                 for tool_call in response_message.tool_calls:
