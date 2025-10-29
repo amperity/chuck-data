@@ -182,11 +182,12 @@ class WizardRenderer:
         """Get display step number for a wizard step."""
         step_numbers = {
             WizardStep.AMPERITY_AUTH: 1,
-            WizardStep.PROVIDER_SELECTION: 2,
+            WizardStep.DATA_PROVIDER_SELECTION: 2,
             WizardStep.WORKSPACE_URL: 3,
             WizardStep.TOKEN_INPUT: 4,
-            WizardStep.MODEL_SELECTION: 5,
-            WizardStep.USAGE_CONSENT: 6,
-            WizardStep.COMPLETE: 7,
+            WizardStep.LLM_PROVIDER_SELECTION: 5,
+            WizardStep.MODEL_SELECTION: 6,
+            WizardStep.USAGE_CONSENT: 7,
+            WizardStep.COMPLETE: 8,
         }
         return step_numbers.get(step, 1)
