@@ -15,6 +15,7 @@ from chuck_data.config import (
     set_databricks_token,
     set_active_model,
     set_usage_tracking_consent,
+    set_llm_provider,
 )
 from chuck_data.ui.tui import get_chuck_service
 
@@ -62,8 +63,8 @@ class AmperityAuthStep(SetupStep):
         if existing_token:
             return StepResult(
                 success=True,
-                message="Amperity token already exists. Proceeding to Databricks setup.",
-                next_step=WizardStep.WORKSPACE_URL,
+                message="Amperity token already exists. Proceeding to provider selection.",
+                next_step=WizardStep.PROVIDER_SELECTION,
                 action=WizardAction.CONTINUE,
             )
 
@@ -87,8 +88,8 @@ class AmperityAuthStep(SetupStep):
             if auth_success:
                 return StepResult(
                     success=True,
-                    message="Amperity authentication complete. Proceeding to Databricks setup.",
-                    next_step=WizardStep.WORKSPACE_URL,
+                    message="Amperity authentication complete. Proceeding to provider selection.",
+                    next_step=WizardStep.PROVIDER_SELECTION,
                     action=WizardAction.CONTINUE,
                 )
             else:
@@ -116,6 +117,88 @@ class AmperityAuthStep(SetupStep):
             return StepResult(
                 success=False,
                 message=f"Authentication error: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class ProviderSelectionStep(SetupStep):
+    """Handle LLM provider selection."""
+
+    def get_step_title(self) -> str:
+        return "LLM Provider Selection"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return "Please select your LLM provider:\n  1. Databricks (default)\n  2. AWS Bedrock\nEnter the number or name of the provider:"
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle provider selection input."""
+        # Normalize input
+        input_normalized = input_text.strip().lower()
+
+        # Map inputs to provider names
+        if input_normalized in ["1", "databricks"]:
+            provider = "databricks"
+            next_step = WizardStep.WORKSPACE_URL
+            message = "Databricks selected. Please enter your workspace URL."
+            models = []
+        elif input_normalized in ["2", "aws_bedrock", "aws", "bedrock"]:
+            provider = "aws_bedrock"
+            next_step = WizardStep.MODEL_SELECTION
+            message = "AWS Bedrock selected. Fetching available models..."
+
+            # Fetch AWS Bedrock models immediately
+            try:
+                from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+
+                bedrock_provider = AWSBedrockProvider()
+                models = bedrock_provider.list_models()
+                logging.debug(f"Found {len(models)} Bedrock models")
+
+                if not models:
+                    return StepResult(
+                        success=False,
+                        message="No Bedrock models found. Please check your AWS credentials and try again.",
+                        action=WizardAction.RETRY,
+                    )
+
+                message = "AWS Bedrock selected. Proceeding to model selection."
+            except Exception as e:
+                logging.error(f"Error listing Bedrock models: {e}")
+                return StepResult(
+                    success=False,
+                    message=f"Error listing Bedrock models: {str(e)}. Please check your AWS credentials.",
+                    action=WizardAction.RETRY,
+                )
+        else:
+            return StepResult(
+                success=False,
+                message="Invalid selection. Please enter 1 (Databricks) or 2 (AWS Bedrock).",
+                action=WizardAction.RETRY,
+            )
+
+        # Save provider to config
+        try:
+            success = set_llm_provider(provider)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save provider selection. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=message,
+                next_step=next_step,
+                action=WizardAction.CONTINUE,
+                data={"llm_provider": provider, "models": models},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving provider selection: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving provider selection: {str(e)}",
                 action=WizardAction.RETRY,
             )
 
@@ -287,12 +370,21 @@ class ModelSelectionStep(SetupStep):
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle model selection input."""
         if not state.models:
-            return StepResult(
-                success=False,
-                message="No models available. Restarting wizard at workspace setup step.",
-                next_step=WizardStep.WORKSPACE_URL,
-                action=WizardAction.CONTINUE,
-            )
+            # No models available - need to go back
+            if state.llm_provider == "databricks":
+                return StepResult(
+                    success=False,
+                    message="No models available. Restarting wizard at workspace setup step.",
+                    next_step=WizardStep.WORKSPACE_URL,
+                    action=WizardAction.CONTINUE,
+                )
+            else:
+                return StepResult(
+                    success=False,
+                    message="No models available. Please select a different provider.",
+                    next_step=WizardStep.PROVIDER_SELECTION,
+                    action=WizardAction.CONTINUE,
+                )
 
         # Sort models the same way as display (default first)
         from chuck_data.constants import DEFAULT_MODELS
@@ -409,6 +501,7 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
     """Factory function to create step handlers."""
     step_map = {
         WizardStep.AMPERITY_AUTH: AmperityAuthStep,
+        WizardStep.PROVIDER_SELECTION: ProviderSelectionStep,
         WizardStep.WORKSPACE_URL: WorkspaceUrlStep,
         WizardStep.TOKEN_INPUT: TokenInputStep,
         WizardStep.MODEL_SELECTION: ModelSelectionStep,

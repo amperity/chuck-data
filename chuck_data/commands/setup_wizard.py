@@ -154,6 +154,7 @@ class SetupWizardOrchestrator:
         """Save wizard state to interactive context."""
         context_data = {
             "current_step": state.current_step.value,
+            "llm_provider": state.llm_provider,
             "workspace_url": state.workspace_url,
             "token": state.token,
             "models": state.models,
@@ -194,6 +195,7 @@ class SetupWizardOrchestrator:
 
             return WizardState(
                 current_step=current_step,
+                llm_provider=context_data.get("llm_provider"),
                 workspace_url=context_data.get("workspace_url"),
                 token=context_data.get("token"),
                 models=context_data.get("models", []),
@@ -221,6 +223,7 @@ class SetupWizardOrchestrator:
         """Check if we're moving forward in the wizard (not going back due to errors)."""
         step_order = [
             WizardStep.AMPERITY_AUTH,
+            WizardStep.PROVIDER_SELECTION,
             WizardStep.WORKSPACE_URL,
             WizardStep.TOKEN_INPUT,
             WizardStep.MODEL_SELECTION,

@@ -285,6 +285,16 @@ def set_active_model(model_name):
     return result
 
 
+def get_llm_provider():
+    """Get the LLM provider from config."""
+    return _config_manager.get_config().llm_provider
+
+
+def set_llm_provider(provider_name):
+    """Set the LLM provider in config."""
+    return _config_manager.update(llm_provider=provider_name)
+
+
 def get_warehouse_id():
     """Get the warehouse ID from config."""
     return _config_manager.get_config().warehouse_id
