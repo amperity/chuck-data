@@ -200,7 +200,6 @@ class LLMProviderSelectionStep(SetupStep):
             # Fetch Databricks models
             try:
                 from chuck_data.llm.providers.databricks import DatabricksProvider
-                from chuck_data.service import get_chuck_service
 
                 service = get_chuck_service()
                 if not service or not service.client:
@@ -418,7 +417,6 @@ class ModelSelectionStep(SetupStep):
             try:
                 if state.llm_provider == "databricks":
                     from chuck_data.llm.providers.databricks import DatabricksProvider
-                    from chuck_data.service import get_chuck_service
 
                     # Check if we have the required credentials
                     if not state.workspace_url or not state.token:
