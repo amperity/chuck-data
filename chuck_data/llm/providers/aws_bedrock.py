@@ -76,26 +76,26 @@ class AWSBedrockProvider:
     def __init__(
         self,
         region: Optional[str] = None,
-        aws_access_key_id: Optional[str] = None,
-        aws_secret_access_key: Optional[str] = None,
         model_id: Optional[str] = None,
     ):
         """Initialize AWS Bedrock provider.
 
         Args:
             region: AWS region (defaults to us-east-1 or AWS_REGION env var)
-            aws_access_key_id: AWS access key (or uses AWS_ACCESS_KEY_ID env var)
-            aws_secret_access_key: AWS secret key (or uses AWS_SECRET_ACCESS_KEY env var)
             model_id: Default model ID - can be direct model ID or inference profile
                      (defaults to Claude 3.5 Sonnet with on-demand)
 
         Note:
-            If AWS credentials are not provided, boto3 will use standard credential
-            resolution (environment variables, ~/.aws/credentials, IAM roles, AWS SSO, etc.).
+            AWS credentials are resolved using boto3's standard credential chain:
+            1. AWS_PROFILE environment variable (for AWS SSO)
+            2. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
+            3. ~/.aws/credentials file
+            4. IAM roles (when running on EC2/ECS/Lambda)
 
-            AWS SSO users: Set AWS_PROFILE environment variable to use SSO credentials:
+            AWS SSO users (recommended):
                 aws sso login --profile your-profile
                 export AWS_PROFILE=your-profile
+                export AWS_REGION=us-east-1
 
             Model ID can be:
             - Direct: anthropic.claude-3-5-sonnet-20240620-v1:0
@@ -109,17 +109,13 @@ class AWSBedrockProvider:
         # Resolve region
         self.region = region or os.getenv("AWS_REGION", "us-east-1")
 
-        # Resolve credentials (boto3 handles env vars and IAM roles automatically)
-        boto3_kwargs = {"region_name": self.region}
-        if aws_access_key_id:
-            boto3_kwargs["aws_access_key_id"] = aws_access_key_id
-        if aws_secret_access_key:
-            boto3_kwargs["aws_secret_access_key"] = aws_secret_access_key
-
-        # Create Bedrock clients
+        # Create Bedrock clients using boto3's standard credential resolution
+        # boto3 automatically handles AWS_PROFILE, env vars, ~/.aws/credentials, IAM roles, etc.
         try:
-            self.bedrock_runtime = boto3.client("bedrock-runtime", **boto3_kwargs)
-            self.bedrock = boto3.client("bedrock", **boto3_kwargs)
+            self.bedrock_runtime = boto3.client(
+                "bedrock-runtime", region_name=self.region
+            )
+            self.bedrock = boto3.client("bedrock", region_name=self.region)
         except Exception as e:
             logger.error(f"Failed to create Bedrock clients: {e}")
             raise
