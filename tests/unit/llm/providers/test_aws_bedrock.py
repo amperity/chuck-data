@@ -19,13 +19,11 @@ class TestAWSBedrockProvider:
 
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_provider_instantiation_with_explicit_credentials(self, mock_boto3):
-        """Provider initializes with explicit AWS credentials."""
+        """Provider initializes with region and model configuration."""
         mock_boto3.client.return_value = MagicMock()
 
         provider = AWSBedrockProvider(
             region="us-west-2",
-            aws_access_key_id="AKIATEST123",
-            aws_secret_access_key="secret123",
             model_id="anthropic.claude-3-5-sonnet-20241022-v2:0",
         )
 
