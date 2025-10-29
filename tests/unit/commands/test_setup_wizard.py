@@ -34,18 +34,32 @@ class TestWizardComponents:
         """Test wizard state validation logic."""
         state = WizardState()
 
-        # Initial state should be valid for auth step
+        # Initial state should be valid for auth and data provider selection
         assert state.is_valid_for_step(WizardStep.AMPERITY_AUTH)
+        assert state.is_valid_for_step(WizardStep.DATA_PROVIDER_SELECTION)
+        assert not state.is_valid_for_step(
+            WizardStep.WORKSPACE_URL
+        )  # Requires data_provider
+
+        # With data provider set, workspace URL should be valid
+        state.data_provider = "databricks"
         assert state.is_valid_for_step(WizardStep.WORKSPACE_URL)
-        assert not state.is_valid_for_step(WizardStep.TOKEN_INPUT)
+        assert not state.is_valid_for_step(
+            WizardStep.TOKEN_INPUT
+        )  # Requires workspace_url
 
         # With workspace URL, token input should be valid
         state.workspace_url = "https://test.databricks.com"
         assert state.is_valid_for_step(WizardStep.TOKEN_INPUT)
-        assert not state.is_valid_for_step(WizardStep.MODEL_SELECTION)
+        assert state.is_valid_for_step(
+            WizardStep.LLM_PROVIDER_SELECTION
+        )  # Data provider configured
+        assert not state.is_valid_for_step(
+            WizardStep.MODEL_SELECTION
+        )  # Requires llm_provider
 
-        # With token, model selection should be valid
-        state.token = "test-token"
+        # With LLM provider, model selection should be valid
+        state.llm_provider = "databricks"
         assert state.is_valid_for_step(WizardStep.MODEL_SELECTION)
 
     def test_input_validator_workspace_url_real(self):
@@ -201,7 +215,7 @@ class TestStepHandlers:
             result = step.handle_input("", state)
 
             assert result.success
-            assert result.next_step == WizardStep.PROVIDER_SELECTION
+            assert result.next_step == WizardStep.DATA_PROVIDER_SELECTION
             assert "already exists" in result.message
 
     def test_amperity_auth_step_new_auth_success(self):
@@ -225,7 +239,7 @@ class TestStepHandlers:
             result = step.handle_input("", state)
 
             assert result.success
-            assert result.next_step == WizardStep.PROVIDER_SELECTION
+            assert result.next_step == WizardStep.DATA_PROVIDER_SELECTION
             assert "authentication complete" in result.message.lower()
 
     def test_workspace_url_step_real_validation(self):
@@ -534,13 +548,16 @@ class TestWizardOrchestratorIntegration:
 
         # Test forward progression logic
         assert orchestrator._is_forward_progression(
-            WizardStep.AMPERITY_AUTH, WizardStep.PROVIDER_SELECTION
+            WizardStep.AMPERITY_AUTH, WizardStep.DATA_PROVIDER_SELECTION
         )
         assert orchestrator._is_forward_progression(
-            WizardStep.PROVIDER_SELECTION, WizardStep.WORKSPACE_URL
+            WizardStep.DATA_PROVIDER_SELECTION, WizardStep.WORKSPACE_URL
         )
         assert orchestrator._is_forward_progression(
-            WizardStep.TOKEN_INPUT, WizardStep.MODEL_SELECTION
+            WizardStep.TOKEN_INPUT, WizardStep.LLM_PROVIDER_SELECTION
+        )
+        assert orchestrator._is_forward_progression(
+            WizardStep.LLM_PROVIDER_SELECTION, WizardStep.MODEL_SELECTION
         )
 
         # Test backward progression (should not clear)
