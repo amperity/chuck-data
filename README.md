@@ -45,14 +45,24 @@ To use AWS Bedrock as your LLM provider:
 
 2. **Configure AWS credentials:**
 
-   Option 1: Environment variables
+   **Option 1: AWS SSO (Recommended for enterprise)**
+   ```bash
+   # Login via SSO
+   aws sso login --profile your-profile
+
+   # Set profile for session
+   export AWS_PROFILE=your-profile
+   export AWS_REGION=us-east-1
+   ```
+
+   **Option 2: Environment variables**
    ```bash
    export AWS_REGION=us-east-1
    export AWS_ACCESS_KEY_ID=your-access-key
    export AWS_SECRET_ACCESS_KEY=your-secret-key
    ```
 
-   Option 2: AWS CLI configuration (`~/.aws/credentials`)
+   **Option 3: AWS CLI configuration** (`~/.aws/credentials`)
    ```ini
    [default]
    aws_access_key_id = your-access-key
@@ -60,7 +70,7 @@ To use AWS Bedrock as your LLM provider:
    region = us-east-1
    ```
 
-   Option 3: IAM role (for EC2/ECS/Lambda deployments)
+   **Option 4: IAM role** (for EC2/ECS/Lambda deployments)
 
 3. **Set LLM provider:**
 

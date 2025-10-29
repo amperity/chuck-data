@@ -91,7 +91,11 @@ class AWSBedrockProvider:
 
         Note:
             If AWS credentials are not provided, boto3 will use standard credential
-            resolution (environment variables, ~/.aws/credentials, IAM roles, etc.).
+            resolution (environment variables, ~/.aws/credentials, IAM roles, AWS SSO, etc.).
+
+            AWS SSO users: Set AWS_PROFILE environment variable to use SSO credentials:
+                aws sso login --profile your-profile
+                export AWS_PROFILE=your-profile
 
             Model ID can be:
             - Direct: anthropic.claude-3-5-sonnet-20240620-v1:0
