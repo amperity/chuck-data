@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.llm.client import LLMClient
+from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.config import get_active_catalog, get_active_schema
 from chuck_data.metrics_collector import get_metrics_collector
@@ -151,8 +151,8 @@ def _handle_legacy_setup(
                 message="Target catalog and schema must be specified or active for Stitch setup.",
             )
 
-        # Create a LLM client instance to pass to the helper
-        llm_client = LLMClient()
+        # Create a LLM provider instance using factory to pass to the helper
+        llm_client = LLMProviderFactory.create()
 
         # Get metrics collector
         metrics_collector = get_metrics_collector()
@@ -272,8 +272,8 @@ def _phase_1_prepare_config(
         f"\n[{INFO_STYLE}]Preparing Stitch configuration for {target_catalog}.{target_schema}...[/{INFO_STYLE}]"
     )
 
-    # Create LLM client
-    llm_client = LLMClient()
+    # Create LLM provider using factory
+    llm_client = LLMProviderFactory.create()
 
     # Prepare the configuration
     prep_result = _helper_prepare_stitch_config(
@@ -310,7 +310,7 @@ def _phase_2_handle_review(
     builder_data = context.get_context_data("setup-stitch")
     stitch_config = builder_data["stitch_config"]
     metadata = builder_data["metadata"]
-    llm_client = LLMClient()  # Recreate instead of getting from context
+    llm_client = LLMProviderFactory.create()  # Create provider using factory
 
     user_input_lower = user_input.lower().strip()
 

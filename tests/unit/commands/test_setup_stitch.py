@@ -84,7 +84,7 @@ def test_missing_context(databricks_client_stub):
     assert "Target catalog and schema must be specified" in result.message
 
 
-@patch("chuck_data.commands.setup_stitch.LLMClient")
+@patch("chuck_data.commands.setup_stitch.LLMProviderFactory.create")
 def test_direct_command_llm_exception_handled_gracefully(
     mock_llm_client, databricks_client_stub
 ):
@@ -126,7 +126,7 @@ def test_agent_failure_shows_error_without_progress(
             progress_steps.append(f"→ Setting up Stitch: ({data['step']})")
 
     with patch(
-        "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create", return_value=llm_client_stub
     ):
         with patch(
             "chuck_data.commands.stitch_tools.get_amperity_token",
@@ -167,7 +167,7 @@ def test_agent_callback_errors_bubble_up_as_command_errors(
     # documents the expected behavior if it were implemented
 
     with patch(
-        "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create", return_value=llm_client_stub
     ):
         result = handle_command(
             databricks_client_stub,
@@ -189,7 +189,7 @@ def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client
     setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
     with patch(
-        "chuck_data.commands.setup_stitch.LLMClient", return_value=llm_client_stub
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create", return_value=llm_client_stub
     ):
         with patch(
             "chuck_data.commands.stitch_tools.get_amperity_token",

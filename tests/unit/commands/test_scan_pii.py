@@ -97,7 +97,7 @@ def test_direct_command_scans_schema_with_explicit_parameters():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(
                     client_stub,
                     catalog_name="production_catalog",
@@ -140,7 +140,7 @@ def test_direct_command_uses_active_catalog_and_schema():
         )
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(client_stub)
 
     # Verify uses active context
@@ -172,7 +172,7 @@ def test_direct_command_explicit_parameters_override_active_context():
         )
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(
                     client_stub,
                     catalog_name="explicit_catalog",
@@ -201,7 +201,7 @@ def test_direct_command_handles_empty_schema():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(
                     client_stub,
                     catalog_name="empty_catalog",
@@ -231,7 +231,7 @@ def test_direct_command_handles_databricks_api_errors():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(
                     client_stub,
                     catalog_name="failing_catalog",
@@ -271,7 +271,7 @@ def test_direct_command_handles_llm_errors():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(
                     client_stub, catalog_name="test_catalog", schema_name="test_schema"
                 )
@@ -314,7 +314,7 @@ def test_agent_shows_progress_while_scanning_tables():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 # Mock console to capture progress messages
                 with patch(
                     "chuck_data.commands.pii_tools.get_console"
@@ -372,7 +372,7 @@ def test_agent_can_disable_progress_display():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 with patch(
                     "chuck_data.commands.pii_tools.get_console"
                 ) as mock_get_console:
@@ -420,7 +420,7 @@ def test_agent_tool_executor_integration():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = execute_tool(
                     api_client=client_stub,
                     tool_name="scan-schema-for-pii",
@@ -461,7 +461,7 @@ def test_agent_handles_tool_callback_errors_gracefully():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 # Note: scan-pii doesn't use tool_output_callback for reporting
                 # Progress is shown via console.print directly
                 result = handle_command(
@@ -514,7 +514,7 @@ def test_direct_command_display_shows_all_columns_not_just_pii():
         config_manager = ConfigManager(tmp.name)
 
         with patch("chuck_data.config._config_manager", config_manager):
-            with patch("chuck_data.commands.scan_pii.LLMClient", return_value=llm_stub):
+            with patch("chuck_data.commands.scan_pii.LLMProviderFactory.create", return_value=llm_stub):
                 result = handle_command(
                     client_stub,
                     catalog_name="complete_catalog",
