@@ -18,7 +18,8 @@ def test_missing_catalog_uses_active_config(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -117,7 +118,8 @@ def test_missing_schema_parameter_uses_active_config(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -155,7 +157,8 @@ def test_both_catalog_and_schema_missing_uses_active_config(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -194,7 +197,8 @@ def test_direct_command_successful_bulk_tagging(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -223,7 +227,8 @@ def test_direct_command_no_pii_found_returns_informative_message(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -252,7 +257,8 @@ def test_direct_command_partial_failures_handled_gracefully(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -302,7 +308,8 @@ def test_agent_shows_progress_during_bulk_operations(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -346,7 +353,8 @@ def test_agent_tool_executor_integration(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -376,7 +384,8 @@ def test_bulk_tagging_execution_includes_detailed_results(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -417,7 +426,8 @@ def test_interactive_mode_shows_individual_table_progress_like_scan_pii(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
         patch("chuck_data.commands.pii_tools.get_console") as mock_pii_console,
         patch("chuck_data.commands.bulk_tag_pii.get_console") as mock_bulk_console,
@@ -487,7 +497,8 @@ def test_interactive_mode_phase_1_scanning(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -515,7 +526,8 @@ def test_interactive_confirmation_proceeds_to_tagging(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -549,7 +561,8 @@ def test_interactive_modification_excludes_tables(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -596,7 +609,8 @@ def test_interactive_cancellation_cleans_up_context(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -639,7 +653,8 @@ def test_scan_phase_failure_returns_helpful_error(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values
@@ -685,7 +700,8 @@ def test_tagging_phase_errors_aggregated_properly(
     with (
         patch("chuck_data.config._config_manager", temp_config),
         patch(
-            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create", return_value=llm_client_stub
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
         ),
     ):
         # Setup real config with test values

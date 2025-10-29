@@ -126,7 +126,8 @@ def test_agent_failure_shows_error_without_progress(
             progress_steps.append(f"→ Setting up Stitch: ({data['step']})")
 
     with patch(
-        "chuck_data.commands.setup_stitch.LLMProviderFactory.create", return_value=llm_client_stub
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+        return_value=llm_client_stub,
     ):
         with patch(
             "chuck_data.commands.stitch_tools.get_amperity_token",
@@ -167,7 +168,8 @@ def test_agent_callback_errors_bubble_up_as_command_errors(
     # documents the expected behavior if it were implemented
 
     with patch(
-        "chuck_data.commands.setup_stitch.LLMProviderFactory.create", return_value=llm_client_stub
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+        return_value=llm_client_stub,
     ):
         result = handle_command(
             databricks_client_stub,
@@ -189,7 +191,8 @@ def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client
     setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
     with patch(
-        "chuck_data.commands.setup_stitch.LLMProviderFactory.create", return_value=llm_client_stub
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+        return_value=llm_client_stub,
     ):
         with patch(
             "chuck_data.commands.stitch_tools.get_amperity_token",
