@@ -177,7 +177,7 @@ class AmperityAPIClient:
                 timeout=10,  # 10 seconds timeout
             )
 
-            if response.status_code == 200 or response.status_code == 201:
+            if response.status_code in (200, 201, 204):
                 logging.debug(f"Metrics sent successfully: {response.status_code}")
                 return True
             else:
