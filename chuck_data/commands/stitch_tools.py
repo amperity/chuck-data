@@ -174,12 +174,16 @@ def _helper_prepare_stitch_config(
     if not amperity_token:
         return {"error": "Amperity token not found. Please run /amp_login first."}
 
-    # Fetch init script content but don't write it yet
+    # Fetch init script content and job-id from Amperity API
     try:
         init_script_data = client.fetch_amperity_job_init(amperity_token)
         init_script_content = init_script_data.get("cluster-init")
+        job_id = init_script_data.get("job-id")
+
         if not init_script_content:
             return {"error": "Failed to get cluster init script from Amperity API."}
+        if not job_id:
+            return {"error": "Failed to get job-id from Amperity API."}
     except Exception as e_fetch_init:
         logging.error(
             f"Error fetching Amperity init script: {e_fetch_init}", exc_info=True
@@ -214,6 +218,7 @@ def _helper_prepare_stitch_config(
             "init_script_path": init_script_volume_path,
             "init_script_content": init_script_content,
             "amperity_token": amperity_token,
+            "job_id": job_id,
             "pii_scan_output": pii_scan_output,
             "unsupported_columns": unsupported_columns,
         },
@@ -429,11 +434,38 @@ def _helper_launch_stitch_job(
         except Exception as e:
             return {"error": f"Failed to launch Stitch job: {str(e)}"}
 
+        # Record job submission to link job-id with databricks-run-id
+        try:
+            # Get CLI token and job-id from metadata
+            amperity_token = metadata.get("amperity_token") or get_amperity_token()
+            job_id = metadata.get("job_id")
+
+            if amperity_token and job_id:
+                from chuck_data.clients.amperity import AmperityAPIClient
+
+                amperity_client = AmperityAPIClient()
+                amperity_client.record_job_submission(
+                    databricks_run_id=str(run_id),
+                    token=amperity_token,
+                    job_id=str(job_id),
+                )
+                logging.debug(f"Recorded job submission: job-id -> run_id {run_id}")
+            else:
+                logging.warning("No Amperity token available to record job submission")
+        except Exception as e:
+            # Log warning but don't fail the job launch
+            logging.warning(f"Failed to record job submission: {e}")
+
         # Build success message
         summary_msg_lines = [
             f"Stitch setup for {target_catalog}.{target_schema} initiated."
         ]
         summary_msg_lines.append(f"Config: {config_file_path}")
+
+        # Extract job_id from metadata
+        job_id = metadata.get("job_id")
+        if job_id:
+            summary_msg_lines.append(f"Chuck Job ID: {job_id}")
         summary_msg_lines.append(f"Databricks Job Run ID: {run_id}")
 
         # Add unsupported columns information if any
@@ -482,6 +514,7 @@ def _helper_launch_stitch_job(
             "success": True,
             "message": final_summary,
             "stitch_job_name": stitch_job_name,
+            "job_id": job_id,
             "run_id": run_id,
             "config_path": config_file_path,
             "init_script_path": init_script_path,

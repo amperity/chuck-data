@@ -21,7 +21,14 @@ class FileStubMixin:
         """Fetch Amperity job initialization script."""
         if hasattr(self, "_fetch_amperity_error"):
             raise self._fetch_amperity_error
-        return {"cluster-init": "echo 'Amperity init script'"}
+        # Check if custom response was set
+        if hasattr(self, "fetch_amperity_job_init_response"):
+            return self.fetch_amperity_job_init_response
+        # Default response includes both cluster-init and job-id
+        return {
+            "cluster-init": "echo 'Amperity init script'",
+            "job-id": "default-test-job-id",
+        }
 
     def set_fetch_amperity_error(self, error):
         """Configure fetch_amperity_job_init to raise error."""

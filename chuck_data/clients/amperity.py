@@ -177,7 +177,7 @@ class AmperityAPIClient:
                 timeout=10,  # 10 seconds timeout
             )
 
-            if response.status_code == 200 or response.status_code == 201:
+            if response.status_code in (200, 201, 204):
                 logging.debug(f"Metrics sent successfully: {response.status_code}")
                 return True
             else:
@@ -228,3 +228,78 @@ class AmperityAPIClient:
         except Exception as e:  # pragma: no cover - network issues
             logging.error(f"Error submitting bug report: {e}", exc_info=True)
             return False, str(e)
+
+    def get_job_status(self, job_id: str, token: str) -> dict:
+        """Get job status from Chuck backend API.
+
+        Args:
+            job_id: Chuck job identifier
+            token: The authentication token
+
+        Returns:
+            Dict with job data (state, error, credits, etc.)
+
+        Raises:
+            Exception: If the request fails
+        """
+        try:
+            url = f"https://{self.base_url}/api/job/status/{job_id}"
+            headers = {
+                "Authorization": f"Bearer {token}",
+            }
+
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("data", {})
+            else:
+                logging.error(
+                    f"Failed to get job status: {response.status_code} - {response.text}"
+                )
+                raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+        except Exception as e:
+            logging.error(f"Error getting job status: {e}")
+            raise
+
+    def record_job_submission(
+        self, databricks_run_id: str, token: str, job_id: str
+    ) -> bool:
+        """Record databricks run-id and link it to an existing job immediately after Databricks submission.
+
+        This method updates an existing job record (created during /api/job/launch) with the
+        databricks-run-id returned from Databricks job submission. The backend merges this with
+        existing job data and transitions the job state from :pending to :submitted.
+
+        Note: This should be called from chuck-data CLI using a CLI token. The job record must
+        already exist (created during the prepare phase via /api/job/launch).
+
+        Args:
+            databricks_run_id: Databricks run ID returned from job submission
+            token: CLI authentication token
+            job_id: Job ID (returned from /api/job/launch during prepare phase)
+
+        Returns:
+            True if recorded successfully, False otherwise
+        """
+        try:
+            url = f"https://{self.base_url}/api/job/record"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            payload = {"databricks-run-id": databricks_run_id, "job-id": job_id}
+
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=10,
+            )
+
+            return response.status_code in (200, 201)
+
+        except Exception as e:
+            logging.error(f"Error recording job submission: {e}")
+            return False
