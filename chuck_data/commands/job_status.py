@@ -8,7 +8,12 @@ from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.amperity import AmperityAPIClient
 from chuck_data.commands.base import CommandResult
 from chuck_data.command_registry import CommandDefinition
-from chuck_data.config import get_amperity_token
+from chuck_data.config import (
+    get_amperity_token,
+    get_workspace_url,
+    get_databricks_token,
+)
+from chuck_data.job_cache import get_last_job_id, find_run_id_for_job
 
 # Constant for unset Databricks run ID
 UNSET_DATABRICKS_RUN_ID = "UNSET_DATABRICKS_RUN_ID"
@@ -24,16 +29,27 @@ def _extract_databricks_run_info(result: dict) -> dict:
     Returns:
         Cleaned dictionary with structured run information
     """
+    # Extract state info
+    state_obj = result.get("state", {})
+
     run_info = {
         "job_id": result.get("job_id"),
         "run_id": result.get("run_id"),
         "run_name": result.get("run_name"),
-        "state": result.get("state", {}).get("life_cycle_state"),
-        "result_state": result.get("state", {}).get("result_state"),
+        "state": state_obj,  # Keep full state object for nested access
+        "life_cycle_state": (
+            state_obj.get("life_cycle_state")
+            if isinstance(state_obj, dict)
+            else state_obj
+        ),
+        "result_state": (
+            state_obj.get("result_state") if isinstance(state_obj, dict) else None
+        ),
         "start_time": result.get("start_time"),
         "setup_duration": result.get("setup_duration"),
         "execution_duration": result.get("execution_duration"),
         "cleanup_duration": result.get("cleanup_duration"),
+        "run_page_url": result.get("run_page_url"),
         "creator_user_name": result.get("creator_user_name"),
     }
 
@@ -58,47 +74,99 @@ def _extract_databricks_run_info(result: dict) -> dict:
     return run_info
 
 
+def _format_duration(duration_ms: int) -> str:
+    """Format duration from milliseconds to human-readable string.
+
+    Args:
+        duration_ms: Duration in milliseconds
+
+    Returns:
+        Formatted duration string (e.g., "14m 22s")
+    """
+    seconds = duration_ms / 1000
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+
+    if mins > 0:
+        return f"{mins}m {secs}s"
+    else:
+        return f"{secs}s"
+
+
+def _format_box_line(content: str, width: int = 80) -> str:
+    """Format a single line for the box with proper padding.
+
+    Args:
+        content: The text content (without borders)
+        width: Total width of content area (default 80)
+
+    Returns:
+        Formatted line with borders and padding
+    """
+    # Ensure content doesn't exceed width
+    if len(content) > width:
+        content = content[:width]
+
+    padding = width - len(content)
+    return f"│{content}{' ' * padding}│"
+
+
 def _format_job_status_message(job_id: str, job_data: dict) -> str:
     """
-    Format a comprehensive job status message from job data.
+    Format a comprehensive job status message from job data with nice box display.
 
     Args:
         job_id: Chuck job identifier
         job_data: Job data dictionary from Chuck backend
 
     Returns:
-        Formatted status message string
+        Formatted status message string with box drawing
     """
-    state = job_data.get("state", "UNKNOWN")
-    message_parts = [f"Job {job_id}: {state}"]
+    # Box width constants
+    BASE_BOX_WIDTH = 80  # Minimum width of the box content area
 
-    # Add all available fields to the message
-    if job_data.get("record-count"):
-        message_parts.append(f"Records: {job_data.get('record-count'):,}")
+    state = (job_data.get("state") or "UNKNOWN").upper()
 
-    if job_data.get("credits"):
-        message_parts.append(f"Credits: {job_data.get('credits')}")
+    # Status symbol
+    status_symbol = "✓" if state == "SUCCEEDED" else "✗" if state == "FAILED" else "◷"
 
-    if job_data.get("build"):
-        message_parts.append(f"Build: {job_data.get('build')}")
+    # Check if we have live Databricks data
+    has_live_data = "databricks_live" in job_data
+    databricks_live = job_data.get("databricks_live", {})
 
-    if (
-        job_data.get("databricks-run-id")
-        and job_data.get("databricks-run-id") != UNSET_DATABRICKS_RUN_ID
-    ):
-        message_parts.append(f"Run ID: {job_data.get('databricks-run-id')}")
+    # Calculate actual box width needed (expand if URL is long)
+    BOX_WIDTH = BASE_BOX_WIDTH
+    if has_live_data and databricks_live.get("run_page_url"):
+        url = databricks_live["run_page_url"]
+        label = " • View: "
+        url_line_length = len(label) + len(url)
+        BOX_WIDTH = max(BOX_WIDTH, url_line_length)
+
+    # Build the message
+    lines = []
+
+    # Header
+    header_text = f"─ Job: {job_id} "
+    lines.append("┌" + header_text + "─" * (BOX_WIDTH - len(header_text)) + "┐")
+
+    # Status line
+    status_text = f" Status: {status_symbol} {state}"
+    lines.append("│" + status_text + " " * (BOX_WIDTH - len(status_text)) + "│")
 
     # Timestamps
     if job_data.get("created-at"):
-        message_parts.append(f"Created: {job_data.get('created-at')}")
+        created = job_data["created-at"].replace("T", " ").replace("Z", "")
+        lines.append(_format_box_line(f" Created: {created}", BOX_WIDTH))
 
     if job_data.get("start-time"):
-        message_parts.append(f"Started: {job_data.get('start-time')}")
+        started = job_data["start-time"].replace("T", " ").replace("Z", "")
+        lines.append(_format_box_line(f" Started: {started}", BOX_WIDTH))
 
     if job_data.get("end-time"):
-        message_parts.append(f"Ended: {job_data.get('end-time')}")
+        ended = job_data["end-time"].replace("T", " ").replace("Z", "")
+        lines.append(_format_box_line(f" Ended:   {ended}", BOX_WIDTH))
 
-    # Calculate duration if we have start and end times
+    # Duration - always use Chuck timestamps (start-time to end-time)
     if job_data.get("start-time") and job_data.get("end-time"):
         try:
             from datetime import datetime
@@ -108,18 +176,102 @@ def _format_job_status_message(job_id: str, job_data: dict) -> str:
             )
             end = datetime.fromisoformat(job_data["end-time"].replace("Z", "+00:00"))
             duration = end - start
-            duration_mins = duration.total_seconds() / 60
-            message_parts.append(f"Duration: {duration_mins:.1f}m")
+            duration_mins = int(duration.total_seconds() // 60)
+            duration_secs = int(duration.total_seconds() % 60)
+            duration_str = f"{duration_mins}m {duration_secs}s"
+            lines.append(_format_box_line(f" Duration: {duration_str}", BOX_WIDTH))
         except Exception:
-            pass  # Skip duration calculation if parsing fails
+            pass
 
-    if job_data.get("accepted?"):
-        message_parts.append(f"Accepted: {job_data.get('accepted?')}")
+    # Processing section
+    has_processing = (
+        job_data.get("record-count") or job_data.get("credits") or job_data.get("build")
+    )
+    if has_processing:
+        lines.append(_format_box_line("", BOX_WIDTH))
+        # Use "Processed" if job is complete, "Processing" if still running
+        processing_label = (
+            "Processed:" if state in ["SUCCEEDED", "FAILED"] else "Processing:"
+        )
+        lines.append(_format_box_line(f" {processing_label}", BOX_WIDTH))
 
+        if job_data.get("record-count"):
+            records = f"{job_data['record-count']:,}"
+            lines.append(_format_box_line(f" • Records: {records}", BOX_WIDTH))
+
+        if job_data.get("credits"):
+            lines.append(
+                _format_box_line(f" • Credits: {job_data['credits']}", BOX_WIDTH)
+            )
+
+        if job_data.get("build"):
+            build = job_data["build"]
+            lines.append(_format_box_line(f" • Build: {build}", BOX_WIDTH))
+
+    # Databricks section (only if --live flag was used)
+    databricks_run_id = job_data.get("databricks-run-id")
+    if (
+        has_live_data
+        and databricks_run_id
+        and databricks_run_id != UNSET_DATABRICKS_RUN_ID
+    ):
+        lines.append(_format_box_line("", BOX_WIDTH))
+        lines.append(_format_box_line(" Databricks:", BOX_WIDTH))
+
+        # Status with result state
+        db_state = databricks_live.get("state", {})
+        lifecycle_state = db_state.get("life_cycle_state", "UNKNOWN")
+        result_state = db_state.get("result_state")
+        if result_state:
+            status_text = f" Status: {lifecycle_state} ({result_state})"
+        else:
+            status_text = f" Status: {lifecycle_state}"
+        lines.append(_format_box_line(status_text, BOX_WIDTH))
+
+        # Run ID
+        lines.append(_format_box_line(f" Run ID: {databricks_run_id}", BOX_WIDTH))
+
+        # Run name
+        if databricks_live.get("run_name"):
+            lines.append(
+                _format_box_line(f" Name: {databricks_live['run_name']}", BOX_WIDTH)
+            )
+
+        # Creator
+        if databricks_live.get("creator_user_name"):
+            lines.append(
+                _format_box_line(
+                    f" Creator: {databricks_live['creator_user_name']}", BOX_WIDTH
+                )
+            )
+
+        # Execution time
+        if databricks_live.get("execution_duration"):
+            db_duration = _format_duration(databricks_live["execution_duration"])
+            lines.append(_format_box_line(f" Execution: {db_duration}", BOX_WIDTH))
+
+        # Task count
+        if databricks_live.get("tasks"):
+            task_count = len(databricks_live["tasks"])
+            lines.append(_format_box_line(f" Tasks: {task_count}", BOX_WIDTH))
+
+        # View URL - keep on single line for clickability
+        if databricks_live.get("run_page_url"):
+            url = databricks_live["run_page_url"]
+            lines.append(_format_box_line("", BOX_WIDTH))
+            # Put label and URL on same line (BOX_WIDTH already adjusted to fit)
+            label = " • View: "
+            lines.append(_format_box_line(f"{label}{url}", BOX_WIDTH))
+
+    # Error section if any
     if job_data.get("error"):
-        message_parts.append(f"Error: {job_data.get('error')}")
+        lines.append(_format_box_line("", BOX_WIDTH))
+        error_msg = job_data["error"]
+        lines.append(_format_box_line(f" ✗ Error: {error_msg}", BOX_WIDTH))
 
-    return ", ".join(message_parts)
+    lines.append("└" + "─" * BOX_WIDTH + "┘")
+
+    return "\n".join(lines)
 
 
 def _query_by_job_id(
@@ -152,16 +304,43 @@ def _query_by_job_id(
     try:
         job_data = amperity_client.get_job_status(job_id, token)
 
+        # Add workspace URL for generating Databricks links
+        workspace_url = get_workspace_url()
+        if workspace_url:
+            job_data["workspace_url"] = workspace_url
+
         # Optionally enrich with live Databricks data
         databricks_run_id = job_data.get("databricks-run-id")
+
+        # If Chuck backend returns UNSET, try to use cached run_id
+        if databricks_run_id == UNSET_DATABRICKS_RUN_ID:
+            cached_run_id = find_run_id_for_job(job_id)
+            if cached_run_id:
+                databricks_run_id = cached_run_id
+                # Update job_data so the formatting function sees the cached run_id
+                job_data["databricks-run-id"] = cached_run_id
+
         if (
             fetch_live
             and databricks_run_id
             and databricks_run_id != UNSET_DATABRICKS_RUN_ID
-            and client
         ):
-            databricks_raw = client.get_job_run_status(databricks_run_id)
-            job_data["databricks_live"] = _extract_databricks_run_info(databricks_raw)
+            # Create Databricks client if not provided
+            if not client:
+                db_token = get_databricks_token()
+                if workspace_url and db_token:
+                    client = DatabricksAPIClient(workspace_url, db_token)
+
+            if client:
+                try:
+                    databricks_raw = client.get_job_run_status(databricks_run_id)
+                    job_data["databricks_live"] = _extract_databricks_run_info(
+                        databricks_raw
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"Failed to fetch live Databricks data: {e}", exc_info=True
+                    )
 
         # Format output message - build a comprehensive summary
         message = _format_job_status_message(job_id, job_data)
@@ -173,6 +352,86 @@ def _query_by_job_id(
         return CommandResult(
             False, message=f"Failed to get job status from Chuck: {str(e)}", error=e
         )
+
+
+def _format_databricks_only_message(run_id: str, run_info: dict) -> str:
+    """
+    Format Databricks-only job status message with box display.
+
+    Args:
+        run_id: Databricks run identifier
+        run_info: Run information from Databricks
+
+    Returns:
+        Formatted status message string
+    """
+    BASE_BOX_WIDTH = 80
+
+    state = (run_info.get("life_cycle_state") or "UNKNOWN").upper()
+    result_state = (run_info.get("result_state") or "").upper()
+
+    # Status symbol
+    status_symbol = (
+        "✓" if result_state == "SUCCESS" else "✗" if result_state == "FAILED" else "◷"
+    )
+
+    # Calculate actual box width needed (expand if URL is long)
+    BOX_WIDTH = BASE_BOX_WIDTH
+    if run_info.get("run_page_url"):
+        url = run_info["run_page_url"]
+        label = " • View: "
+        url_line_length = len(label) + len(url)
+        BOX_WIDTH = max(BOX_WIDTH, url_line_length)
+
+    # Build the message
+    lines = []
+
+    # Header
+    header_text = f"─ Databricks Run: {run_id} "
+    lines.append("┌" + header_text + "─" * (BOX_WIDTH - len(header_text)) + "┐")
+
+    # Status line
+    if result_state:
+        status_text = f" Status: {status_symbol} {state} ({result_state})"
+    else:
+        status_text = f" Status: {status_symbol} {state}"
+    lines.append(_format_box_line(status_text, BOX_WIDTH))
+
+    # Job name
+    if run_info.get("run_name"):
+        name = run_info["run_name"]
+        lines.append(_format_box_line(f" Name: {name}", BOX_WIDTH))
+
+    # Creator
+    if run_info.get("creator_user_name"):
+        creator = run_info["creator_user_name"]
+        lines.append(_format_box_line(f" Creator: {creator}", BOX_WIDTH))
+
+    # Duration
+    if run_info.get("execution_duration"):
+        duration_str = _format_duration(run_info["execution_duration"])
+        lines.append(_format_box_line(f" Execution: {duration_str}", BOX_WIDTH))
+
+    # Task information
+    if run_info.get("tasks"):
+        task_count = len(run_info["tasks"])
+        lines.append(_format_box_line(f" Tasks: {task_count}", BOX_WIDTH))
+
+    # Job URL - keep on single line for clickability
+    if run_info.get("run_page_url"):
+        url = run_info["run_page_url"]
+        lines.append(_format_box_line("", BOX_WIDTH))
+        # Put label and URL on same line (BOX_WIDTH already adjusted to fit)
+        label = " • View: "
+        lines.append(_format_box_line(f"{label}{url}", BOX_WIDTH))
+
+    lines.append(_format_box_line("", BOX_WIDTH))
+    lines.append(
+        _format_box_line(" Note: Databricks data only - no Chuck telemetry", BOX_WIDTH)
+    )
+    lines.append("└" + "─" * BOX_WIDTH + "┘")
+
+    return "\n".join(lines)
 
 
 def _query_by_run_id(
@@ -201,52 +460,8 @@ def _query_by_run_id(
     # Extract and clean Databricks run information
     run_info = _extract_databricks_run_info(result)
 
-    # Create a user-friendly message with more details
-    message_parts = [f"Job run {run_id}"]
-
-    # State information
-    state_msg = f"{run_info['state']}"
-    if run_info.get("result_state"):
-        state_msg += f" ({run_info['result_state']})"
-    message_parts.append(f"Status: {state_msg}")
-
-    # Job name
-    if run_info.get("run_name"):
-        message_parts.append(f"Name: {run_info['run_name']}")
-
-    # Creator
-    if run_info.get("creator_user_name"):
-        message_parts.append(f"Creator: {run_info['creator_user_name']}")
-
-    # Duration information
-    if run_info.get("execution_duration"):
-        duration_seconds = (
-            run_info["execution_duration"] / 1000
-        )  # Convert ms to seconds
-        if duration_seconds >= 60:
-            duration_mins = duration_seconds / 60
-            message_parts.append(f"Execution: {duration_mins:.1f}m")
-        else:
-            message_parts.append(f"Execution: {duration_seconds:.1f}s")
-
-    if run_info.get("run_duration"):
-        total_seconds = run_info["run_duration"] / 1000
-        if total_seconds >= 60:
-            total_mins = total_seconds / 60
-            message_parts.append(f"Total: {total_mins:.1f}m")
-        else:
-            message_parts.append(f"Total: {total_seconds:.1f}s")
-
-    # Task information
-    if run_info.get("tasks"):
-        message_parts.append(f"Tasks: {len(run_info['tasks'])}")
-
-    # Job URL
-    if run_info.get("run_page_url"):
-        message_parts.append(f"URL: {run_info['run_page_url']}")
-
-    message_parts.append("(Databricks only - no Chuck telemetry)")
-    message = ", ".join(message_parts)
+    # Format the message using the new box display
+    message = _format_databricks_only_message(run_id, run_info)
 
     return CommandResult(True, data=run_info, message=message)
 
@@ -275,8 +490,19 @@ def handle_command(
     run_id = kwargs.get("run_id") or kwargs.get("run-id")
     fetch_live = kwargs.get("live", False)
 
+    # If no parameters provided, try to use cached job ID with live data
     if not job_id and not run_id:
-        return CommandResult(False, message="Either --job-id or --run-id is required")
+        cached_job_id = get_last_job_id()
+        if cached_job_id:
+            job_id = cached_job_id
+            # Always fetch live data when using cached ID
+            fetch_live = True
+        else:
+            return CommandResult(
+                False,
+                message="No job ID provided and no cached job ID available. "
+                "Please specify --job-id or --run-id, or run a job first.",
+            )
 
     try:
         # Primary: Query Chuck backend by job-id
@@ -301,7 +527,8 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="job-status",
-    description="Check status of a Chuck job via backend or Databricks.",
+    description="Check status of a Chuck job via backend or Databricks. "
+    "If no parameters provided, uses the last cached job ID.",
     handler=handle_command,
     parameters={
         "job-id": {
@@ -322,6 +549,6 @@ DEFINITION = CommandDefinition(
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    usage_hint="Usage: /job-status --job_id <job_id> [--live] OR /job-status --run_id <run_id>",
+    usage_hint="Usage: /job-status [--job_id <job_id>] [--live] OR /job-status --run_id <run_id> OR /job-status (uses cached ID)",
     condensed_action="Checking job status",
 )
