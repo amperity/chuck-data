@@ -559,9 +559,7 @@ class AWSBedrockProvider:
 
         return False
 
-    def list_models(
-        self, tool_calling_only: bool = True
-    ) -> List[Dict[str, Any]]:
+    def list_models(self, tool_calling_only: bool = True) -> List[Dict[str, Any]]:
         """List available Bedrock foundation models.
 
         Similar to Databricks list_models() but for Bedrock model catalog.

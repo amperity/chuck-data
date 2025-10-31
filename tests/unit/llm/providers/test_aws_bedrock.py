@@ -440,35 +440,56 @@ class TestAWSBedrockProvider:
         mock_bedrock.list_foundation_models.return_value = {
             "modelSummaries": [
                 # Anthropic - Claude 3+ supports, Claude 2 doesn't
-                {"modelId": "anthropic.claude-3-5-sonnet-v2:0", "providerName": "Anthropic"},
-                {"modelId": "anthropic.claude-3-haiku-v1:0", "providerName": "Anthropic"},
+                {
+                    "modelId": "anthropic.claude-3-5-sonnet-v2:0",
+                    "providerName": "Anthropic",
+                },
+                {
+                    "modelId": "anthropic.claude-3-haiku-v1:0",
+                    "providerName": "Anthropic",
+                },
                 {"modelId": "anthropic.claude-v2", "providerName": "Anthropic"},
-                {"modelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "providerName": "Anthropic"},
-
+                {
+                    "modelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "providerName": "Anthropic",
+                },
                 # Amazon Nova - all support
                 {"modelId": "amazon.nova-pro-v1:0", "providerName": "Amazon"},
                 {"modelId": "amazon.nova-lite-v1:0", "providerName": "Amazon"},
-
                 # Meta Llama - only 3.1, 3.2, 4.x support
                 {"modelId": "meta.llama3-1-70b-instruct-v1:0", "providerName": "Meta"},
                 {"modelId": "meta.llama3.1-8b-instruct-v1:0", "providerName": "Meta"},
                 {"modelId": "meta.llama3-2-11b-instruct-v1:0", "providerName": "Meta"},
-                {"modelId": "us.meta.llama4-scout-17b-instruct-v1:0", "providerName": "Meta"},
-                {"modelId": "meta.llama3-70b-instruct-v1:0", "providerName": "Meta"},  # No tool calling
-
+                {
+                    "modelId": "us.meta.llama4-scout-17b-instruct-v1:0",
+                    "providerName": "Meta",
+                },
+                {
+                    "modelId": "meta.llama3-70b-instruct-v1:0",
+                    "providerName": "Meta",
+                },  # No tool calling
                 # Cohere - Command R models support
                 {"modelId": "cohere.command-r-plus-v1:0", "providerName": "Cohere"},
                 {"modelId": "cohere.command-r-v1:0", "providerName": "Cohere"},
-
                 # Mistral - Large, Small, Pixtral Large support
-                {"modelId": "mistral.mistral-large-2407-v1:0", "providerName": "Mistral AI"},
-                {"modelId": "mistral.mistral-small-2402-v1:0", "providerName": "Mistral AI"},
-                {"modelId": "mistral.pixtral-large-2502-v1:0", "providerName": "Mistral AI"},
-
+                {
+                    "modelId": "mistral.mistral-large-2407-v1:0",
+                    "providerName": "Mistral AI",
+                },
+                {
+                    "modelId": "mistral.mistral-small-2402-v1:0",
+                    "providerName": "Mistral AI",
+                },
+                {
+                    "modelId": "mistral.pixtral-large-2502-v1:0",
+                    "providerName": "Mistral AI",
+                },
                 # AI21 Labs - only Jamba 1.5
                 {"modelId": "ai21.jamba-1.5-large-v1:0", "providerName": "AI21 Labs"},
-                {"modelId": "ai21.jamba-instruct-v1:0", "providerName": "AI21 Labs"},  # No tool calling
-
+                {
+                    "modelId": "ai21.jamba-instruct-v1:0",
+                    "providerName": "AI21 Labs",
+                },  # No tool calling
                 # Writer - Palmyra X4 and X5
                 {"modelId": "writer.palmyra-x5-v1:0", "providerName": "Writer"},
                 {"modelId": "writer.palmyra-x4-v1:0", "providerName": "Writer"},
@@ -514,12 +535,16 @@ class TestAWSBedrockProvider:
             model_id = model["model_id"]
             expected = expected_tool_calling[model_id]
             actual = model["supports_tool_use"]
-            assert actual == expected, f"Model {model_id}: expected {expected}, got {actual}"
+            assert (
+                actual == expected
+            ), f"Model {model_id}: expected {expected}, got {actual}"
 
         # Verify default filter only returns tool-calling models
         filtered_models = provider.list_models(tool_calling_only=True)
         for model in filtered_models:
-            assert model["supports_tool_use"] is True, f"Non-tool-calling model returned: {model['model_id']}"
+            assert (
+                model["supports_tool_use"] is True
+            ), f"Non-tool-calling model returned: {model['model_id']}"
 
         # Should filter out 3 models: Claude 2, Llama 3 70B, Jamba-instruct
         assert len(filtered_models) == len(all_models) - 3

@@ -171,7 +171,9 @@ def test_parameter_parsing_key_value_syntax(databricks_client_stub, temp_config)
         assert result.success
 
 
-def test_parameter_parsing_dash_to_underscore_conversion(databricks_client_stub, temp_config):
+def test_parameter_parsing_dash_to_underscore_conversion(
+    databricks_client_stub, temp_config
+):
     """Test parameter parsing converts dashes to underscores."""
     from unittest.mock import patch
 

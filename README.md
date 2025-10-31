@@ -97,14 +97,6 @@ To use AWS Bedrock as your LLM provider:
 
    Some models require explicit approval before use. Visit the [AWS Bedrock console](https://console.aws.amazon.com/bedrock/) and request access to your desired models.
 
-### Recommended Bedrock Models
-
-For Chuck's agentic workflows, we recommend models with strong tool-calling capabilities:
-
-- **Claude 3.5 Sonnet** (recommended): `anthropic.claude-3-5-sonnet-20240620-v1:0`
-- **Claude 4.5 Sonnet** (cross-region inference profile): `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
-- **Amazon Nova Pro**: `amazon.nova-pro-v1:0`
-
 Use `/list-models` within Chuck to see all available models in your AWS account.
 
 ### Provider Selection Priority

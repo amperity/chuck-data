@@ -101,7 +101,10 @@ def test_select_model_works_with_aws_bedrock_provider(temp_config):
 
     with patch("chuck_data.config._config_manager", temp_config):
         # Configure to use AWS Bedrock provider
-        with patch("chuck_data.commands.model_selection.get_llm_provider", return_value="aws_bedrock"):
+        with patch(
+            "chuck_data.commands.model_selection.get_llm_provider",
+            return_value="aws_bedrock",
+        ):
             # Mock the AWS Bedrock provider
             mock_provider = MagicMock()
             mock_provider.list_models.return_value = [
@@ -128,16 +131,21 @@ def test_select_model_works_with_aws_bedrock_provider(temp_config):
                 # Execute command with AWS Bedrock model ID
                 result = handle_command(
                     None,  # No Databricks client needed for AWS provider
-                    model_name="anthropic.claude-3-5-sonnet-20240620-v1:0"
+                    model_name="anthropic.claude-3-5-sonnet-20240620-v1:0",
                 )
 
                 # Verify successful selection
                 assert result.success
-                assert "Active model is now set to 'anthropic.claude-3-5-sonnet-20240620-v1:0'" in result.message
+                assert (
+                    "Active model is now set to 'anthropic.claude-3-5-sonnet-20240620-v1:0'"
+                    in result.message
+                )
                 assert get_active_model() == "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
                 # Verify list_models was called with tool_calling_only=False
-                mock_provider.list_models.assert_called_once_with(tool_calling_only=False)
+                mock_provider.list_models.assert_called_once_with(
+                    tool_calling_only=False
+                )
 
 
 def test_select_model_shows_available_models_on_error(temp_config):
@@ -145,7 +153,10 @@ def test_select_model_shows_available_models_on_error(temp_config):
     from unittest.mock import patch, MagicMock
 
     with patch("chuck_data.config._config_manager", temp_config):
-        with patch("chuck_data.commands.model_selection.get_llm_provider", return_value="aws_bedrock"):
+        with patch(
+            "chuck_data.commands.model_selection.get_llm_provider",
+            return_value="aws_bedrock",
+        ):
             mock_provider = MagicMock()
             mock_provider.list_models.return_value = [
                 {"model_id": "model-1"},
@@ -157,10 +168,7 @@ def test_select_model_shows_available_models_on_error(temp_config):
                 "chuck_data.commands.model_selection.LLMProviderFactory.create",
                 return_value=mock_provider,
             ):
-                result = handle_command(
-                    None,
-                    model_name="nonexistent-model"
-                )
+                result = handle_command(None, model_name="nonexistent-model")
 
                 # Verify error message includes available models
                 assert not result.success

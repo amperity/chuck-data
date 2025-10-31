@@ -35,6 +35,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         # Get list of available models from the configured provider
         if configured_provider == "databricks" and client:
             from chuck_data.llm.providers.databricks import DatabricksProvider
+
             provider = DatabricksProvider(client=client)
         else:
             # Use factory for non-Databricks providers
@@ -53,7 +54,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
                 available += f"... (and {len(model_ids) - 5} more)"
             return CommandResult(
                 False,
-                message=f"Model '{model_name}' not found. Available models: {available}"
+                message=f"Model '{model_name}' not found. Available models: {available}",
             )
 
         # Set the active model

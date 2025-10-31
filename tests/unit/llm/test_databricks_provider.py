@@ -107,7 +107,7 @@ class TestDatabricksProviderListModels:
                 "name": "test-model-no-entities",
                 "state": {"ready": "READY"},
                 "config": {"served_entities": []},  # Empty entities = no tool calling
-            }
+            },
         ]
 
         # Create provider and call list_models

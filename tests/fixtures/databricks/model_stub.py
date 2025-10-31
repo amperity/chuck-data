@@ -31,12 +31,8 @@ class ModelStubMixin:
         model = {
             "name": name,
             "state": {"ready": status},
-            "config": {
-                "served_entities": [
-                    {"entity_name": f"databricks-{name}"}
-                ]
-            },
-            **kwargs
+            "config": {"served_entities": [{"entity_name": f"databricks-{name}"}]},
+            **kwargs,
         }
         self.models.append(model)
         return model
