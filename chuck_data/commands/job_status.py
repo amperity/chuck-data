@@ -4,6 +4,7 @@ Command for checking status of Chuck jobs.
 
 import logging
 from typing import Optional, Any
+from prettytable import PrettyTable
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.amperity import AmperityAPIClient
 from chuck_data.commands.base import CommandResult
@@ -13,7 +14,11 @@ from chuck_data.config import (
     get_workspace_url,
     get_databricks_token,
 )
-from chuck_data.job_cache import get_last_job_id, find_run_id_for_job
+from chuck_data.job_cache import (
+    get_last_job_id,
+    find_run_id_for_job,
+    get_all_cached_jobs,
+)
 
 # Constant for unset Databricks run ID
 UNSET_DATABRICKS_RUN_ID = "UNSET_DATABRICKS_RUN_ID"
@@ -551,4 +556,157 @@ DEFINITION = CommandDefinition(
     visible_to_agent=True,
     usage_hint="Usage: /job-status [--job_id <job_id>] [--live] OR /job-status --run_id <run_id> OR /job-status (uses cached ID)",
     condensed_action="Checking job status",
+)
+
+
+# --- List Jobs Command ---
+
+
+def handle_list_jobs(client=None, **kwargs) -> CommandResult:
+    """List recent jobs from cache.
+
+    Args:
+        client: Optional API client (unused, for compatibility)
+        **kwargs: Optional arguments (unused)
+
+    Returns:
+        CommandResult with table of recent jobs
+    """
+    # Get all cached jobs
+    cached_jobs = get_all_cached_jobs()
+
+    if not cached_jobs:
+        return CommandResult(
+            True,
+            message="No recent jobs found. Launch a job first to see it here.",
+        )
+
+    # Try to fetch job details from Chuck for each cached job
+    client = AmperityAPIClient()
+    token = get_amperity_token()
+
+    if not token:
+        # Still show cached job IDs even without token
+        message = _format_jobs_table_minimal(cached_jobs)
+        return CommandResult(
+            True,
+            message=message
+            + "\n\nNote: Authenticate with Amperity to see full job details.",
+        )
+
+    # Fetch details for each job
+    jobs_with_details = []
+    for job_entry in cached_jobs:
+        job_id = job_entry.get("job_id")
+        if job_id:
+            try:
+                job_data = client.get_job_status(job_id, token)
+                if job_data:
+                    jobs_with_details.append(job_data)
+                else:
+                    # Job not found, include minimal info
+                    jobs_with_details.append({"job-id": job_id, "state": "UNKNOWN"})
+            except Exception:
+                # On error, include minimal info
+                jobs_with_details.append({"job-id": job_id, "state": "UNKNOWN"})
+
+    # Format and display the table
+    message = _format_jobs_table(jobs_with_details)
+
+    return CommandResult(
+        True,
+        message=message,
+        data={"jobs": jobs_with_details},
+    )
+
+
+def _format_jobs_table_minimal(cached_jobs: list) -> str:
+    """Format a minimal table with just job IDs."""
+    table = PrettyTable()
+    table.field_names = ["Job ID", "Status"]
+    table.align["Job ID"] = "l"
+    table.align["Status"] = "l"
+
+    for job_entry in cached_jobs:
+        job_id = job_entry.get("job_id", "N/A")
+        table.add_row([job_id, "N/A"])
+
+    return f"Recent Jobs:\n\n{table}"
+
+
+def _format_jobs_table(jobs: list) -> str:
+    """
+    Format jobs data into a table using PrettyTable.
+
+    Args:
+        jobs: List of job data dictionaries
+
+    Returns:
+        Formatted table string
+    """
+    if not jobs:
+        return "No jobs to display."
+
+    table = PrettyTable()
+    table.field_names = ["Job ID", "Status", "Records", "Credits"]
+    table.align["Job ID"] = "l"
+    table.align["Status"] = "l"
+    table.align["Records"] = "r"
+    table.align["Credits"] = "r"
+
+    # Calculate total credits
+    total_credits = 0
+
+    # Add rows
+    for job in jobs:
+        job_id = job.get("job-id", "N/A")
+        state = (job.get("state") or "UNKNOWN").upper()
+
+        # Status symbol and text
+        if state == "SUCCEEDED":
+            status = "✓ Success"
+        elif state == "FAILED":
+            status = "✗ Failed"
+        elif state == "RUNNING":
+            status = "◷ Running"
+        else:
+            status = f"◷ {state.title()}"
+
+        # Records (formatted with commas)
+        record_count = job.get("record-count")
+        if record_count is not None:
+            records = f"{record_count:,}"
+        else:
+            records = "-"
+
+        # Credits - show dash if not present
+        credits = job.get("credits")
+        if credits is not None:
+            credits_str = str(credits)
+            total_credits += credits
+        else:
+            credits_str = "-"
+
+        table.add_row([job_id, status, records, credits_str])
+
+    result = f"Recent Jobs:\n\n{table}"
+
+    # Always add total credits line
+    result += f"\n\nTotal credits used: {total_credits}"
+
+    return result
+
+
+LIST_JOBS_DEFINITION = CommandDefinition(
+    name="jobs",
+    description="List recent jobs from cache",
+    parameters={},
+    required_params=[],
+    handler=handle_list_jobs,
+    needs_api_client=False,
+    visible_to_user=True,
+    visible_to_agent=True,
+    tui_aliases=["/jobs"],
+    usage_hint="Usage: /jobs",
+    condensed_action="Listing recent jobs",
 )

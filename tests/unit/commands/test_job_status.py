@@ -9,6 +9,9 @@ from chuck_data.commands.job_status import (
     _query_by_run_id,
     _format_job_status_message,
     UNSET_DATABRICKS_RUN_ID,
+    handle_list_jobs,
+    _format_jobs_table,
+    _format_jobs_table_minimal,
 )
 
 
@@ -1154,3 +1157,291 @@ def test_handle_command_explicit_param_overrides_cache(
     mock_amperity_client.get_job_status.assert_called_once_with(
         "chk-explicit-888", "test-token"
     )
+
+
+# --- Tests for /jobs command (list recent jobs) ---
+
+
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_no_cached_jobs(mock_get_cached, mock_get_token):
+    """Test /jobs command with no cached jobs."""
+    mock_get_cached.return_value = []
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "No recent jobs found" in result.message
+    assert "Launch a job first" in result.message
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_no_token_shows_minimal(
+    mock_get_cached, mock_get_token, mock_client_class
+):
+    """Test /jobs command without authentication shows minimal info."""
+    mock_get_cached.return_value = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+    ]
+    mock_get_token.return_value = None
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "Authenticate with Amperity" in result.message
+    # Should not call API without token
+    mock_client_class.assert_called_once()
+    mock_client_class.return_value.get_job_status.assert_not_called()
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_with_details(mock_get_cached, mock_get_token, mock_client_class):
+    """Test /jobs command fetches and displays job details."""
+    mock_get_cached.return_value = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+        {"job_id": "chk-789"},
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client responses
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+
+    def get_status_side_effect(job_id, token):
+        if job_id == "chk-123":
+            return {
+                "job-id": "chk-123",
+                "state": "succeeded",
+                "record-count": 50000,
+                "credits": 100,
+            }
+        elif job_id == "chk-456":
+            return {
+                "job-id": "chk-456",
+                "state": "failed",
+                "record-count": 12000,
+                "credits": 25,
+            }
+        elif job_id == "chk-789":
+            return {
+                "job-id": "chk-789",
+                "state": "running",
+                "record-count": None,
+                "credits": None,
+            }
+
+    mock_client.get_job_status.side_effect = get_status_side_effect
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "chk-789" in result.message
+    assert "✓ Success" in result.message
+    assert "✗ Failed" in result.message
+    assert "◷ Running" in result.message
+    assert "50,000" in result.message  # Formatted record count
+    assert "Total credits used: 125" in result.message
+    assert result.data["jobs"] is not None
+    assert len(result.data["jobs"]) == 3
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_handles_api_errors(
+    mock_get_cached, mock_get_token, mock_client_class
+):
+    """Test /jobs command handles API errors gracefully."""
+    mock_get_cached.return_value = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to raise exception
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.side_effect = Exception("API error")
+
+    result = handle_list_jobs()
+
+    assert result.success
+    # Should still show job IDs even if API fails
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "Unknown" in result.message
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_handles_missing_jobs(
+    mock_get_cached, mock_get_token, mock_client_class
+):
+    """Test /jobs command handles jobs that no longer exist in backend."""
+    mock_get_cached.return_value = [{"job_id": "chk-999"}]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to return None (job not found)
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.return_value = None
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-999" in result.message
+    assert "Unknown" in result.message
+
+
+def test_format_jobs_table_empty():
+    """Test formatting empty jobs list."""
+    result = _format_jobs_table([])
+    assert result == "No jobs to display."
+
+
+def test_format_jobs_table_with_all_fields():
+    """Test formatting jobs table with all fields present."""
+    jobs = [
+        {
+            "job-id": "chk_20251014_abc123",
+            "state": "succeeded",
+            "record-count": 50000,
+            "credits": 100,
+        },
+        {
+            "job-id": "chk_20251013_def456",
+            "state": "failed",
+            "record-count": 12000,
+            "credits": 25,
+        },
+        {
+            "job-id": "chk_20251012_ghi789",
+            "state": "running",
+            "record-count": 45000,
+            "credits": 90,
+        },
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    # Check header
+    assert "Recent Jobs:" in result
+    assert "| Job ID" in result
+    assert "| Status" in result
+    assert "| Records" in result
+    assert "| Credits" in result
+
+    # Check data rows
+    assert "chk_20251014_abc123" in result
+    assert "✓ Success" in result
+    assert "50,000" in result
+    assert "100" in result
+
+    assert "chk_20251013_def456" in result
+    assert "✗ Failed" in result
+    assert "12,000" in result
+    assert "25" in result
+
+    assert "chk_20251012_ghi789" in result
+    assert "◷ Running" in result
+    assert "45,000" in result
+    assert "90" in result
+
+    # Check total
+    assert "Total credits used: 215" in result
+
+
+def test_format_jobs_table_with_missing_fields():
+    """Test formatting jobs table with missing optional fields."""
+    jobs = [
+        {"job-id": "chk-123", "state": "succeeded"},
+        {"job-id": "chk-456", "state": "failed", "record-count": 1000},
+        {"job-id": "chk-789", "state": None, "credits": 50},
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    # Check that missing fields show as "-"
+    assert "chk-123" in result
+    assert "-" in result  # For missing records and credits
+
+    # Check partial data
+    assert "chk-456" in result
+    assert "1,000" in result
+
+    # Check unknown state
+    assert "chk-789" in result
+    assert "◷ Unknown" in result
+    assert "50" in result
+
+    # Total should only include credits that exist
+    assert "Total credits used: 50" in result
+
+
+def test_format_jobs_table_zero_credits():
+    """Test that jobs with no credits show dash and total line shows 0."""
+    jobs = [
+        {"job-id": "chk-123", "state": "succeeded", "record-count": 1000},
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    assert "chk-123" in result
+    assert "1,000" in result
+    # Should show "-" for credits when not present
+    assert "-" in result
+    # Total line should always appear, showing 0 when no credits
+    assert "Total credits used: 0" in result
+
+
+def test_format_jobs_table_minimal():
+    """Test minimal table formatting without authentication."""
+    cached_jobs = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+        {"job_id": "chk-789"},
+    ]
+
+    result = _format_jobs_table_minimal(cached_jobs)
+
+    assert "Recent Jobs:" in result
+    assert "chk-123" in result
+    assert "chk-456" in result
+    assert "chk-789" in result
+    assert "N/A" in result  # Status should be N/A without auth
+
+
+def test_format_jobs_table_handles_unknown_state():
+    """Test formatting handles various unknown/missing state values."""
+    jobs = [
+        {"job-id": "chk-1", "state": "pending"},
+        {"job-id": "chk-2", "state": "submitted"},
+        {"job-id": "chk-3", "state": ""},
+        {"job-id": "chk-4"},  # No state field
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    # All should show with appropriate status symbols
+    assert "chk-1" in result
+    assert "◷ Pending" in result
+
+    assert "chk-2" in result
+    assert "◷ Submitted" in result
+
+    assert "chk-3" in result
+    assert "◷ Unknown" in result
+
+    assert "chk-4" in result
+    assert "◷ Unknown" in result

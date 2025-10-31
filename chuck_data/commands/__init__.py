@@ -33,7 +33,10 @@ from .run_sql import DEFINITION as run_sql_definition
 from .list_volumes import DEFINITION as list_volumes_definition
 from .create_volume import DEFINITION as create_volume_definition
 from .upload_file import DEFINITION as upload_file_definition
-from .job_status import DEFINITION as job_status_definition
+from .job_status import (
+    DEFINITION as job_status_definition,
+    LIST_JOBS_DEFINITION as list_jobs_definition,
+)
 from .list_tables import DEFINITION as list_tables_definition
 from .add_stitch_report import DEFINITION as add_stitch_report_definition
 
@@ -83,6 +86,7 @@ ALL_COMMAND_DEFINITIONS = [
     # Job commands
     *jobs_definition,
     job_status_definition,
+    list_jobs_definition,
     # Warehouse commands
     list_warehouses_definition,
     warehouse_definition,
