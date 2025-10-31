@@ -121,7 +121,7 @@ class AWSBedrockProvider:
             logger.error(f"Failed to create Bedrock clients: {e}")
             raise
 
-        # Default model - Amazon Nova Pro (AWS partner recommendation)
+        # Default model - Amazon Nova Pro
         # Nova Pro is AWS's most capable foundation model with strong performance
         self.default_model = model_id or "amazon.nova-pro-v1:0"
 
