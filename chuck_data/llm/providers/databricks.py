@@ -98,8 +98,12 @@ class DatabricksProvider:
 
         return response
 
-    def list_models(self) -> List[ModelInfo]:
+    def list_models(self, tool_calling_only: bool = True) -> List[ModelInfo]:
         """List available models from Databricks serving endpoints.
+
+        Args:
+            tool_calling_only: If True, only return models that support tool calling.
+                             Defaults to True since tool calling is required for agent workflows.
 
         Returns:
             List of ModelInfo dicts containing model metadata
@@ -144,6 +148,10 @@ class DatabricksProvider:
                 model_info["supports_tool_use"] = True
             else:
                 model_info["supports_tool_use"] = False
+
+            # Filter out non-tool-calling models if requested
+            if tool_calling_only and not model_info["supports_tool_use"]:
+                continue
 
             models.append(model_info)
 

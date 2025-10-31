@@ -487,10 +487,86 @@ class AWSBedrockProvider:
             usage=usage,
         )
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _supports_tool_calling(model_id: str, provider: str) -> bool:
+        """Determine if a model supports tool calling based on provider and model ID.
+
+        Based on AWS Bedrock Converse API documentation:
+        https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html
+
+        Args:
+            model_id: The model identifier
+            provider: The provider name (e.g., "Anthropic", "Meta", "Amazon")
+
+        Returns:
+            True if the model supports tool calling, False otherwise
+        """
+        model_lower = model_id.lower()
+
+        # Anthropic Claude - all Claude 3+ models support tool calling
+        # Includes: Claude 3, 3.5, 3.7, 4, 4.5 (all variants)
+        # Excludes: Claude 2.x
+        if provider == "Anthropic":
+            return (
+                "claude-3" in model_lower
+                or "claude-4" in model_lower
+                or "sonnet-4" in model_lower
+                or "haiku-4" in model_lower
+                or "opus-4" in model_lower
+            )
+
+        # Amazon Nova - all Nova models support tool calling
+        if provider == "Amazon":
+            return "nova" in model_lower
+
+        # AI21 Labs - only Jamba 1.5 models
+        if provider == "AI21 Labs":
+            return "jamba-1.5" in model_lower or "jamba1.5" in model_lower
+
+        # Cohere - Command R models
+        if provider == "Cohere":
+            return "command-r" in model_lower
+
+        # Meta Llama - only 3.1, 3.2, and 4.x
+        # Excludes: Earlier Llama 3 models (e.g., llama3-70b)
+        if provider == "Meta":
+            return any(
+                version in model_lower
+                for version in [
+                    "llama3-1",
+                    "llama3.1",
+                    "llama-3-1",
+                    "llama3-2",
+                    "llama3.2",
+                    "llama-3-2",
+                    "llama4",
+                    "llama-4",
+                ]
+            )
+
+        # Mistral AI - Large, Small, and Pixtral Large models
+        # Excludes: Instruct-only models
+        if provider == "Mistral AI":
+            return any(
+                model in model_lower for model in ["large", "small", "pixtral-large"]
+            )
+
+        # Writer - Palmyra X4 and X5
+        if provider == "Writer":
+            return "palmyra-x4" in model_lower or "palmyra-x5" in model_lower
+
+        return False
+
+    def list_models(
+        self, tool_calling_only: bool = True
+    ) -> List[Dict[str, Any]]:
         """List available Bedrock foundation models.
 
         Similar to Databricks list_models() but for Bedrock model catalog.
+
+        Args:
+            tool_calling_only: If True, only return models that support tool calling.
+                             Defaults to True since tool calling is required for agent workflows.
 
         Returns:
             List of model dicts with metadata:
@@ -514,16 +590,23 @@ class AWSBedrockProvider:
 
         models = []
         for model in response.get("modelSummaries", []):
-            # Check if model supports Converse API (required for tool use)
-            inference_types = model.get("inferenceTypesSupported", [])
-            supports_converse = "ON_DEMAND" in inference_types
+            model_id = model.get("modelId", "")
+            provider = model.get("providerName", "")
+
+            # Determine tool calling support based on provider and model ID
+            supports_tool_use = self._supports_tool_calling(model_id, provider)
+
+            # Skip if filtering for tool calling only
+            if tool_calling_only and not supports_tool_use:
+                continue
 
             models.append(
                 {
-                    "model_id": model.get("modelId"),
+                    "model_id": model_id,
                     "model_name": model.get("modelName"),
-                    "provider": model.get("providerName"),
-                    "supports_tool_use": supports_converse,
+                    "provider": provider,
+                    "supports_tool_use": supports_tool_use,
+                    "state": "READY",  # AWS Bedrock models are always ready if returned
                     "input_modalities": model.get("inputModalities", []),
                     "output_modalities": model.get("outputModalities", []),
                     "response_streaming_supported": model.get(
