@@ -15,6 +15,7 @@ from chuck_data.config import (
     set_databricks_token,
     set_active_model,
     set_usage_tracking_consent,
+    set_llm_provider,
 )
 from chuck_data.ui.tui import get_chuck_service
 
@@ -62,8 +63,8 @@ class AmperityAuthStep(SetupStep):
         if existing_token:
             return StepResult(
                 success=True,
-                message="Amperity token already exists. Proceeding to Databricks setup.",
-                next_step=WizardStep.WORKSPACE_URL,
+                message="Amperity token already exists. Proceeding to data provider selection.",
+                next_step=WizardStep.DATA_PROVIDER_SELECTION,
                 action=WizardAction.CONTINUE,
             )
 
@@ -87,8 +88,8 @@ class AmperityAuthStep(SetupStep):
             if auth_success:
                 return StepResult(
                     success=True,
-                    message="Amperity authentication complete. Proceeding to Databricks setup.",
-                    next_step=WizardStep.WORKSPACE_URL,
+                    message="Amperity authentication complete. Proceeding to data provider selection.",
+                    next_step=WizardStep.DATA_PROVIDER_SELECTION,
                     action=WizardAction.CONTINUE,
                 )
             else:
@@ -116,6 +117,223 @@ class AmperityAuthStep(SetupStep):
             return StepResult(
                 success=False,
                 message=f"Authentication error: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class DataProviderSelectionStep(SetupStep):
+    """Handle data provider selection."""
+
+    def get_step_title(self) -> str:
+        return "Data Provider Selection"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return "Please select your data provider:\n  1. Databricks (Unity Catalog)\nEnter the number or name of the provider:"
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle data provider selection input."""
+        # Normalize input
+        input_normalized = input_text.strip().lower()
+
+        # Map inputs to provider names
+        if input_normalized in ["1", "databricks"]:
+            provider = "databricks"
+            next_step = WizardStep.WORKSPACE_URL
+            message = "Databricks selected. Please enter your workspace URL."
+        else:
+            return StepResult(
+                success=False,
+                message="Invalid selection. Please enter 1 (Databricks).",
+                action=WizardAction.RETRY,
+            )
+
+        # Save provider to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(data_provider=provider)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save data provider selection. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=message,
+                next_step=next_step,
+                action=WizardAction.CONTINUE,
+                data={"data_provider": provider},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving data provider selection: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving data provider selection: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class LLMProviderSelectionStep(SetupStep):
+    """Handle LLM provider selection."""
+
+    def get_step_title(self) -> str:
+        return "LLM Provider Selection"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return "Please select your LLM provider:\n  1. Databricks (default)\n  2. AWS Bedrock\nEnter the number or name of the provider:"
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle LLM provider selection input."""
+        # Normalize input
+        input_normalized = input_text.strip().lower()
+
+        models = []
+
+        # Map inputs to provider names and fetch models
+        if input_normalized in ["1", "databricks"]:
+            provider = "databricks"
+            message = "Databricks selected for LLM. Fetching available models..."
+
+            # Fetch Databricks models
+            try:
+                from chuck_data.llm.providers.databricks import DatabricksProvider
+
+                service = get_chuck_service()
+                if not service or not service.client:
+                    return StepResult(
+                        success=False,
+                        message="Databricks connection not available. Please restart setup.",
+                        next_step=WizardStep.DATA_PROVIDER_SELECTION,
+                        action=WizardAction.CONTINUE,
+                    )
+
+                databricks_provider = DatabricksProvider(
+                    workspace_url=state.workspace_url,
+                    token=state.token,
+                    client=service.client,
+                )
+                models = databricks_provider.list_models()
+                logging.info(f"Found {len(models)} Databricks models")
+
+                if not models:
+                    return StepResult(
+                        success=False,
+                        message="No Databricks models found. Please check your workspace configuration.",
+                        action=WizardAction.RETRY,
+                    )
+
+                message = "Databricks selected for LLM. Proceeding to model selection."
+            except Exception as e:
+                logging.error(f"Error listing Databricks models: {e}", exc_info=True)
+                return StepResult(
+                    success=False,
+                    message=f"Error listing Databricks models: {str(e)}",
+                    action=WizardAction.RETRY,
+                )
+
+        elif input_normalized in ["2", "aws_bedrock", "aws", "bedrock"]:
+            provider = "aws_bedrock"
+            message = "AWS Bedrock selected for LLM. Fetching available models..."
+
+            # Fetch AWS Bedrock models
+            try:
+                from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+                import os
+
+                # Show AWS configuration being used
+                aws_profile = os.getenv("AWS_PROFILE", "not set")
+                aws_region = os.getenv(
+                    "AWS_REGION", "not set (defaulting to us-east-1)"
+                )
+                logging.info(f"AWS_PROFILE: {aws_profile}, AWS_REGION: {aws_region}")
+
+                bedrock_provider = AWSBedrockProvider()
+                models = bedrock_provider.list_models()
+                logging.info(f"Found {len(models)} Bedrock models")
+
+                if not models:
+                    error_msg = (
+                        "No Bedrock models found. Possible causes:\n"
+                        f"  1. AWS credentials not configured (AWS_PROFILE={aws_profile}, AWS_REGION={aws_region})\n"
+                        "  2. Need to request model access in AWS Bedrock console\n"
+                        "  3. Using wrong AWS region\n\n"
+                        "To fix:\n"
+                        "  - Configure AWS SSO: aws sso login --profile your-profile\n"
+                        "  - Set environment variables: export AWS_PROFILE=your-profile AWS_REGION=us-east-1\n"
+                        "  - Enable Bedrock models at: https://console.aws.amazon.com/bedrock"
+                    )
+                    return StepResult(
+                        success=False,
+                        message=error_msg,
+                        action=WizardAction.RETRY,
+                    )
+
+                message = "AWS Bedrock selected for LLM. Proceeding to model selection."
+            except Exception as e:
+                logging.error(f"Error listing Bedrock models: {e}", exc_info=True)
+
+                # Check for common AWS errors
+                error_msg = str(e)
+                if (
+                    "UnrecognizedClientException" in error_msg
+                    or "InvalidSignatureException" in error_msg
+                ):
+                    helpful_msg = (
+                        f"AWS credentials error: {error_msg}\n\n"
+                        "This usually means expired credentials. To fix:\n"
+                        "  1. Run: aws sso login --profile your-profile\n"
+                        "  2. Set: export AWS_PROFILE=your-profile AWS_REGION=us-east-1\n"
+                        "  3. Restart Chuck"
+                    )
+                elif "AccessDeniedException" in error_msg:
+                    helpful_msg = (
+                        f"AWS access denied: {error_msg}\n\n"
+                        "You need to request access to Bedrock models:\n"
+                        "  1. Go to: https://console.aws.amazon.com/bedrock\n"
+                        "  2. Navigate to 'Model access' in left sidebar\n"
+                        "  3. Request access for Claude, Llama, and Nova models"
+                    )
+                else:
+                    helpful_msg = f"Error listing Bedrock models: {error_msg}"
+
+                return StepResult(
+                    success=False,
+                    message=helpful_msg,
+                    action=WizardAction.RETRY,
+                )
+        else:
+            return StepResult(
+                success=False,
+                message="Invalid selection. Please enter 1 (Databricks) or 2 (AWS Bedrock).",
+                action=WizardAction.RETRY,
+            )
+
+        # Save provider to config
+        try:
+            success = set_llm_provider(provider)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save LLM provider selection. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=message,
+                next_step=WizardStep.MODEL_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"llm_provider": provider, "models": models},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving LLM provider selection: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving LLM provider selection: {str(e)}",
                 action=WizardAction.RETRY,
             )
 
@@ -207,64 +425,15 @@ class TokenInputStep(SetupStep):
                     logging.warning(
                         "Failed to reinitialize client, but credentials were saved"
                     )
-                    return StepResult(
-                        success=True,
-                        message="Credentials saved but client reinitialization failed.",
-                        next_step=WizardStep.USAGE_CONSENT,
-                        action=WizardAction.CONTINUE,
-                        data={"token": validation.processed_value, "models": []},
-                    )
 
-                # Try to list models using provider interface
-                try:
-                    from chuck_data.llm.providers.databricks import DatabricksProvider
-
-                    # Create provider with the validated credentials
-                    provider = DatabricksProvider(
-                        workspace_url=state.workspace_url,
-                        token=validation.processed_value,
-                        client=service.client,
-                    )
-                    models = provider.list_models()
-                    logging.debug(f"Found {len(models)} models")
-
-                    if models:
-                        return StepResult(
-                            success=True,
-                            message="Databricks configured. Select a model.",
-                            next_step=WizardStep.MODEL_SELECTION,
-                            action=WizardAction.CONTINUE,
-                            data={
-                                "token": validation.processed_value,
-                                "models": models,
-                            },
-                        )
-                    else:
-                        return StepResult(
-                            success=True,
-                            message="No models found. Proceeding to usage consent.",
-                            next_step=WizardStep.USAGE_CONSENT,
-                            action=WizardAction.CONTINUE,
-                            data={"token": validation.processed_value, "models": []},
-                        )
-
-                except Exception as e:
-                    logging.error(f"Error listing models: {e}")
-                    return StepResult(
-                        success=True,
-                        message="Error listing models. Proceeding to usage consent.",
-                        next_step=WizardStep.USAGE_CONSENT,
-                        action=WizardAction.CONTINUE,
-                        data={"token": validation.processed_value, "models": []},
-                    )
-            else:
-                return StepResult(
-                    success=True,
-                    message="Databricks configured. Proceeding to usage consent.",
-                    next_step=WizardStep.USAGE_CONSENT,
-                    action=WizardAction.CONTINUE,
-                    data={"token": validation.processed_value, "models": []},
-                )
+            # Data provider configuration complete, proceed to LLM provider selection
+            return StepResult(
+                success=True,
+                message="Databricks data provider configured. Select your LLM provider.",
+                next_step=WizardStep.LLM_PROVIDER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"token": validation.processed_value},
+            )
 
         except Exception as e:
             logging.error(f"Error saving Databricks configuration: {e}")
@@ -286,11 +455,69 @@ class ModelSelectionStep(SetupStep):
 
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle model selection input."""
+        # Fetch models if not already loaded based on LLM provider
+        if not state.models and state.llm_provider:
+            try:
+                if state.llm_provider == "databricks":
+                    from chuck_data.llm.providers.databricks import DatabricksProvider
+
+                    # Check if we have the required credentials
+                    if not state.workspace_url or not state.token:
+                        logging.error(
+                            f"Missing Databricks credentials - workspace_url: {state.workspace_url}, token: {'present' if state.token else 'missing'}"
+                        )
+                        return StepResult(
+                            success=False,
+                            message="Missing Databricks credentials. Please restart the wizard.",
+                            next_step=WizardStep.DATA_PROVIDER_SELECTION,
+                            action=WizardAction.CONTINUE,
+                        )
+
+                    service = get_chuck_service()
+                    if not service or not service.client:
+                        logging.error(
+                            f"Service not initialized - service: {service}, client: {service.client if service else 'N/A'}"
+                        )
+                        return StepResult(
+                            success=False,
+                            message="Data provider connection not available. Please restart the wizard.",
+                            next_step=WizardStep.DATA_PROVIDER_SELECTION,
+                            action=WizardAction.CONTINUE,
+                        )
+
+                    provider = DatabricksProvider(
+                        workspace_url=state.workspace_url,
+                        token=state.token,
+                        client=service.client,
+                    )
+                    state.models = provider.list_models()
+                    logging.info(f"Found {len(state.models)} Databricks models")
+
+                elif state.llm_provider == "aws_bedrock":
+                    from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+
+                    provider = AWSBedrockProvider()
+                    state.models = provider.list_models()
+                    logging.info(f"Found {len(state.models)} Bedrock models")
+
+            except Exception as e:
+                logging.error(
+                    f"Error fetching models from {state.llm_provider}: {e}",
+                    exc_info=True,
+                )
+                return StepResult(
+                    success=False,
+                    message=f"Error fetching models: {str(e)}. Please check your credentials.",
+                    next_step=WizardStep.LLM_PROVIDER_SELECTION,
+                    action=WizardAction.CONTINUE,
+                )
+
         if not state.models:
+            # No models available even after fetching
             return StepResult(
                 success=False,
-                message="No models available. Restarting wizard at workspace setup step.",
-                next_step=WizardStep.WORKSPACE_URL,
+                message="No models available. Please select a different LLM provider.",
+                next_step=WizardStep.LLM_PROVIDER_SELECTION,
                 action=WizardAction.CONTINUE,
             )
 
@@ -409,8 +636,10 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
     """Factory function to create step handlers."""
     step_map = {
         WizardStep.AMPERITY_AUTH: AmperityAuthStep,
+        WizardStep.DATA_PROVIDER_SELECTION: DataProviderSelectionStep,
         WizardStep.WORKSPACE_URL: WorkspaceUrlStep,
         WizardStep.TOKEN_INPUT: TokenInputStep,
+        WizardStep.LLM_PROVIDER_SELECTION: LLMProviderSelectionStep,
         WizardStep.MODEL_SELECTION: ModelSelectionStep,
         WizardStep.USAGE_CONSENT: UsageConsentStep,
     }

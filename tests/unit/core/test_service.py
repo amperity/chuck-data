@@ -153,3 +153,85 @@ def test_service_command_registry_integration(databricks_client_stub):
     assert isinstance(status_result, CommandResult)
     assert isinstance(help_result, CommandResult)
     # Both commands should return valid result objects
+
+
+def test_parameter_parsing_key_value_syntax(databricks_client_stub, temp_config):
+    """Test parameter parsing with key=value syntax."""
+    from unittest.mock import patch
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        databricks_client_stub.add_model("test-model")
+        service = ChuckService(client=databricks_client_stub)
+
+        # Test key=value syntax (show_all=true)
+        result = service.execute_command("/list-models", "show_all=true")
+
+        # Should parse correctly and execute
+        assert isinstance(result, CommandResult)
+        assert result.success
+
+
+def test_parameter_parsing_dash_to_underscore_conversion(
+    databricks_client_stub, temp_config
+):
+    """Test parameter parsing converts dashes to underscores."""
+    from unittest.mock import patch
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        databricks_client_stub.add_model("test-model")
+        service = ChuckService(client=databricks_client_stub)
+
+        # Test with dashes (show-all=true should map to show_all parameter)
+        result = service.execute_command("/list-models", "show-all=true")
+
+        # Should parse correctly with dash-to-underscore conversion
+        assert isinstance(result, CommandResult)
+        assert result.success
+
+
+def test_parameter_parsing_flag_style_with_dashes(databricks_client_stub, temp_config):
+    """Test parameter parsing with --flag-name value syntax."""
+    from unittest.mock import patch
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        databricks_client_stub.add_model("test-model")
+        service = ChuckService(client=databricks_client_stub)
+
+        # Test --flag-name value syntax
+        result = service.execute_command("/list-models", "--show-all", "true")
+
+        # Should parse correctly with dash-to-underscore conversion
+        assert isinstance(result, CommandResult)
+        assert result.success
+
+
+def test_parameter_parsing_flag_equals_syntax(databricks_client_stub, temp_config):
+    """Test parameter parsing with --flag=value syntax."""
+    from unittest.mock import patch
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        databricks_client_stub.add_model("test-model")
+        service = ChuckService(client=databricks_client_stub)
+
+        # Test --flag=value syntax (common shell syntax)
+        result = service.execute_command("/list-models", "--show_all=true")
+
+        # Should parse correctly
+        assert isinstance(result, CommandResult)
+        assert result.success
+
+
+def test_parameter_parsing_flag_equals_with_dashes(databricks_client_stub, temp_config):
+    """Test parameter parsing with --flag-name=value syntax."""
+    from unittest.mock import patch
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        databricks_client_stub.add_model("test-model")
+        service = ChuckService(client=databricks_client_stub)
+
+        # Test --flag-name=value syntax with dash-to-underscore conversion
+        result = service.execute_command("/list-models", "--show-all=true")
+
+        # Should parse correctly with dash-to-underscore conversion
+        assert isinstance(result, CommandResult)
+        assert result.success

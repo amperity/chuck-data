@@ -1,7 +1,7 @@
 import json
 import logging
 from copy import deepcopy
-from chuck_data.llm.client import LLMClient
+from chuck_data.llm.factory import LLMProviderFactory
 from .tool_executor import get_tool_schemas, execute_tool
 from chuck_data.config import (
     get_active_catalog,
@@ -21,7 +21,8 @@ from .prompts import (
 class AgentManager:
     def __init__(self, client, model=None, tool_output_callback=None, llm_client=None):
         self.api_client = client
-        self.llm_client = llm_client or LLMClient()
+        # Use factory to create provider (supports llm_client override for testing)
+        self.llm_client = llm_client or LLMProviderFactory.create()
         self.model = model
         self.tool_output_callback = tool_output_callback
         self.conversation_history = [
@@ -208,7 +209,23 @@ class AgentManager:
             # Check if the response contains tool calls
             if response_message.tool_calls:
                 # Add the assistant's response (requesting tool calls) to history
-                self.conversation_history.append(response_message)
+                # Convert ChatCompletionMessage to dict format for consistency
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": response_message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": getattr(tc, "type", "function"),
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in response_message.tool_calls
+                    ],
+                }
+                self.conversation_history.append(assistant_msg)
 
                 # Execute each tool call
                 for tool_call in response_message.tool_calls:

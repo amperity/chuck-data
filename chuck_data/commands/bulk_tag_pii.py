@@ -11,7 +11,7 @@ from chuck_data.interactive_context import InteractiveContext
 from chuck_data.commands.base import CommandResult
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.commands.pii_tools import _helper_scan_schema_for_pii_logic
-from chuck_data.llm.client import LLMClient
+from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.ui.tui import get_console
 from chuck_data.ui.theme import INFO_STYLE, ERROR_STYLE, SUCCESS_STYLE
 from chuck_data import config
@@ -157,8 +157,8 @@ def _execute_directly(client, **kwargs):
     )
 
     try:
-        # Create LLM client for PII scanning
-        llm_client = LLMClient()
+        # Create LLM provider for PII scanning using factory
+        llm_client = LLMProviderFactory.create()
 
         # Use actual scan-pii logic from pii_tools (show progress like scan-pii does)
         scan_summary_data = _helper_scan_schema_for_pii_logic(
@@ -501,8 +501,8 @@ def _start_interactive_mode(client, **kwargs):
 
     try:
         # Phase 1: Scan for PII (let _helper_scan_schema_for_pii_logic show individual table progress)
-        # Create LLM client for PII scanning
-        llm_client = LLMClient()
+        # Create LLM provider for PII scanning using factory
+        llm_client = LLMProviderFactory.create()
 
         # Use actual scan-pii logic from pii_tools (show progress like scan-pii does)
         scan_summary_data = _helper_scan_schema_for_pii_logic(
@@ -835,10 +835,8 @@ def _handle_modification_request(context, context_data, user_input, console):
         f"\n[{INFO_STYLE}]Modifying PII configuration based on your request...[/{INFO_STYLE}]"
     )
 
-    # Create LLM client for modification processing
-    from chuck_data.llm.client import LLMClient
-
-    llm_client = LLMClient()
+    # Create LLM provider for modification processing using factory
+    llm_client = LLMProviderFactory.create()
 
     # Use LLM helper to modify the scan summary
     modify_result = _helper_modify_pii_config(scan_summary, user_input, llm_client)

@@ -23,6 +23,89 @@ Join our community on [Discord](https://discord.gg/f3UZwyuQqe).
 - Authenticates with Databricks using personal access tokens
 - Authenticates with Amperity using API keys (/login and /logout commands)
 
+## LLM Provider Support
+
+Chuck supports multiple LLM providers, allowing you to choose the best option for your use case:
+
+### Supported Providers
+
+- **Databricks** (default) - Use LLMs from your Databricks account via Model Serving
+- **AWS Bedrock** - Use AWS Bedrock foundation models (Claude, Llama, Nova, etc.)
+- **OpenAI** - Direct OpenAI API integration (coming soon)
+- **Anthropic** - Direct Anthropic API integration (coming soon)
+
+### AWS Bedrock Setup
+
+To use AWS Bedrock as your LLM provider:
+
+1. **Install AWS dependencies:**
+   ```bash
+   pip install chuck-data[aws]
+   ```
+
+2. **Configure AWS credentials:**
+
+   **Option 1: AWS SSO (Recommended for enterprise)**
+   ```bash
+   # Login via SSO
+   aws sso login --profile your-profile
+
+   # Set profile for session
+   export AWS_PROFILE=your-profile
+   export AWS_REGION=us-east-1
+   ```
+
+   **Option 2: Environment variables**
+   ```bash
+   export AWS_REGION=us-east-1
+   export AWS_ACCESS_KEY_ID=your-access-key
+   export AWS_SECRET_ACCESS_KEY=your-secret-key
+   ```
+
+   **Option 3: AWS CLI configuration** (`~/.aws/credentials`)
+   ```ini
+   [default]
+   aws_access_key_id = your-access-key
+   aws_secret_access_key = your-secret-key
+   region = us-east-1
+   ```
+
+   **Option 4: IAM role** (for EC2/ECS/Lambda deployments)
+
+3. **Set LLM provider:**
+
+   Via environment variable:
+   ```bash
+   export CHUCK_LLM_PROVIDER=aws_bedrock
+   chuck
+   ```
+
+   Or via config file (`~/.chuck_config.json`):
+   ```json
+   {
+     "llm_provider": "aws_bedrock",
+     "active_model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+     "llm_provider_config": {
+       "aws_bedrock": {
+         "region": "us-east-1"
+       }
+     }
+   }
+   ```
+
+4. **Request model access in AWS Bedrock console:**
+
+   Some models require explicit approval before use. Visit the [AWS Bedrock console](https://console.aws.amazon.com/bedrock/) and request access to your desired models.
+
+Use `/list-models` within Chuck to see all available models in your AWS account.
+
+### Provider Selection Priority
+
+Chuck resolves the LLM provider in this order:
+1. `CHUCK_LLM_PROVIDER` environment variable (highest priority)
+2. `llm_provider` in config file
+3. Default: `databricks`
+
 ## Installation
 
 ### Homebrew (Recommended)

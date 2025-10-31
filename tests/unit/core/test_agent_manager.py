@@ -42,8 +42,9 @@ def agent_manager_setup(mock_api_client, llm_client_stub):
     """Set up AgentManager with mocked dependencies."""
     with (
         patch(
-            "chuck_data.agent.manager.LLMClient", return_value=llm_client_stub
-        ) as mock_llm_client,
+            "chuck_data.agent.manager.LLMProviderFactory.create",
+            return_value=llm_client_stub,
+        ) as mock_llm_factory,
         patch("chuck_data.agent.manager.get_tool_schemas") as mock_get_schemas,
         patch("chuck_data.agent.manager.execute_tool") as mock_execute_tool,
     ):
@@ -54,7 +55,7 @@ def agent_manager_setup(mock_api_client, llm_client_stub):
             "agent_manager": agent_manager,
             "mock_api_client": mock_api_client,
             "llm_client_stub": llm_client_stub,
-            "mock_llm_client": mock_llm_client,
+            "mock_llm_factory": mock_llm_factory,
             "mock_get_schemas": mock_get_schemas,
             "mock_execute_tool": mock_execute_tool,
         }
@@ -66,9 +67,9 @@ def test_agent_manager_initialization(agent_manager_setup):
     agent_manager = setup["agent_manager"]
     mock_api_client = setup["mock_api_client"]
     llm_client_stub = setup["llm_client_stub"]
-    mock_llm_client = setup["mock_llm_client"]
+    mock_llm_factory = setup["mock_llm_factory"]
 
-    mock_llm_client.assert_called_once()  # Check LLMClient was instantiated
+    mock_llm_factory.assert_called_once()  # Check factory was called
     assert agent_manager.api_client == mock_api_client
     assert agent_manager.model == "test-model"
     assert agent_manager.tool_output_callback is None  # Default to None
@@ -86,7 +87,10 @@ def test_agent_manager_initialization_with_callback(
     mock_api_client, mock_callback, llm_client_stub
 ):
     """Test that AgentManager initializes correctly with a callback."""
-    with patch("chuck_data.agent.manager.LLMClient", return_value=llm_client_stub):
+    with patch(
+        "chuck_data.agent.manager.LLMProviderFactory.create",
+        return_value=llm_client_stub,
+    ):
         agent_with_callback = AgentManager(
             mock_api_client,
             model="test-model",

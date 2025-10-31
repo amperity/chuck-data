@@ -89,7 +89,7 @@ class TestDatabricksProviderListModels:
     def test_list_models_no_served_entities(
         self, mock_get_workspace, mock_get_token, mock_client_class
     ):
-        """list_models() handles models without served_entities."""
+        """list_models() filters models without tool calling support by default."""
         # Setup mocks
         mock_get_workspace.return_value = "https://test.databricks.com"
         mock_get_token.return_value = "test-token"
@@ -99,19 +99,33 @@ class TestDatabricksProviderListModels:
 
         mock_client_instance.list_models.return_value = [
             {
+                "name": "test-model-with-entities",
+                "state": {"ready": "READY"},
+                "config": {"served_entities": [{"entity_name": "databricks-llama"}]},
+            },
+            {
                 "name": "test-model-no-entities",
                 "state": {"ready": "READY"},
-                "config": {"served_entities": []},  # Empty entities
-            }
+                "config": {"served_entities": []},  # Empty entities = no tool calling
+            },
         ]
 
         # Create provider and call list_models
         provider = DatabricksProvider()
+
+        # Default: only tool-calling models (tool_calling_only=True)
         models = provider.list_models()
 
-        # Verify model without served entities has tool_use = False
+        # Should only return model with served entities
         assert len(models) == 1
-        assert models[0]["supports_tool_use"] is False
+        assert models[0]["model_id"] == "test-model-with-entities"
+        assert models[0]["supports_tool_use"] is True
+
+        # With tool_calling_only=False: should return all models
+        all_models = provider.list_models(tool_calling_only=False)
+        assert len(all_models) == 2
+        assert all_models[0]["supports_tool_use"] is True
+        assert all_models[1]["supports_tool_use"] is False
 
     @patch("chuck_data.llm.providers.databricks.DatabricksAPIClient")
     @patch("chuck_data.llm.providers.databricks.get_databricks_token")

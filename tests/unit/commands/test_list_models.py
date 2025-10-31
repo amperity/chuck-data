@@ -89,7 +89,9 @@ def test_direct_command_handles_empty_model_list(databricks_client_stub, temp_co
         # Verify graceful handling of empty list
         assert result.success
         assert len(result.data["models"]) == 0
-        assert "No models found" in result.message
+        # Updated message includes provider-specific guidance
+        assert "No Databricks models found" in result.message
+        assert "Model Serving" in result.message
 
 
 def test_databricks_api_errors_handled_gracefully(databricks_client_stub, temp_config):
@@ -104,6 +106,70 @@ def test_databricks_api_errors_handled_gracefully(databricks_client_stub, temp_c
         # Verify graceful error handling
         assert not result.success
         assert str(result.error) == "API error"
+
+
+def test_direct_command_filters_tool_calling_models_by_default(
+    databricks_client_stub, temp_config
+):
+    """Direct command only shows tool-calling models by default."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        # The databricks_client_stub.add_model creates models with served_entities,
+        # which means they support tool calling. This test verifies the default behavior.
+        databricks_client_stub.add_model("claude-v1", created_timestamp=123456789)
+        databricks_client_stub.add_model("gpt-4", created_timestamp=987654321)
+
+        # Execute command (default: show only tool-calling models)
+        result = handle_command(databricks_client_stub)
+
+        # Verify only tool-calling models returned
+        assert result.success
+        assert len(result.data["models"]) == 2
+        # All models from stub have tool calling support
+        for model in result.data["models"]:
+            assert model["supports_tool_use"] is True
+
+
+def test_direct_command_show_all_includes_non_tool_calling_models(
+    databricks_client_stub, temp_config
+):
+    """Direct command with show_all=True includes all models."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        from chuck_data.llm.providers.databricks import DatabricksProvider
+        from unittest.mock import MagicMock
+
+        # Mock the provider to return mix of tool-calling and non-tool-calling models
+        mock_provider = MagicMock(spec=DatabricksProvider)
+        mock_provider.list_models.return_value = [
+            {
+                "model_id": "tool-model",
+                "model_name": "Tool Model",
+                "provider_name": "databricks",
+                "supports_tool_use": True,
+                "state": "READY",
+            },
+            {
+                "model_id": "non-tool-model",
+                "model_name": "Non-Tool Model",
+                "provider_name": "databricks",
+                "supports_tool_use": False,
+                "state": "READY",
+            },
+        ]
+
+        # Mock DatabricksProvider where it's imported in the command handler
+        with patch(
+            "chuck_data.llm.providers.databricks.DatabricksProvider",
+            return_value=mock_provider,
+        ):
+            # Execute with show_all=True
+            result = handle_command(databricks_client_stub, show_all=True)
+
+            # Verify all models returned (including non-tool-calling)
+            assert result.success
+            assert len(result.data["models"]) == 2
+
+            # Verify provider was called with tool_calling_only=False
+            mock_provider.list_models.assert_called_once_with(tool_calling_only=False)
 
 
 # Agent-specific behavioral tests

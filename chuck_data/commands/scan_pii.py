@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.llm.client import LLMClient
+from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.config import get_active_catalog, get_active_schema
 from .base import CommandResult
@@ -44,8 +44,8 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
                 message="Catalog and schema must be specified or active for bulk PII scan.",
             )
 
-        # Create a LLM client instance to pass to the helper
-        llm_client = LLMClient()
+        # Create a LLM provider instance using factory (respects provider config)
+        llm_client = LLMProviderFactory.create()
 
         scan_summary_data = _helper_scan_schema_for_pii_logic(
             client, llm_client, effective_catalog, effective_schema, show_progress

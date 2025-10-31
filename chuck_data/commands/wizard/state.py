@@ -11,8 +11,10 @@ class WizardStep(Enum):
     """Steps in the setup wizard."""
 
     AMPERITY_AUTH = "amperity_auth"
+    DATA_PROVIDER_SELECTION = "data_provider_selection"
     WORKSPACE_URL = "workspace_url"
     TOKEN_INPUT = "token_input"
+    LLM_PROVIDER_SELECTION = "llm_provider_selection"
     MODEL_SELECTION = "model_selection"
     USAGE_CONSENT = "usage_consent"
     COMPLETE = "complete"
@@ -32,8 +34,10 @@ class WizardState:
     """State of the setup wizard."""
 
     current_step: WizardStep = WizardStep.AMPERITY_AUTH
+    data_provider: Optional[str] = None
     workspace_url: Optional[str] = None
     token: Optional[str] = None
+    llm_provider: Optional[str] = None
     models: List[Dict[str, Any]] = field(default_factory=list)
     selected_model: Optional[str] = None
     usage_consent: Optional[bool] = None
@@ -43,12 +47,18 @@ class WizardState:
         """Check if current state is valid for the given step."""
         if step == WizardStep.AMPERITY_AUTH:
             return True
+        elif step == WizardStep.DATA_PROVIDER_SELECTION:
+            return True  # Can always enter data provider selection
         elif step == WizardStep.WORKSPACE_URL:
-            return True  # Can always enter workspace URL step
+            return self.data_provider == "databricks"
         elif step == WizardStep.TOKEN_INPUT:
             return self.workspace_url is not None
+        elif step == WizardStep.LLM_PROVIDER_SELECTION:
+            # Need data provider configured before choosing LLM provider
+            return self.data_provider is not None
         elif step == WizardStep.MODEL_SELECTION:
-            return self.workspace_url is not None and self.token is not None
+            # Need LLM provider selected
+            return self.llm_provider is not None
         elif step == WizardStep.USAGE_CONSENT:
             return True  # Can skip to usage consent if no models available
         elif step == WizardStep.COMPLETE:
@@ -73,18 +83,25 @@ class WizardStateMachine:
     def __init__(self):
         self.valid_transitions = {
             WizardStep.AMPERITY_AUTH: [
-                WizardStep.WORKSPACE_URL,
+                WizardStep.DATA_PROVIDER_SELECTION,
                 WizardStep.AMPERITY_AUTH,
+            ],
+            WizardStep.DATA_PROVIDER_SELECTION: [
+                WizardStep.WORKSPACE_URL,
+                WizardStep.DATA_PROVIDER_SELECTION,
             ],
             WizardStep.WORKSPACE_URL: [
                 WizardStep.TOKEN_INPUT,
                 WizardStep.WORKSPACE_URL,
             ],
             WizardStep.TOKEN_INPUT: [
-                WizardStep.MODEL_SELECTION,
-                WizardStep.USAGE_CONSENT,
+                WizardStep.LLM_PROVIDER_SELECTION,
                 WizardStep.TOKEN_INPUT,
                 WizardStep.WORKSPACE_URL,
+            ],
+            WizardStep.LLM_PROVIDER_SELECTION: [
+                WizardStep.MODEL_SELECTION,
+                WizardStep.LLM_PROVIDER_SELECTION,
             ],
             WizardStep.MODEL_SELECTION: [
                 WizardStep.USAGE_CONSENT,
@@ -137,14 +154,20 @@ class WizardStateMachine:
     def get_next_step(self, current_step: WizardStep, state: WizardState) -> WizardStep:
         """Determine the natural next step based on current step and state."""
         if current_step == WizardStep.AMPERITY_AUTH:
-            return WizardStep.WORKSPACE_URL
+            return WizardStep.DATA_PROVIDER_SELECTION
+        elif current_step == WizardStep.DATA_PROVIDER_SELECTION:
+            # For Databricks data provider, go to config
+            if state.data_provider == "databricks":
+                return WizardStep.WORKSPACE_URL
+            # For other providers, would go to their config (not implemented yet)
+            return WizardStep.LLM_PROVIDER_SELECTION
         elif current_step == WizardStep.WORKSPACE_URL:
             return WizardStep.TOKEN_INPUT
         elif current_step == WizardStep.TOKEN_INPUT:
-            # Skip to usage consent if no models available
-            return (
-                WizardStep.MODEL_SELECTION if state.models else WizardStep.USAGE_CONSENT
-            )
+            # After data provider config, go to LLM provider selection
+            return WizardStep.LLM_PROVIDER_SELECTION
+        elif current_step == WizardStep.LLM_PROVIDER_SELECTION:
+            return WizardStep.MODEL_SELECTION
         elif current_step == WizardStep.MODEL_SELECTION:
             return WizardStep.USAGE_CONSENT
         elif current_step == WizardStep.USAGE_CONSENT:
