@@ -146,13 +146,60 @@ class ChuckService:
         # 2. Parse arguments - support both positional and flag-style arguments
         remaining_args = list(raw_args)
 
-        # First, parse flag-style arguments (--flag value)
+        # First, parse key=value style arguments (show_all=true, show-all=true)
+        i = 0
+        while i < len(remaining_args):
+            arg = remaining_args[i]
+            if "=" in arg and not arg.startswith("--"):
+                # key=value style argument
+                key, value = arg.split("=", 1)
+                # Convert dashes to underscores for better UX (show-all -> show_all)
+                key = key.replace("-", "_")
+                if key in param_definitions:
+                    parsed_kwargs[key] = value
+                    remaining_args.pop(i)
+                    continue
+                else:
+                    usage = (
+                        command_def.usage_hint
+                        or f"Correct usage for '{command_def.name}' not available."
+                    )
+                    return None, CommandResult(
+                        False,
+                        message=f"Unknown parameter '{key}' for command '{command_def.name}'. {usage}",
+                    )
+            i += 1
+
+        # Then, parse flag-style arguments (--flag value or --flag=value)
         i = 0
         while i < len(remaining_args):
             arg = remaining_args[i]
             if arg.startswith("--"):
-                # Flag-style argument
+                # Check if it's --flag=value syntax
+                if "=" in arg:
+                    # --flag=value syntax
+                    flag_part, value = arg.split("=", 1)
+                    flag_name = flag_part[2:]  # Remove '--' prefix
+                    # Convert dashes to underscores for better UX (--show-all -> show_all)
+                    flag_name = flag_name.replace("-", "_")
+                    if flag_name in param_definitions:
+                        parsed_kwargs[flag_name] = value
+                        remaining_args.pop(i)
+                        continue
+                    else:
+                        usage = (
+                            command_def.usage_hint
+                            or f"Correct usage for '{command_def.name}' not available."
+                        )
+                        return None, CommandResult(
+                            False,
+                            message=f"Unknown flag '--{flag_name}' for command '{command_def.name}'. {usage}",
+                        )
+
+                # Flag-style argument (--flag value)
                 flag_name = arg[2:]  # Remove '--' prefix
+                # Convert dashes to underscores for better UX (--show-all -> show_all)
+                flag_name = flag_name.replace("-", "_")
                 if flag_name in param_definitions:
                     # Check if we have a value for this flag
                     if i + 1 < len(remaining_args) and not remaining_args[
