@@ -21,8 +21,23 @@ class ModelStubMixin:
         return model
 
     def add_model(self, name, status="READY", **kwargs):
-        """Add a model to the test data."""
-        model = {"name": name, "status": status, **kwargs}
+        """Add a model to the test data.
+
+        Creates a model with the structure expected by DatabricksProvider:
+        - state.ready for model status
+        - config.served_entities for tool calling support
+        """
+        # Default structure that DatabricksProvider expects
+        model = {
+            "name": name,
+            "state": {"ready": status},
+            "config": {
+                "served_entities": [
+                    {"entity_name": f"databricks-{name}"}
+                ]
+            },
+            **kwargs
+        }
         self.models.append(model)
         return model
 

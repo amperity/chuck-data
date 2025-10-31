@@ -363,11 +363,11 @@ class TestAWSBedrockProvider:
 
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_list_models_returns_model_catalog(self, mock_boto3):
-        """list_models() returns Bedrock model catalog."""
+        """list_models() returns Bedrock model catalog with correct tool calling detection."""
         mock_bedrock = MagicMock()
         mock_boto3.client.return_value = mock_bedrock
 
-        # Mock list_foundation_models response
+        # Mock list_foundation_models response with mix of tool-calling and non-tool-calling models
         mock_bedrock.list_foundation_models.return_value = {
             "modelSummaries": [
                 {
@@ -388,23 +388,141 @@ class TestAWSBedrockProvider:
                     "outputModalities": ["TEXT"],
                     "responseStreamingSupported": False,
                 },
+                {
+                    "modelId": "anthropic.claude-v2",
+                    "modelName": "Claude 2",
+                    "providerName": "Anthropic",
+                    "inferenceTypesSupported": ["ON_DEMAND"],
+                    "inputModalities": ["TEXT"],
+                    "outputModalities": ["TEXT"],
+                    "responseStreamingSupported": True,
+                },
             ]
         }
 
         provider = AWSBedrockProvider()
+
+        # Test default behavior: only tool-calling models (tool_calling_only=True by default)
         models = provider.list_models()
 
-        assert len(models) == 2
-
-        # Verify first model
+        # Should only return Claude 3.5 (tool-calling), not Llama 3 70B (not 3.1+) or Claude 2
+        assert len(models) == 1
         assert models[0]["model_id"] == "anthropic.claude-3-5-sonnet-20241022-v2:0"
         assert models[0]["model_name"] == "Claude 3.5 Sonnet"
         assert models[0]["provider"] == "Anthropic"
-        assert models[0]["supports_tool_use"] is True  # ON_DEMAND inference
+        assert models[0]["supports_tool_use"] is True
 
-        # Verify second model
-        assert models[1]["model_id"] == "meta.llama3-70b-instruct-v1:0"
-        assert models[1]["provider"] == "Meta"
+        # Test with show_all: all models (tool_calling_only=False)
+        all_models = provider.list_models(tool_calling_only=False)
+
+        assert len(all_models) == 3
+
+        # Verify first model (Claude 3.5 - supports tool calling)
+        assert all_models[0]["model_id"] == "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        assert all_models[0]["supports_tool_use"] is True
+
+        # Verify second model (Llama 3 70B - does NOT support tool calling, not 3.1+)
+        assert all_models[1]["model_id"] == "meta.llama3-70b-instruct-v1:0"
+        assert all_models[1]["provider"] == "Meta"
+        assert all_models[1]["supports_tool_use"] is False
+
+        # Verify third model (Claude 2 - does NOT support tool calling)
+        assert all_models[2]["model_id"] == "anthropic.claude-v2"
+        assert all_models[2]["supports_tool_use"] is False
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_tool_calling_detection_across_providers(self, mock_boto3):
+        """_supports_tool_calling() correctly identifies tool calling support across all providers."""
+        mock_bedrock = MagicMock()
+        mock_boto3.client.return_value = mock_bedrock
+
+        # Mock comprehensive list of models from different providers
+        mock_bedrock.list_foundation_models.return_value = {
+            "modelSummaries": [
+                # Anthropic - Claude 3+ supports, Claude 2 doesn't
+                {"modelId": "anthropic.claude-3-5-sonnet-v2:0", "providerName": "Anthropic"},
+                {"modelId": "anthropic.claude-3-haiku-v1:0", "providerName": "Anthropic"},
+                {"modelId": "anthropic.claude-v2", "providerName": "Anthropic"},
+                {"modelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "providerName": "Anthropic"},
+
+                # Amazon Nova - all support
+                {"modelId": "amazon.nova-pro-v1:0", "providerName": "Amazon"},
+                {"modelId": "amazon.nova-lite-v1:0", "providerName": "Amazon"},
+
+                # Meta Llama - only 3.1, 3.2, 4.x support
+                {"modelId": "meta.llama3-1-70b-instruct-v1:0", "providerName": "Meta"},
+                {"modelId": "meta.llama3.1-8b-instruct-v1:0", "providerName": "Meta"},
+                {"modelId": "meta.llama3-2-11b-instruct-v1:0", "providerName": "Meta"},
+                {"modelId": "us.meta.llama4-scout-17b-instruct-v1:0", "providerName": "Meta"},
+                {"modelId": "meta.llama3-70b-instruct-v1:0", "providerName": "Meta"},  # No tool calling
+
+                # Cohere - Command R models support
+                {"modelId": "cohere.command-r-plus-v1:0", "providerName": "Cohere"},
+                {"modelId": "cohere.command-r-v1:0", "providerName": "Cohere"},
+
+                # Mistral - Large, Small, Pixtral Large support
+                {"modelId": "mistral.mistral-large-2407-v1:0", "providerName": "Mistral AI"},
+                {"modelId": "mistral.mistral-small-2402-v1:0", "providerName": "Mistral AI"},
+                {"modelId": "mistral.pixtral-large-2502-v1:0", "providerName": "Mistral AI"},
+
+                # AI21 Labs - only Jamba 1.5
+                {"modelId": "ai21.jamba-1.5-large-v1:0", "providerName": "AI21 Labs"},
+                {"modelId": "ai21.jamba-instruct-v1:0", "providerName": "AI21 Labs"},  # No tool calling
+
+                # Writer - Palmyra X4 and X5
+                {"modelId": "writer.palmyra-x5-v1:0", "providerName": "Writer"},
+                {"modelId": "writer.palmyra-x4-v1:0", "providerName": "Writer"},
+            ]
+        }
+
+        provider = AWSBedrockProvider()
+        all_models = provider.list_models(tool_calling_only=False)
+
+        # Expected tool calling support
+        expected_tool_calling = {
+            # Anthropic
+            "anthropic.claude-3-5-sonnet-v2:0": True,
+            "anthropic.claude-3-haiku-v1:0": True,
+            "anthropic.claude-v2": False,
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0": True,
+            # Amazon
+            "amazon.nova-pro-v1:0": True,
+            "amazon.nova-lite-v1:0": True,
+            # Meta
+            "meta.llama3-1-70b-instruct-v1:0": True,
+            "meta.llama3.1-8b-instruct-v1:0": True,
+            "meta.llama3-2-11b-instruct-v1:0": True,
+            "us.meta.llama4-scout-17b-instruct-v1:0": True,
+            "meta.llama3-70b-instruct-v1:0": False,
+            # Cohere
+            "cohere.command-r-plus-v1:0": True,
+            "cohere.command-r-v1:0": True,
+            # Mistral
+            "mistral.mistral-large-2407-v1:0": True,
+            "mistral.mistral-small-2402-v1:0": True,
+            "mistral.pixtral-large-2502-v1:0": True,
+            # AI21 Labs
+            "ai21.jamba-1.5-large-v1:0": True,
+            "ai21.jamba-instruct-v1:0": False,
+            # Writer
+            "writer.palmyra-x5-v1:0": True,
+            "writer.palmyra-x4-v1:0": True,
+        }
+
+        # Verify each model's tool calling support
+        for model in all_models:
+            model_id = model["model_id"]
+            expected = expected_tool_calling[model_id]
+            actual = model["supports_tool_use"]
+            assert actual == expected, f"Model {model_id}: expected {expected}, got {actual}"
+
+        # Verify default filter only returns tool-calling models
+        filtered_models = provider.list_models(tool_calling_only=True)
+        for model in filtered_models:
+            assert model["supports_tool_use"] is True, f"Non-tool-calling model returned: {model['model_id']}"
+
+        # Should filter out 3 models: Claude 2, Llama 3 70B, Jamba-instruct
+        assert len(filtered_models) == len(all_models) - 3
 
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_list_models_handles_api_error(self, mock_boto3):
