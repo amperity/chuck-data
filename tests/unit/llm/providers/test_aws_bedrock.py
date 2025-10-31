@@ -41,7 +41,7 @@ class TestAWSBedrockProvider:
         provider = AWSBedrockProvider()
 
         assert provider.region == "us-east-1"  # Default region
-        assert provider.default_model == "anthropic.claude-3-5-sonnet-20240620-v1:0"
+        assert provider.default_model == "amazon.nova-pro-v1:0"
 
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_provider_initialization_failure_raises_error(self, mock_boto3):

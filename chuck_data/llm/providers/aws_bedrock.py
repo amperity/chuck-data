@@ -45,22 +45,23 @@ class AWSBedrockProvider:
     Supports two types of model invocation:
 
     1. Direct Model IDs (on-demand, single region):
-        Claude:
-            - anthropic.claude-3-5-sonnet-20240620-v1:0 (recommended)
-            - anthropic.claude-3-haiku-20240307-v1:0
-        Llama:
-            - meta.llama3-1-70b-instruct-v1:0
-        Nova:
-            - amazon.nova-pro-v1:0
+        Nova (recommended):
+            - amazon.nova-pro-v1:0 (default, most capable)
             - amazon.nova-lite-v1:0
             - amazon.nova-micro-v1:0
+        Claude:
+            - us.anthropic.claude-sonnet-4-5-20250929-v1:0 (Sonnet 4.5, recommended)
+            - anthropic.claude-3-5-sonnet-20240620-v1:0 (Sonnet 3.5)
+            - anthropic.claude-3-haiku-20240307-v1:0 (Haiku 3)
+        Llama:
+            - meta.llama3-1-70b-instruct-v1:0
 
     2. Inference Profiles (cross-region, higher throughput):
         Claude:
-            - us.anthropic.claude-sonnet-4-5-20250929-v1:0 (Sonnet 4.5, US regions)
+            - us.anthropic.claude-sonnet-4-5-20250929-v1:0 (Sonnet 4.5, recommended, US regions)
             - us.anthropic.claude-sonnet-4-20250514-v1:0 (Sonnet 4, US regions)
             - eu.anthropic.claude-sonnet-4-5-20250929-v1:0 (Sonnet 4.5, EU regions)
-            - global.anthropic.claude-sonnet-4-5-20250929-v1:0 (global routing)
+            - global.anthropic.claude-sonnet-4-5-20250929-v1:0 (Sonnet 4.5, global routing)
         Llama:
             - us.meta.llama4-scout-17b-instruct-v1:0
             - us.meta.llama4-maverick-17b-instruct-v1:0
@@ -83,7 +84,7 @@ class AWSBedrockProvider:
         Args:
             region: AWS region (defaults to us-east-1 or AWS_REGION env var)
             model_id: Default model ID - can be direct model ID or inference profile
-                     (defaults to Claude 3.5 Sonnet with on-demand)
+                     (defaults to Amazon Nova Pro)
 
         Note:
             AWS credentials are resolved using boto3's standard credential chain:
@@ -98,7 +99,7 @@ class AWSBedrockProvider:
                 export AWS_REGION=us-east-1
 
             Model ID can be:
-            - Direct: anthropic.claude-3-5-sonnet-20240620-v1:0
+            - Direct: amazon.nova-pro-v1:0 (default)
             - Profile: us.anthropic.claude-sonnet-4-5-20250929-v1:0
         """
         if boto3 is None:
@@ -120,8 +121,9 @@ class AWSBedrockProvider:
             logger.error(f"Failed to create Bedrock clients: {e}")
             raise
 
-        # Default model (using on-demand version that works in all regions)
-        self.default_model = model_id or "anthropic.claude-3-5-sonnet-20240620-v1:0"
+        # Default model - Amazon Nova Pro (AWS partner recommendation)
+        # Nova Pro is AWS's most capable foundation model with strong performance
+        self.default_model = model_id or "amazon.nova-pro-v1:0"
 
         logger.info(
             f"Initialized AWS Bedrock provider in {self.region} with model {self.default_model}"
@@ -141,7 +143,7 @@ class AWSBedrockProvider:
             messages: List of message dicts with 'role' and 'content' (OpenAI format)
             model: Model ID or inference profile (uses default if not provided)
                    Examples:
-                   - Direct: "anthropic.claude-3-5-sonnet-20240620-v1:0"
+                   - Direct: "amazon.nova-pro-v1:0" (default)
                    - Profile: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
             tools: Optional tool definitions (OpenAI format)
             stream: Whether to stream response (not implemented yet)
