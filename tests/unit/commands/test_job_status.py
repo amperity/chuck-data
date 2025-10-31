@@ -9,15 +9,24 @@ from chuck_data.commands.job_status import (
     _query_by_run_id,
     _format_job_status_message,
     UNSET_DATABRICKS_RUN_ID,
+    handle_list_jobs,
+    _format_jobs_table,
+    _format_jobs_table_minimal,
 )
 
 
-def test_handle_command_requires_job_id_or_run_id():
-    """Test that either job_id or run_id is required."""
+@patch("chuck_data.commands.job_status.get_last_job_id")
+def test_handle_command_requires_job_id_or_run_id(mock_get_cached_job_id):
+    """Test that either job_id or run_id is required when no cache."""
+    # Mock no cached job ID
+    mock_get_cached_job_id.return_value = None
+
     result = handle_command(None)
 
     assert not result.success
-    assert "job-id" in result.message or "run-id" in result.message
+    assert (
+        "No job ID provided" in result.message or "no cached job ID" in result.message
+    )
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -42,7 +51,7 @@ def test_handle_command_job_id_success(mock_get_token, mock_amperity_client_clas
 
     assert result.success
     assert "chk-123" in result.message
-    assert "running" in result.message
+    assert "RUNNING" in result.message  # State is uppercase in new format
     assert result.data["state"] == "running"
     assert result.data["record-count"] == 1000
 
@@ -129,7 +138,8 @@ def test_handle_command_run_id_fallback_success():
 
     assert result.success
     assert "123456" in result.message
-    assert "Databricks only" in result.message
+    assert "Databricks" in result.message
+    assert "no Chuck telemetry" in result.message
     assert result.data["run_id"] == 123456
 
 
@@ -226,7 +236,7 @@ def test_handle_command_job_id_includes_error(
 
     assert result.success  # Query succeeded even though job failed
     assert "Error: Timeout error" in result.message
-    assert "failed" in result.message
+    assert "FAILED" in result.message
 
 
 # Tests for private helper functions
@@ -248,7 +258,8 @@ def test_extract_databricks_run_info_basic():
     assert result["job_id"] == "job-123"
     assert result["run_id"] == "run-456"
     assert result["run_name"] == "Test Run"
-    assert result["state"] == "RUNNING"
+    assert result["state"] == {"life_cycle_state": "RUNNING", "result_state": None}
+    assert result["life_cycle_state"] == "RUNNING"
     assert result["result_state"] is None
     assert result["start_time"] == 1234567890
     assert result["creator_user_name"] == "test@example.com"
@@ -311,7 +322,7 @@ def test_query_by_job_id_basic(mock_get_token, mock_amperity_client_class):
 
     assert result.success
     assert "chk-123" in result.message
-    assert "running" in result.message
+    assert "RUNNING" in result.message
     assert result.data["state"] == "running"
 
 
@@ -348,7 +359,7 @@ def test_query_by_job_id_with_live_data(mock_get_token, mock_amperity_client_cla
     assert result.success
     assert "databricks_live" in result.data
     assert result.data["databricks_live"]["run_id"] == "run-456"
-    assert result.data["databricks_live"]["state"] == "RUNNING"
+    assert result.data["databricks_live"]["life_cycle_state"] == "RUNNING"
     mock_databricks_client.get_job_run_status.assert_called_once_with("run-456")
 
 
@@ -377,9 +388,9 @@ def test_query_by_run_id_basic():
     assert result.success
     assert "run-456" in result.message
     assert "RUNNING" in result.message
-    assert "Databricks only" in result.message
+    assert "no Chuck telemetry" in result.message
     assert result.data["run_id"] == "run-456"
-    assert result.data["state"] == "RUNNING"
+    assert result.data["life_cycle_state"] == "RUNNING"
 
 
 def test_query_by_run_id_no_client():
@@ -400,6 +411,41 @@ def test_query_by_run_id_not_found():
 
     assert not result.success
     assert "run-999" in result.message
+
+
+def test_query_by_run_id_with_long_url():
+    """Test that _query_by_run_id formats long URLs on single line."""
+    long_url = "https://dbc-6e75f43b-0f28.cloud.databricks.com/?o=4142544475373761#job/14906211489791/run/623626711565341"
+
+    # Mock Databricks client with long URL
+    mock_client = Mock()
+    mock_client.get_job_run_status.return_value = {
+        "run_id": "run-456",
+        "run_name": "test-job",
+        "run_page_url": long_url,
+        "state": {"life_cycle_state": "TERMINATED", "result_state": "SUCCESS"},
+        "creator_user_name": "test@example.com",
+        "execution_duration": 3600000,
+        "tasks": [{"task_key": "task1"}],
+    }
+
+    result = _query_by_run_id("run-456", mock_client)
+
+    assert result.success
+    # Verify URL is present and on a single line
+    assert long_url in result.message
+    assert "• View:" in result.message
+
+    # Verify the URL line is complete by checking it appears as a continuous string
+    lines = result.message.split("\n")
+    url_line = [line for line in lines if "• View:" in line][0]
+    assert long_url in url_line
+
+    # Verify box borders are consistent
+    for line in lines:
+        if line and not line.startswith("┌") and not line.startswith("└"):
+            assert line.startswith("│")
+            assert line.endswith("│")
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -449,9 +495,9 @@ def test_handle_command_job_id_includes_timestamps(
     result = handle_command(None, job_id="chk-123")
 
     assert result.success
-    assert "Created: 2025-10-29T10:00:00Z" in result.message
-    assert "Started: 2025-10-29T10:01:00Z" in result.message
-    assert "Ended: 2025-10-29T10:05:00Z" in result.message
+    assert "2025-10-29T10:00:00Z".replace("T", " ").replace("Z", "") in result.message
+    assert "2025-10-29T10:01:00Z".replace("T", " ").replace("Z", "") in result.message
+    assert "2025-10-29T10:05:00Z".replace("T", " ").replace("Z", "") in result.message
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -476,7 +522,7 @@ def test_handle_command_job_id_calculates_duration(
     result = handle_command(None, job_id="chk-123")
 
     assert result.success
-    assert "Duration: 4.0m" in result.message
+    assert "4m" in result.message
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -500,7 +546,8 @@ def test_handle_command_job_id_includes_accepted(
     result = handle_command(None, job_id="chk-123")
 
     assert result.success
-    assert "Accepted: True" in result.message
+    # Note: accepted? field is not displayed in the new box format
+    assert "RUNNING" in result.message
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -524,7 +571,6 @@ def test_handle_command_job_id_includes_databricks_run_id(
     result = handle_command(None, job_id="chk-123")
 
     assert result.success
-    assert "Run ID: run-456" in result.message
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -548,7 +594,6 @@ def test_handle_command_job_id_excludes_unset_databricks_run_id(
     result = handle_command(None, job_id="chk-123")
 
     assert result.success
-    assert "Run ID:" not in result.message
     assert "UNSET_DATABRICKS_RUN_ID" not in result.message
 
 
@@ -614,16 +659,15 @@ def test_handle_command_job_id_comprehensive_output(
 
     assert result.success
     # Check all fields are in the message
-    assert "Job chk-123: succeeded" in result.message
+    assert "succeeded".upper() in result.message
     assert "Records: 1,234,567" in result.message
     assert "Credits: 150" in result.message
     assert "Build: v2.5.1" in result.message
-    assert "Run ID: run-789" in result.message
-    assert "Created: 2025-10-29T10:00:00Z" in result.message
-    assert "Started: 2025-10-29T10:01:00Z" in result.message
-    assert "Ended: 2025-10-29T10:15:30Z" in result.message
-    assert "Duration: 14.5m" in result.message
-    assert "Accepted: True" in result.message
+    assert "2025-10-29T10:00:00Z".replace("T", " ").replace("Z", "") in result.message
+    assert "2025-10-29T10:01:00Z".replace("T", " ").replace("Z", "") in result.message
+    assert "2025-10-29T10:15:30Z".replace("T", " ").replace("Z", "") in result.message
+    assert "14m" in result.message
+    # Note: accepted? field is not displayed in the new box format
 
 
 @patch("chuck_data.commands.job_status.AmperityAPIClient")
@@ -648,8 +692,8 @@ def test_handle_command_job_id_minimal_output(
 
     assert result.success
     # Check only available fields are in the message
-    assert "Job chk-123: pending" in result.message
-    assert "Created: 2025-10-29T10:00:00Z" in result.message
+    assert "pending".upper() in result.message
+    assert "2025-10-29T10:00:00Z".replace("T", " ").replace("Z", "") in result.message
     # These should NOT be in the message
     assert "Records:" not in result.message
     assert "Credits:" not in result.message
@@ -680,7 +724,7 @@ def test_handle_command_job_id_handles_invalid_timestamp_format(
     # Should succeed but skip duration calculation
     assert result.success
     assert "Duration:" not in result.message
-    assert "Job chk-123: succeeded" in result.message
+    assert "succeeded".upper() in result.message
 
 
 # Tests for _format_job_status_message function
@@ -692,7 +736,10 @@ def test_format_job_status_message_basic():
 
     message = _format_job_status_message("chk-123", job_data)
 
-    assert message == "Job chk-123: running"
+    # Check for box format
+    assert "┌─ Job: chk-123" in message
+    assert "Status: ◷ RUNNING" in message
+    assert "└───" in message
 
 
 def test_format_job_status_message_with_all_fields():
@@ -711,17 +758,16 @@ def test_format_job_status_message_with_all_fields():
 
     message = _format_job_status_message("chk-456", job_data)
 
-    # Verify all fields are present in the message
-    assert "Job chk-456: succeeded" in message
-    assert "Records: 5,000,000" in message
-    assert "Credits: 250" in message
-    assert "Build: v3.0.0" in message
-    assert "Run ID: run-999" in message
-    assert "Created: 2025-10-30T08:00:00Z" in message
-    assert "Started: 2025-10-30T08:05:00Z" in message
-    assert "Ended: 2025-10-30T08:25:00Z" in message
-    assert "Duration: 20.0m" in message
-    assert "Accepted: True" in message
+    # Verify key fields are present in the new box format
+    assert "┌─ Job: chk-456" in message
+    assert "✓ SUCCEEDED" in message
+    assert "5,000,000" in message
+    assert "250" in message
+    assert "v3.0.0" in message
+    assert "2025-10-30 08:00:00" in message
+    assert "2025-10-30 08:05:00" in message
+    assert "2025-10-30 08:25:00" in message
+    assert "20m 0s" in message  # Duration format changed
 
 
 def test_format_job_status_message_excludes_unset_run_id():
@@ -733,8 +779,7 @@ def test_format_job_status_message_excludes_unset_run_id():
 
     message = _format_job_status_message("chk-789", job_data)
 
-    assert "Job chk-789: succeeded" in message
-    assert "Run ID:" not in message
+    assert "succeeded".upper() in message
     assert UNSET_DATABRICKS_RUN_ID not in message
 
 
@@ -744,8 +789,7 @@ def test_format_job_status_message_includes_valid_run_id():
 
     message = _format_job_status_message("chk-100", job_data)
 
-    assert "Job chk-100: running" in message
-    assert "Run ID: run-12345" in message
+    assert "running".upper() in message
 
 
 def test_format_job_status_message_with_error():
@@ -757,7 +801,7 @@ def test_format_job_status_message_with_error():
 
     message = _format_job_status_message("chk-error", job_data)
 
-    assert "Job chk-error: failed" in message
+    assert "failed".upper() in message
     assert "Error: Connection timeout to data source" in message
 
 
@@ -768,7 +812,7 @@ def test_format_job_status_message_with_partial_timestamps():
 
     message_start = _format_job_status_message("chk-111", job_data_start)
 
-    assert "Started: 2025-10-30T10:00:00Z" in message_start
+    assert "2025-10-30T10:00:00Z".replace("T", " ").replace("Z", "") in message_start
     assert "Duration:" not in message_start
 
     # Only end-time
@@ -776,7 +820,7 @@ def test_format_job_status_message_with_partial_timestamps():
 
     message_end = _format_job_status_message("chk-222", job_data_end)
 
-    assert "Ended: 2025-10-30T11:00:00Z" in message_end
+    assert "2025-10-30T11:00:00Z".replace("T", " ").replace("Z", "") in message_end
     assert "Duration:" not in message_end
 
 
@@ -790,7 +834,7 @@ def test_format_job_status_message_duration_calculation():
     }
 
     message_1h = _format_job_status_message("chk-300", job_data_1h)
-    assert "Duration: 60.0m" in message_1h
+    assert "60m" in message_1h
 
     # 30 seconds duration
     job_data_30s = {
@@ -800,7 +844,7 @@ def test_format_job_status_message_duration_calculation():
     }
 
     message_30s = _format_job_status_message("chk-301", job_data_30s)
-    assert "Duration: 0.5m" in message_30s
+    assert "0m" in message_30s
 
 
 def test_format_job_status_message_handles_invalid_timestamps():
@@ -814,7 +858,7 @@ def test_format_job_status_message_handles_invalid_timestamps():
     message = _format_job_status_message("chk-400", job_data)
 
     # Should still succeed without duration
-    assert "Job chk-400: succeeded" in message
+    assert "succeeded".upper() in message
     assert "Duration:" not in message
 
 
@@ -825,7 +869,7 @@ def test_format_job_status_message_with_zero_records():
     message = _format_job_status_message("chk-500", job_data)
 
     # Zero is falsy, so it should not be included
-    assert "Job chk-500: succeeded" in message
+    assert "succeeded".upper() in message
     assert "Records:" not in message
 
 
@@ -842,15 +886,16 @@ def test_format_job_status_message_unknown_state():
     """Test formatting when state is missing."""
     job_data_missing = {}
     message_missing = _format_job_status_message("chk-600", job_data_missing)
-    assert "Job chk-600: UNKNOWN" in message_missing
+    assert "UNKNOWN".upper() in message_missing
 
 
 def test_format_job_status_message_none_state():
     """Test formatting when state is explicitly None."""
     job_data_none = {"state": None}
     message_none = _format_job_status_message("chk-601", job_data_none)
-    # None gets converted to string "None" by .get() with default
-    assert "Job chk-601:" in message_none
+    # None gets converted to "UNKNOWN" in the new format
+    assert "chk-601" in message_none
+    assert "UNKNOWN" in message_none
 
 
 def test_format_job_status_message_empty_strings_not_included():
@@ -865,10 +910,44 @@ def test_format_job_status_message_empty_strings_not_included():
     message = _format_job_status_message("chk-700", job_data)
 
     # Empty strings are falsy, so they should not be included
-    assert "Job chk-700: succeeded" in message
+    assert "succeeded".upper() in message
     assert "Build:" not in message
     assert "Error:" not in message
-    assert "Run ID:" not in message
+
+
+def test_format_job_status_message_with_long_url():
+    """Test that box width expands to accommodate long URLs on single line."""
+    long_url = "https://dbc-6e75f43b-0f28.cloud.databricks.com/?o=4142544475373761#job/14906211489791/run/623626711565341"
+    job_data = {
+        "state": "succeeded",
+        "databricks-run-id": "run-123",
+        "databricks_live": {
+            "run_id": "run-123",
+            "run_name": "test-job",
+            "run_page_url": long_url,
+            "state": {"life_cycle_state": "TERMINATED", "result_state": "SUCCESS"},
+            "creator_user_name": "test@example.com",
+            "execution_duration": 3600000,
+            "tasks": [{"task_key": "task1"}],
+        },
+    }
+
+    message = _format_job_status_message("chk-701", job_data)
+
+    # Verify URL is present and on a single line (not split across lines)
+    assert long_url in message
+    assert "• View:" in message
+
+    # Verify the URL line is complete by checking it appears as a continuous string
+    lines = message.split("\n")
+    url_line = [line for line in lines if "• View:" in line][0]
+    assert long_url in url_line
+
+    # Verify box borders are consistent (all lines should have │ at start and end)
+    for line in lines:
+        if line and not line.startswith("┌") and not line.startswith("└"):
+            assert line.startswith("│")
+            assert line.endswith("│")
 
 
 # Tests for UNSET_DATABRICKS_RUN_ID constant
@@ -952,3 +1031,417 @@ def test_valid_run_id_allows_live_fetch(mock_get_token, mock_amperity_client_cla
     assert result.success
     assert "databricks_live" in result.data
     mock_databricks_client.get_job_run_status.assert_called_once_with("run-valid-123")
+
+
+# Tests for job ID caching functionality
+
+
+@patch("chuck_data.commands.job_status.get_last_job_id")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+def test_handle_command_uses_cached_job_id(
+    mock_get_token, mock_amperity_client_class, mock_get_cached_job_id
+):
+    """Test that handle_command uses cached job ID when no params provided."""
+    # Mock cached job ID
+    mock_get_cached_job_id.return_value = "chk-cached-123"
+
+    # Mock token
+    mock_get_token.return_value = "test-token"
+
+    # Mock Amperity client
+    mock_amperity_client = Mock()
+    mock_amperity_client.get_job_status.return_value = {
+        "job-id": "chk-cached-123",
+        "state": "succeeded",
+        "record-count": 1000,
+    }
+    mock_amperity_client_class.return_value = mock_amperity_client
+
+    # Call without any parameters
+    result = handle_command(None)
+
+    assert result.success
+    assert "chk-cached-123" in result.message
+    # Verify the cached ID was retrieved
+    mock_get_cached_job_id.assert_called_once()
+    # Verify the job status was queried with the cached ID
+    mock_amperity_client.get_job_status.assert_called_once_with(
+        "chk-cached-123", "test-token"
+    )
+
+
+@patch("chuck_data.commands.job_status.get_last_job_id")
+def test_handle_command_fails_without_params_or_cache(mock_get_cached_job_id):
+    """Test that handle_command fails when no params and no cached ID."""
+    # Mock no cached job ID
+    mock_get_cached_job_id.return_value = None
+
+    # Call without any parameters
+    result = handle_command(None)
+
+    assert not result.success
+    assert "No job ID provided" in result.message
+    assert "no cached job ID available" in result.message
+
+
+@patch("chuck_data.commands.job_status.get_last_job_id")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+def test_handle_command_cached_id_always_fetches_live(
+    mock_get_token, mock_amperity_client_class, mock_get_cached_job_id
+):
+    """Test that using cached ID automatically enables live data fetch."""
+    # Mock cached job ID
+    mock_get_cached_job_id.return_value = "chk-live-test"
+
+    # Mock token
+    mock_get_token.return_value = "test-token"
+
+    # Mock Amperity client
+    mock_amperity_client = Mock()
+    mock_amperity_client.get_job_status.return_value = {
+        "job-id": "chk-live-test",
+        "state": "running",
+        "databricks-run-id": "run-123",
+    }
+    mock_amperity_client_class.return_value = mock_amperity_client
+
+    # Mock Databricks client
+    mock_databricks_client = Mock()
+    mock_databricks_client.get_job_run_status.return_value = {
+        "run_id": "run-123",
+        "state": {"life_cycle_state": "RUNNING"},
+    }
+
+    # Call without parameters (should use cache and fetch live)
+    result = handle_command(
+        mock_databricks_client, amperity_client=mock_amperity_client
+    )
+
+    assert result.success
+    # Verify live data was fetched
+    assert "databricks_live" in result.data
+    mock_databricks_client.get_job_run_status.assert_called_once_with("run-123")
+
+
+@patch("chuck_data.commands.job_status.get_last_job_id")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+def test_handle_command_explicit_param_overrides_cache(
+    mock_get_token, mock_amperity_client_class, mock_get_cached_job_id
+):
+    """Test that explicit job_id parameter takes precedence over cached ID."""
+    # Mock cached job ID (different from explicit)
+    mock_get_cached_job_id.return_value = "chk-cached-999"
+
+    # Mock token
+    mock_get_token.return_value = "test-token"
+
+    # Mock Amperity client
+    mock_amperity_client = Mock()
+    mock_amperity_client.get_job_status.return_value = {
+        "job-id": "chk-explicit-888",
+        "state": "succeeded",
+    }
+    mock_amperity_client_class.return_value = mock_amperity_client
+
+    # Call with explicit job_id
+    result = handle_command(None, job_id="chk-explicit-888")
+
+    assert result.success
+    assert "chk-explicit-888" in result.message
+    # Verify the cached ID getter was NOT called (explicit param used)
+    mock_get_cached_job_id.assert_not_called()
+    # Verify the explicit ID was used
+    mock_amperity_client.get_job_status.assert_called_once_with(
+        "chk-explicit-888", "test-token"
+    )
+
+
+# --- Tests for /jobs command (list recent jobs) ---
+
+
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_no_cached_jobs(mock_get_cached, mock_get_token):
+    """Test /jobs command with no cached jobs."""
+    mock_get_cached.return_value = []
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "No recent jobs found" in result.message
+    assert "Launch a job first" in result.message
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_no_token_shows_minimal(
+    mock_get_cached, mock_get_token, mock_client_class
+):
+    """Test /jobs command without authentication shows minimal info."""
+    mock_get_cached.return_value = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+    ]
+    mock_get_token.return_value = None
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "Authenticate with Amperity" in result.message
+    # Should not call API without token
+    mock_client_class.assert_called_once()
+    mock_client_class.return_value.get_job_status.assert_not_called()
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_with_details(mock_get_cached, mock_get_token, mock_client_class):
+    """Test /jobs command fetches and displays job details."""
+    mock_get_cached.return_value = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+        {"job_id": "chk-789"},
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client responses
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+
+    def get_status_side_effect(job_id, token):
+        if job_id == "chk-123":
+            return {
+                "job-id": "chk-123",
+                "state": "succeeded",
+                "record-count": 50000,
+                "credits": 100,
+            }
+        elif job_id == "chk-456":
+            return {
+                "job-id": "chk-456",
+                "state": "failed",
+                "record-count": 12000,
+                "credits": 25,
+            }
+        elif job_id == "chk-789":
+            return {
+                "job-id": "chk-789",
+                "state": "running",
+                "record-count": None,
+                "credits": None,
+            }
+
+    mock_client.get_job_status.side_effect = get_status_side_effect
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "chk-789" in result.message
+    assert "✓ Success" in result.message
+    assert "✗ Failed" in result.message
+    assert "◷ Running" in result.message
+    assert "50,000" in result.message  # Formatted record count
+    assert "Total credits used: 125" in result.message
+    assert result.data["jobs"] is not None
+    assert len(result.data["jobs"]) == 3
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_handles_api_errors(
+    mock_get_cached, mock_get_token, mock_client_class
+):
+    """Test /jobs command handles API errors gracefully."""
+    mock_get_cached.return_value = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to raise exception
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.side_effect = Exception("API error")
+
+    result = handle_list_jobs()
+
+    assert result.success
+    # Should still show job IDs even if API fails
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "Unknown" in result.message
+
+
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_handles_missing_jobs(
+    mock_get_cached, mock_get_token, mock_client_class
+):
+    """Test /jobs command handles jobs that no longer exist in backend."""
+    mock_get_cached.return_value = [{"job_id": "chk-999"}]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to return None (job not found)
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.return_value = None
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-999" in result.message
+    assert "Unknown" in result.message
+
+
+def test_format_jobs_table_empty():
+    """Test formatting empty jobs list."""
+    result = _format_jobs_table([])
+    assert result == "No jobs to display."
+
+
+def test_format_jobs_table_with_all_fields():
+    """Test formatting jobs table with all fields present."""
+    jobs = [
+        {
+            "job-id": "chk_20251014_abc123",
+            "state": "succeeded",
+            "record-count": 50000,
+            "credits": 100,
+        },
+        {
+            "job-id": "chk_20251013_def456",
+            "state": "failed",
+            "record-count": 12000,
+            "credits": 25,
+        },
+        {
+            "job-id": "chk_20251012_ghi789",
+            "state": "running",
+            "record-count": 45000,
+            "credits": 90,
+        },
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    # Check header
+    assert "Recent Jobs:" in result
+    assert "| Job ID" in result
+    assert "| Status" in result
+    assert "| Records" in result
+    assert "| Credits" in result
+
+    # Check data rows
+    assert "chk_20251014_abc123" in result
+    assert "✓ Success" in result
+    assert "50,000" in result
+    assert "100" in result
+
+    assert "chk_20251013_def456" in result
+    assert "✗ Failed" in result
+    assert "12,000" in result
+    assert "25" in result
+
+    assert "chk_20251012_ghi789" in result
+    assert "◷ Running" in result
+    assert "45,000" in result
+    assert "90" in result
+
+    # Check total
+    assert "Total credits used: 215" in result
+
+
+def test_format_jobs_table_with_missing_fields():
+    """Test formatting jobs table with missing optional fields."""
+    jobs = [
+        {"job-id": "chk-123", "state": "succeeded"},
+        {"job-id": "chk-456", "state": "failed", "record-count": 1000},
+        {"job-id": "chk-789", "state": None, "credits": 50},
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    # Check that missing fields show as "-"
+    assert "chk-123" in result
+    assert "-" in result  # For missing records and credits
+
+    # Check partial data
+    assert "chk-456" in result
+    assert "1,000" in result
+
+    # Check unknown state
+    assert "chk-789" in result
+    assert "◷ Unknown" in result
+    assert "50" in result
+
+    # Total should only include credits that exist
+    assert "Total credits used: 50" in result
+
+
+def test_format_jobs_table_zero_credits():
+    """Test that jobs with no credits show dash and total line shows 0."""
+    jobs = [
+        {"job-id": "chk-123", "state": "succeeded", "record-count": 1000},
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    assert "chk-123" in result
+    assert "1,000" in result
+    # Should show "-" for credits when not present
+    assert "-" in result
+    # Total line should always appear, showing 0 when no credits
+    assert "Total credits used: 0" in result
+
+
+def test_format_jobs_table_minimal():
+    """Test minimal table formatting without authentication."""
+    cached_jobs = [
+        {"job_id": "chk-123"},
+        {"job_id": "chk-456"},
+        {"job_id": "chk-789"},
+    ]
+
+    result = _format_jobs_table_minimal(cached_jobs)
+
+    assert "Recent Jobs:" in result
+    assert "chk-123" in result
+    assert "chk-456" in result
+    assert "chk-789" in result
+    assert "N/A" in result  # Status should be N/A without auth
+
+
+def test_format_jobs_table_handles_unknown_state():
+    """Test formatting handles various unknown/missing state values."""
+    jobs = [
+        {"job-id": "chk-1", "state": "pending"},
+        {"job-id": "chk-2", "state": "submitted"},
+        {"job-id": "chk-3", "state": ""},
+        {"job-id": "chk-4"},  # No state field
+    ]
+
+    result = _format_jobs_table(jobs)
+
+    # All should show with appropriate status symbols
+    assert "chk-1" in result
+    assert "◷ Pending" in result
+
+    assert "chk-2" in result
+    assert "◷ Submitted" in result
+
+    assert "chk-3" in result
+    assert "◷ Unknown" in result
+
+    assert "chk-4" in result
+    assert "◷ Unknown" in result

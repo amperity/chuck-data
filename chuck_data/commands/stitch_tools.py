@@ -450,6 +450,12 @@ def _helper_launch_stitch_job(
                     job_id=str(job_id),
                 )
                 logging.debug(f"Recorded job submission: job-id -> run_id {run_id}")
+
+                # Cache the job ID and run ID for quick status lookups
+                from chuck_data.job_cache import cache_job
+
+                cache_job(job_id=str(job_id), run_id=str(run_id))
+                logging.debug(f"Cached job ID: {job_id}, run ID: {run_id}")
             else:
                 logging.warning("No Amperity token available to record job submission")
         except Exception as e:

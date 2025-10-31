@@ -387,4 +387,4 @@ def test_agent_tool_executor_job_status_integration(
         )
         assert agent_result is not None
         assert agent_result.get("run_id") == 777888
-        assert agent_result.get("state") == "TERMINATED"
+        assert agent_result.get("life_cycle_state") == "TERMINATED"

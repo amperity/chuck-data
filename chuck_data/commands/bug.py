@@ -8,7 +8,7 @@ including current configuration (without tokens) and session logs.
 import logging
 import os
 import platform
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any, Dict
 
 from chuck_data.clients.databricks import DatabricksAPIClient
@@ -126,7 +126,7 @@ def _prepare_bug_report(description: str) -> Dict[str, Any]:
 
     return {
         "type": "bug_report",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "description": description,
         "config": config_data,
         "session_log": log_content,
