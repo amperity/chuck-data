@@ -516,6 +516,7 @@ def _helper_launch_stitch_job(
             logging.warning(f"Failed to create Stitch Report notebook: {error_msg}")
 
         final_summary = "\n".join(summary_msg_lines)
+
         return {
             "success": True,
             "message": final_summary,

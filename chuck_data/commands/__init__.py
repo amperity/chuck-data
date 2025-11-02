@@ -37,6 +37,7 @@ from .job_status import (
     DEFINITION as job_status_definition,
     LIST_JOBS_DEFINITION as list_jobs_definition,
 )
+from .monitor_job import DEFINITION as monitor_job_definition
 from .list_tables import DEFINITION as list_tables_definition
 from .add_stitch_report import DEFINITION as add_stitch_report_definition
 
@@ -87,6 +88,7 @@ ALL_COMMAND_DEFINITIONS = [
     *jobs_definition,
     job_status_definition,
     list_jobs_definition,
+    monitor_job_definition,
     # Warehouse commands
     list_warehouses_definition,
     warehouse_definition,
