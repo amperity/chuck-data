@@ -111,6 +111,7 @@ def _helper_prepare_stitch_config(
         "settings": {
             "output_catalog_name": target_catalog,
             "output_schema_name": "stitch_outputs",
+            "enable_stable_id": True,
         },
     }
 
