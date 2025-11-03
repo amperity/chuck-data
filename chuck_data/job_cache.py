@@ -9,7 +9,7 @@ without requiring the user to specify job IDs.
 import json
 import logging
 import os
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 from collections import deque
 
 
@@ -63,7 +63,9 @@ class JobCache:
         except Exception as e:
             logging.error(f"Failed to save job cache: {e}")
 
-    def add_job(self, job_id: str, run_id: Optional[str] = None):
+    def add_job(
+        self, job_id: str, run_id: Optional[str] = None, job_data: Optional[dict] = None
+    ):
         """Add or update a job in the cache.
 
         If the job already exists, it's moved to the front (most recent).
@@ -72,6 +74,7 @@ class JobCache:
         Args:
             job_id: Chuck job identifier
             run_id: Optional Databricks run identifier
+            job_data: Optional full job data dictionary (state, records, credits, dates, etc.)
         """
         # Remove existing entry for this job_id if present
         self._cache = deque(
@@ -80,29 +83,40 @@ class JobCache:
         )
 
         # Add new entry at the front (most recent)
-        entry = {"job_id": job_id}
+        from datetime import datetime, timezone
+
+        entry: Dict[str, Any] = {"job_id": job_id}
         if run_id:
             entry["run_id"] = run_id
 
+        # Store full job data if provided (with timestamp for debugging)
+        if job_data:
+            entry["job_data"] = job_data
+            entry["cached_at"] = datetime.now(timezone.utc).isoformat()
+
         self._cache.appendleft(entry)
         self._save()
-        logging.debug(f"Cached job: {job_id}, run_id: {run_id}")
+        logging.debug(
+            f"Cached job: {job_id}, run_id: {run_id}, has_data: {job_data is not None}"
+        )
 
-    def get_last_job(self) -> Optional[Dict[str, str]]:
+    def get_last_job(self) -> Optional[Dict[str, Any]]:
         """Get the most recent job from cache.
 
         Returns:
-            Dictionary with 'job_id' and optional 'run_id', or None if cache is empty
+            Dictionary with 'job_id', optional 'run_id', optional 'job_data',
+            and optional 'cached_at' (ISO timestamp), or None if cache is empty
         """
         if self._cache:
             return dict(self._cache[0])
         return None
 
-    def get_all_jobs(self) -> List[Dict[str, str]]:
+    def get_all_jobs(self) -> List[Dict[str, Any]]:
         """Get all cached jobs (most recent first).
 
         Returns:
-            List of job dictionaries with 'job_id' and optional 'run_id'
+            List of job dictionaries with 'job_id', optional 'run_id', optional 'job_data',
+            and optional 'cached_at' (ISO timestamp)
         """
         return [dict(job) for job in self._cache]
 
@@ -120,6 +134,20 @@ class JobCache:
                 return job.get("run_id")
         return None
 
+    def find_job_id(self, run_id: str) -> Optional[str]:
+        """Find Chuck job ID for a given Databricks run ID.
+
+        Args:
+            run_id: Databricks run identifier
+
+        Returns:
+            Chuck job ID if found, None otherwise
+        """
+        for job in self._cache:
+            if job.get("run_id") == run_id:
+                return job.get("job_id")
+        return None
+
     def clear(self):
         """Clear all cached jobs."""
         self._cache.clear()
@@ -134,14 +162,17 @@ _job_cache = JobCache()
 # Public API functions
 
 
-def cache_job(job_id: str, run_id: Optional[str] = None):
-    """Cache a job ID and optionally its Databricks run ID.
+def cache_job(
+    job_id: str, run_id: Optional[str] = None, job_data: Optional[dict] = None
+):
+    """Cache a job ID and optionally its Databricks run ID and full job data.
 
     Args:
         job_id: Chuck job identifier
         run_id: Optional Databricks run identifier
+        job_data: Optional full job data dictionary (for caching terminal states)
     """
-    _job_cache.add_job(job_id, run_id)
+    _job_cache.add_job(job_id, run_id, job_data)
 
 
 def get_last_job_id() -> Optional[str]:
@@ -187,6 +218,18 @@ def find_run_id_for_job(job_id: str) -> Optional[str]:
         Databricks run ID if found, None otherwise
     """
     return _job_cache.find_run_id(job_id)
+
+
+def find_job_id_for_run(run_id: str) -> Optional[str]:
+    """Find Chuck job ID for a Databricks run ID.
+
+    Args:
+        run_id: Databricks run identifier
+
+    Returns:
+        Chuck job ID if found, None otherwise
+    """
+    return _job_cache.find_job_id(run_id)
 
 
 def clear_cache():

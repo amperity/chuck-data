@@ -1445,3 +1445,309 @@ def test_format_jobs_table_handles_unknown_state():
 
     assert "chk-4" in result
     assert "◷ Unknown" in result
+
+
+# --- Tests for smart caching in /jobs command ---
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_uses_cached_terminal_state(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command uses cached data for terminal states."""
+    # Mock cached jobs with terminal state data
+    mock_get_cached.return_value = [
+        {
+            "job_id": "chk-123",
+            "run_id": "run-123",
+            "job_data": {
+                "job-id": "chk-123",
+                "state": "succeeded",
+                "record-count": 50000,
+                "credits": 100,
+                "start-time": "2025-11-01T10:00:00Z",
+            },
+        },
+        {
+            "job_id": "chk-456",
+            "run_id": "run-456",
+            "job_data": {
+                "job-id": "chk-456",
+                "state": "failed",
+                "record-count": 12000,
+                "credits": 25,
+                "start-time": "2025-11-01T11:00:00Z",
+            },
+        },
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client - should NOT be called since we have cached data
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-123" in result.message
+    assert "chk-456" in result.message
+    assert "✓ Success" in result.message
+    assert "✗ Failed" in result.message
+    assert "50,000" in result.message
+    assert "Total credits used: 125" in result.message
+
+    # Verify API was NOT called (cache was used)
+    mock_client.get_job_status.assert_not_called()
+    # Verify cache_job was NOT called (data already cached)
+    mock_cache_job.assert_not_called()
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_fetches_fresh_data_for_running_jobs(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command fetches fresh data for non-terminal state jobs."""
+    # Mock cached jobs with running state (non-terminal)
+    mock_get_cached.return_value = [
+        {
+            "job_id": "chk-running",
+            "run_id": "run-running",
+            "job_data": {
+                "job-id": "chk-running",
+                "state": "running",  # Not terminal
+                "record-count": 5000,
+            },
+        }
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to return updated status
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.return_value = {
+        "job-id": "chk-running",
+        "state": "running",
+        "record-count": 10000,  # Updated count
+    }
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-running" in result.message
+    assert "10,000" in result.message  # Should show updated count
+
+    # Verify API was called (fresh data fetched)
+    mock_client.get_job_status.assert_called_once_with("chk-running", "test-token")
+    # Verify cache_job was NOT called (still running, not terminal)
+    mock_cache_job.assert_not_called()
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_fetches_and_caches_terminal_state(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command caches terminal state after fetching."""
+    # Mock cached jobs without job_data (needs fetching)
+    mock_get_cached.return_value = [
+        {"job_id": "chk-new", "run_id": "run-new"}  # No job_data
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to return terminal state
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.return_value = {
+        "job-id": "chk-new",
+        "state": "succeeded",
+        "record-count": 75000,
+        "credits": 150,
+    }
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-new" in result.message
+    assert "✓ Success" in result.message
+    assert "75,000" in result.message
+
+    # Verify API was called
+    mock_client.get_job_status.assert_called_once_with("chk-new", "test-token")
+
+    # Verify terminal state was cached
+    mock_cache_job.assert_called_once()
+    call_args = mock_cache_job.call_args
+    assert call_args[0][0] == "chk-new"  # job_id
+    assert call_args[0][1] == "run-new"  # run_id
+    assert call_args[0][2]["state"] == "succeeded"  # job_data
+    assert call_args[0][2]["record-count"] == 75000
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_caches_unknown_state_on_404(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command caches UNKNOWN state when job not found (404)."""
+    # Mock cached jobs without job_data
+    mock_get_cached.return_value = [{"job_id": "chk-missing", "run_id": "run-missing"}]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to return None (job not found)
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.return_value = None
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-missing" in result.message
+    assert "Unknown" in result.message
+
+    # Verify API was called
+    mock_client.get_job_status.assert_called_once_with("chk-missing", "test-token")
+
+    # Verify UNKNOWN state was cached
+    mock_cache_job.assert_called_once()
+    call_args = mock_cache_job.call_args
+    assert call_args[0][0] == "chk-missing"
+    assert call_args[0][1] == "run-missing"
+    assert call_args[0][2]["state"] == "UNKNOWN"
+    assert call_args[0][2]["job-id"] == "chk-missing"
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_caches_unknown_state_on_api_error(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command caches UNKNOWN state when API call fails."""
+    # Mock cached jobs without job_data
+    mock_get_cached.return_value = [{"job_id": "chk-error", "run_id": "run-error"}]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client to raise exception
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.side_effect = Exception("API Error")
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-error" in result.message
+    assert "Unknown" in result.message
+
+    # Verify API was called
+    mock_client.get_job_status.assert_called_once_with("chk-error", "test-token")
+
+    # Verify UNKNOWN state was cached
+    mock_cache_job.assert_called_once()
+    call_args = mock_cache_job.call_args
+    assert call_args[0][0] == "chk-error"
+    assert call_args[0][1] == "run-error"
+    assert call_args[0][2]["state"] == "UNKNOWN"
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_uses_cached_unknown_state(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command uses cached UNKNOWN state and doesn't retry."""
+    # Mock cached jobs with UNKNOWN state already cached
+    mock_get_cached.return_value = [
+        {
+            "job_id": "chk-unknown",
+            "run_id": "run-unknown",
+            "job_data": {"job-id": "chk-unknown", "state": "unknown"},
+        }
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client - should NOT be called
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-unknown" in result.message
+    assert "Unknown" in result.message
+
+    # Verify API was NOT called (cached UNKNOWN used)
+    mock_client.get_job_status.assert_not_called()
+    # Verify cache_job was NOT called
+    mock_cache_job.assert_not_called()
+
+
+@patch("chuck_data.job_cache.cache_job")
+@patch("chuck_data.commands.job_status.AmperityAPIClient")
+@patch("chuck_data.commands.job_status.get_amperity_token")
+@patch("chuck_data.commands.job_status.get_all_cached_jobs")
+def test_list_jobs_mixed_cache_and_fetch(
+    mock_get_cached, mock_get_token, mock_client_class, mock_cache_job
+):
+    """Test /jobs command with mix of cached and fresh data."""
+    # Mock mix of cached jobs
+    mock_get_cached.return_value = [
+        {
+            "job_id": "chk-cached-success",
+            "run_id": "run-1",
+            "job_data": {
+                "job-id": "chk-cached-success",
+                "state": "succeeded",
+                "credits": 50,
+            },
+        },
+        {
+            "job_id": "chk-needs-fetch",
+            "run_id": "run-2",
+            # No job_data - needs fetching
+        },
+        {
+            "job_id": "chk-cached-unknown",
+            "run_id": "run-3",
+            "job_data": {"job-id": "chk-cached-unknown", "state": "unknown"},
+        },
+    ]
+    mock_get_token.return_value = "test-token"
+
+    # Mock API client - only called for needs-fetch
+    mock_client = Mock()
+    mock_client_class.return_value = mock_client
+    mock_client.get_job_status.return_value = {
+        "job-id": "chk-needs-fetch",
+        "state": "failed",
+        "credits": 10,
+    }
+
+    result = handle_list_jobs()
+
+    assert result.success
+    assert "chk-cached-success" in result.message
+    assert "chk-needs-fetch" in result.message
+    assert "chk-cached-unknown" in result.message
+    assert "Total credits used: 60" in result.message
+
+    # Verify API was called only once (for needs-fetch)
+    mock_client.get_job_status.assert_called_once_with("chk-needs-fetch", "test-token")
+
+    # Verify only the failed job was cached
+    mock_cache_job.assert_called_once()
+    call_args = mock_cache_job.call_args
+    assert call_args[0][0] == "chk-needs-fetch"
+    assert call_args[0][2]["state"] == "failed"

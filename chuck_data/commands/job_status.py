@@ -562,6 +562,28 @@ DEFINITION = CommandDefinition(
 # --- List Jobs Command ---
 
 
+def _cache_job_data(
+    job_id: str, run_id: Optional[str], job_data: dict, reason: str = ""
+):
+    """
+    Helper to cache job data and log the action.
+
+    Args:
+        job_id: Chuck job identifier
+        run_id: Optional Databricks run identifier
+        job_data: Job data dictionary to cache
+        reason: Optional reason for caching (for logging)
+    """
+    from chuck_data.job_cache import cache_job
+
+    cache_job(job_id, run_id, job_data)
+    state = job_data.get("state", "UNKNOWN")
+    log_msg = f"Cached job {job_id} (state: {state})"
+    if reason:
+        log_msg += f" - {reason}"
+    logging.debug(log_msg)
+
+
 def handle_list_jobs(client=None, **kwargs) -> CommandResult:
     """List recent jobs from cache.
 
@@ -572,8 +594,15 @@ def handle_list_jobs(client=None, **kwargs) -> CommandResult:
     Returns:
         CommandResult with table of recent jobs
     """
+    import time
+
+    start_time = time.time()
+
     # Get all cached jobs
     cached_jobs = get_all_cached_jobs()
+    logging.debug(
+        f"Loaded {len(cached_jobs)} jobs from cache in {time.time() - start_time:.3f}s"
+    )
 
     if not cached_jobs:
         return CommandResult(
@@ -582,8 +611,10 @@ def handle_list_jobs(client=None, **kwargs) -> CommandResult:
         )
 
     # Try to fetch job details from Chuck for each cached job
+    client_init_start = time.time()
     client = AmperityAPIClient()
     token = get_amperity_token()
+    logging.debug(f"Client initialization took {time.time() - client_init_start:.3f}s")
 
     if not token:
         # Still show cached job IDs even without token
@@ -596,22 +627,65 @@ def handle_list_jobs(client=None, **kwargs) -> CommandResult:
 
     # Fetch details for each job
     jobs_with_details = []
+    cache_hits = 0
+    api_calls = 0
+
     for job_entry in cached_jobs:
         job_id = job_entry.get("job_id")
-        if job_id:
-            try:
-                job_data = client.get_job_status(job_id, token)
-                if job_data:
-                    jobs_with_details.append(job_data)
-                else:
-                    # Job not found, include minimal info
-                    jobs_with_details.append({"job-id": job_id, "state": "UNKNOWN"})
-            except Exception:
-                # On error, include minimal info
-                jobs_with_details.append({"job-id": job_id, "state": "UNKNOWN"})
+        if not job_id:
+            continue
+
+        # Check if we have cached job data
+        cached_job_data = job_entry.get("job_data")
+
+        # If we have cached data for a terminal state, use it
+        if cached_job_data:
+            state = (cached_job_data.get("state") or "").lower().replace(":", "")
+            # Only use cache for terminal states (succeeded, failed, unknown)
+            if state in ["succeeded", "success", "failed", "error", "unknown"]:
+                cached_at = job_entry.get("cached_at", "unknown")
+                logging.debug(
+                    f"Using cached data for job {job_id} (state: {state}, cached_at: {cached_at})"
+                )
+                jobs_with_details.append(cached_job_data)
+                cache_hits += 1
+                continue
+
+        # Otherwise fetch fresh data from API
+        logging.debug(f"Fetching fresh data for job {job_id}")
+        api_calls += 1
+        run_id = job_entry.get("run_id")
+
+        try:
+            job_data = client.get_job_status(job_id, token)
+            if job_data:
+                jobs_with_details.append(job_data)
+
+                # Cache the data if it's in a terminal state
+                state = (job_data.get("state") or "").lower().replace(":", "")
+                if state in ["succeeded", "success", "failed", "error"]:
+                    _cache_job_data(job_id, run_id, job_data, "terminal state")
+            else:
+                # Job not found, cache as UNKNOWN to avoid retrying
+                unknown_data = {"job-id": job_id, "state": "UNKNOWN"}
+                jobs_with_details.append(unknown_data)
+                _cache_job_data(job_id, run_id, unknown_data, "not found")
+        except Exception as e:
+            # On error, cache as UNKNOWN to avoid retrying
+            logging.debug(f"Error fetching job {job_id}: {e}")
+            unknown_data = {"job-id": job_id, "state": "UNKNOWN"}
+            jobs_with_details.append(unknown_data)
+            _cache_job_data(job_id, run_id, unknown_data, "error")
+
+    logging.debug(f"Jobs list: {cache_hits} cache hits, {api_calls} API calls")
 
     # Format and display the table
+    format_start = time.time()
     message = _format_jobs_table(jobs_with_details)
+    logging.debug(f"Table formatting took {time.time() - format_start:.3f}s")
+
+    total_time = time.time() - start_time
+    logging.info(f"Total /jobs command time: {total_time:.3f}s")
 
     return CommandResult(
         True,
@@ -647,10 +721,34 @@ def _format_jobs_table(jobs: list) -> str:
     if not jobs:
         return "No jobs to display."
 
+    # Sort jobs by date (most recent first)
+    # Use start-time if available, otherwise created-at
+    def get_sort_key(job):
+        date_str = job.get("start-time") or job.get("created-at")
+        if date_str:
+            try:
+                from datetime import datetime, timezone
+
+                # Ensure timezone awareness for proper comparison
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                # Make sure it's timezone-aware (use UTC if naive)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                pass
+        # If no date or parse error, sort to end (use timezone-aware min)
+        from datetime import datetime, timezone
+
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    sorted_jobs = sorted(jobs, key=get_sort_key, reverse=True)
+
     table = PrettyTable()
-    table.field_names = ["Job ID", "Status", "Records", "Credits"]
+    table.field_names = ["Job ID", "Status", "Started", "Records", "Credits"]
     table.align["Job ID"] = "l"
     table.align["Status"] = "l"
+    table.align["Started"] = "l"
     table.align["Records"] = "r"
     table.align["Credits"] = "r"
 
@@ -658,7 +756,7 @@ def _format_jobs_table(jobs: list) -> str:
     total_credits = 0
 
     # Add rows
-    for job in jobs:
+    for job in sorted_jobs:
         job_id = job.get("job-id", "N/A")
         state = (job.get("state") or "UNKNOWN").upper()
 
@@ -671,6 +769,20 @@ def _format_jobs_table(jobs: list) -> str:
             status = "◷ Running"
         else:
             status = f"◷ {state.title()}"
+
+        # Date - prefer start-time, fallback to created-at
+        date_str = job.get("start-time") or job.get("created-at")
+        if date_str:
+            try:
+                # Format as "YYYY-Mon-DD HH:MM" (e.g., "2025-Jan-15 14:30")
+                from datetime import datetime
+
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                formatted_date = dt.strftime("%Y-%b-%d %H:%M")
+            except Exception:
+                formatted_date = "-"
+        else:
+            formatted_date = "-"
 
         # Records (formatted with commas)
         record_count = job.get("record-count")
@@ -687,7 +799,7 @@ def _format_jobs_table(jobs: list) -> str:
         else:
             credits_str = "-"
 
-        table.add_row([job_id, status, records, credits_str])
+        table.add_row([job_id, status, formatted_date, records, credits_str])
 
     result = f"Recent Jobs:\n\n{table}"
 

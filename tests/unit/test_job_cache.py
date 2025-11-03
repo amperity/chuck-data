@@ -7,6 +7,7 @@ from chuck_data.job_cache import (
     cache_job,
     get_last_job_id,
     find_run_id_for_job,
+    find_job_id_for_run,
     clear_cache,
 )
 
@@ -105,6 +106,28 @@ def test_job_cache_find_run_id():
             os.remove(cache_file)
 
 
+def test_job_cache_find_job_id():
+    """Test finding job ID for a run ID."""
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        cache_file = f.name
+
+    try:
+        cache = JobCache(cache_file)
+
+        cache.add_job("chk-001", "run-001")
+        cache.add_job("chk-002", "run-002")
+        cache.add_job("chk-003", "run-003")
+
+        # Find existing
+        assert cache.find_job_id("run-002") == "chk-002"
+
+        # Find non-existing
+        assert cache.find_job_id("run-999") is None
+    finally:
+        if os.path.exists(cache_file):
+            os.remove(cache_file)
+
+
 def test_job_cache_persistence():
     """Test that cache persists across instances."""
     with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -161,6 +184,54 @@ def test_job_cache_clear():
 
         assert len(cache.get_all_jobs()) == 0
         assert cache.get_last_job() is None
+    finally:
+        if os.path.exists(cache_file):
+            os.remove(cache_file)
+
+
+def test_job_cache_with_timestamp():
+    """Test that cached_at timestamp is added when caching job data."""
+    from datetime import datetime
+
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        cache_file = f.name
+
+    try:
+        cache = JobCache(cache_file)
+
+        # Cache job with job_data (should add timestamp)
+        job_data = {
+            "job-id": "chk-123",
+            "state": "succeeded",
+            "record-count": 1000,
+            "credits": 50,
+        }
+        cache.add_job("chk-123", "run-456", job_data)
+
+        # Retrieve and verify timestamp exists
+        cached_job = cache.get_last_job()
+        assert cached_job["job_id"] == "chk-123"
+        assert "cached_at" in cached_job
+
+        # Verify timestamp is valid ISO format
+        cached_at = cached_job["cached_at"]
+        assert isinstance(cached_at, str)
+        # Should be parseable as datetime
+        parsed_time = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+        assert parsed_time is not None
+
+        # Cache job without job_data (should NOT add timestamp)
+        cache.add_job("chk-456", "run-789")
+        all_jobs = cache.get_all_jobs()
+
+        # First job (chk-456) should not have timestamp
+        assert all_jobs[0]["job_id"] == "chk-456"
+        assert "cached_at" not in all_jobs[0]
+
+        # Second job (chk-123) should still have timestamp
+        assert all_jobs[1]["job_id"] == "chk-123"
+        assert "cached_at" in all_jobs[1]
+
     finally:
         if os.path.exists(cache_file):
             os.remove(cache_file)
