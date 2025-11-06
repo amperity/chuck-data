@@ -103,7 +103,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="list-volumes",
+    name="list_volumes",
     description="List volumes in a Unity Catalog schema.",
     handler=handle_command,
     parameters={

@@ -88,7 +88,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="list-warehouses",
+    name="list_warehouses",
     description="Lists all SQL warehouses in the current Databricks workspace. By default returns data without showing table. Use display=true when user asks to see warehouses.",
     handler=handle_command,
     parameters={

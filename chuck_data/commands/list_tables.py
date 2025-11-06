@@ -145,7 +145,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="list-tables",
+    name="list_tables",
     description="List tables in a Unity Catalog schema. By default returns data without showing table. Use display=true when user asks to see tables.",
     handler=handle_command,
     parameters={
