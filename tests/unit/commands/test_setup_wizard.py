@@ -972,7 +972,7 @@ class TestCommandIntegration:
 
     def test_command_definition(self):
         """Test that the command definition has the correct attributes."""
-        assert DEFINITION.name == "setup-wizard"
+        assert DEFINITION.name == "setup_wizard"
         assert DEFINITION.tui_aliases == ["/setup", "/wizard"]
         assert DEFINITION.needs_api_client is True
         assert DEFINITION.visible_to_user is True

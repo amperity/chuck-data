@@ -158,7 +158,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 
 DEFINITION = CommandDefinition(
-    name="select-catalog",
+    name="select_catalog",
     description="Set the active catalog for operations by name with fuzzy matching",
     handler=handle_command,
     parameters={

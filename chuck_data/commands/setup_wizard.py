@@ -278,7 +278,7 @@ def handle_command(
 # Command definition for registration in the command registry
 
 DEFINITION = CommandDefinition(
-    name="setup-wizard",
+    name="setup_wizard",
     description="Interactive setup wizard for first-time configuration",
     handler=handle_command,
     parameters={},

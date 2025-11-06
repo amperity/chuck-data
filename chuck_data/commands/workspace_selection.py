@@ -59,7 +59,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 
 DEFINITION = CommandDefinition(
-    name="select-workspace",
+    name="select_workspace",
     description="Set the Databricks workspace URL",
     handler=handle_command,
     parameters={

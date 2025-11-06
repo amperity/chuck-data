@@ -389,7 +389,7 @@ def _format_paginated_results_for_agent(result: CommandResult) -> Dict[str, Any]
 
 
 DEFINITION = CommandDefinition(
-    name="run-sql",
+    name="run_sql",
     description="Execute a SQL query on a Databricks SQL warehouse.",
     handler=handle_command,
     parameters={

@@ -58,7 +58,7 @@ def handle_bulk_tag_pii(client, **kwargs):
     except Exception as e:
         # Always cleanup context on any error
         context = InteractiveContext()
-        context.clear_active_context("bulk-tag-pii")
+        context.clear_active_context("bulk_tag_pii")
         return CommandResult(False, error=e, message=f"Error: {str(e)}")
 
 
@@ -482,7 +482,7 @@ def _report_progress(step_message, tool_output_callback=None):
     """Report progress for both agent integration and direct TUI usage."""
     if tool_output_callback:
         # Agent usage - report via callback
-        tool_output_callback("bulk-tag-pii", {"step": step_message})
+        tool_output_callback("bulk_tag_pii", {"step": step_message})
     else:
         # Direct TUI usage - show progress using console like scan-pii
         console = get_console()
@@ -541,12 +541,12 @@ def _start_interactive_mode(client, **kwargs):
 
         # Store context for interactive workflow
         context = InteractiveContext()
-        context.set_active_context("bulk-tag-pii")
-        context.store_context_data("bulk-tag-pii", "phase", "review")
-        context.store_context_data("bulk-tag-pii", "catalog_name", catalog_name)
-        context.store_context_data("bulk-tag-pii", "schema_name", schema_name)
-        context.store_context_data("bulk-tag-pii", "scan_summary", scan_summary_data)
-        context.store_context_data("bulk-tag-pii", "original_kwargs", kwargs)
+        context.set_active_context("bulk_tag_pii")
+        context.store_context_data("bulk_tag_pii", "phase", "review")
+        context.store_context_data("bulk_tag_pii", "catalog_name", catalog_name)
+        context.store_context_data("bulk_tag_pii", "schema_name", schema_name)
+        context.store_context_data("bulk_tag_pii", "scan_summary", scan_summary_data)
+        context.store_context_data("bulk_tag_pii", "original_kwargs", kwargs)
 
         # Display the formatted preview like stitch setup
         console = get_console()
@@ -578,7 +578,7 @@ def _start_interactive_mode(client, **kwargs):
     except Exception as e:
         # Cleanup context on error
         context = InteractiveContext()
-        context.clear_active_context("bulk-tag-pii")
+        context.clear_active_context("bulk_tag_pii")
         return CommandResult(
             False, message=f"Error during interactive mode setup: {str(e)}"
         )
@@ -590,7 +590,7 @@ def _handle_interactive_input(client, user_input, **kwargs):
     context = InteractiveContext()
     if (
         not context.is_in_interactive_mode()
-        or context.current_command != "bulk-tag-pii"
+        or context.current_command != "bulk_tag_pii"
     ):
         return CommandResult(
             False,
@@ -598,7 +598,7 @@ def _handle_interactive_input(client, user_input, **kwargs):
         )
 
     # Extract context data
-    context_data = context.get_context_data("bulk-tag-pii")
+    context_data = context.get_context_data("bulk_tag_pii")
     tool_output_callback = kwargs.get("tool_output_callback")
     console = get_console()
 
@@ -622,7 +622,7 @@ def _handle_interactive_input(client, user_input, **kwargs):
         # Check for cancel commands (same as stitch)
         elif user_input_lower in ["cancel", "abort", "stop", "exit", "quit", "no"]:
             # Cancel and cleanup
-            context.clear_active_context("bulk-tag-pii")
+            context.clear_active_context("bulk_tag_pii")
             console.print(f"\n[{INFO_STYLE}]Bulk PII tagging cancelled.[/{INFO_STYLE}]")
             return CommandResult(True, message="Bulk PII tagging cancelled.")
 
@@ -643,7 +643,7 @@ def _handle_interactive_input(client, user_input, **kwargs):
 
     except Exception as e:
         # Cleanup context on error
-        context.clear_active_context("bulk-tag-pii")
+        context.clear_active_context("bulk_tag_pii")
         return CommandResult(
             False, message=f"Error during interactive input handling: {str(e)}"
         )
@@ -657,7 +657,7 @@ def _proceed_with_tagging(client, context_data, tool_output_callback):
 
     # Clear context since we're proceeding
     context = InteractiveContext()
-    context.clear_active_context("bulk-tag-pii")
+    context.clear_active_context("bulk_tag_pii")
 
     try:
         # Get updated statistics after any exclusions
@@ -793,10 +793,10 @@ def _exclude_table(context, context_data, table_name):
     scan_summary["excluded_tables_count"] = excluded_tables_count
 
     # Update context with new scan summary
-    context.store_context_data("bulk-tag-pii", "scan_summary", scan_summary)
+    context.store_context_data("bulk_tag_pii", "scan_summary", scan_summary)
 
     if remaining_tables_with_pii == 0:
-        context.clear_active_context("bulk-tag-pii")
+        context.clear_active_context("bulk_tag_pii")
         return CommandResult(
             True,
             message=f"Table '{table_name}' excluded. No PII tables remaining - nothing to tag.",
@@ -855,7 +855,7 @@ def _handle_modification_request(context, context_data, user_input, console):
 
     # Update stored scan summary
     updated_scan_summary = modify_result["scan_summary"]
-    context.store_context_data("bulk-tag-pii", "scan_summary", updated_scan_summary)
+    context.store_context_data("bulk_tag_pii", "scan_summary", updated_scan_summary)
 
     console.print(f"\n[{SUCCESS_STYLE}]Configuration updated![/{SUCCESS_STYLE}]")
     if modify_result.get("modification_summary"):
@@ -1200,7 +1200,7 @@ If you cannot understand the request, set action to "unknown".
 
 
 DEFINITION = CommandDefinition(
-    name="bulk-tag-pii",
+    name="bulk_tag_pii",
     description="Scan schema for PII columns and bulk tag them with semantic tags after interactive confirmation",
     handler=handle_bulk_tag_pii,
     parameters={

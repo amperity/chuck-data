@@ -69,7 +69,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 
 DEFINITION = CommandDefinition(
-    name="scan-schema-for-pii",
+    name="scan_schema_for_pii",
     description="Scan all tables in the current schema (or specified catalog/schema) for PII and/or customer data",
     handler=handle_command,
     parameters={

@@ -148,7 +148,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 
 DEFINITION = CommandDefinition(
-    name="select-warehouse",
+    name="select_warehouse",
     description="Set the active SQL warehouse for database operations by ID or name. Supports fuzzy name matching.",
     handler=handle_command,
     parameters={

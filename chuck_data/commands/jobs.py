@@ -114,7 +114,7 @@ def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
 
 
 LAUNCH_JOB_DEFINITION = CommandDefinition(
-    name="launch-job",
+    name="launch_job",
     description="Launch a Databricks job using a config file",
     usage_hint="launch_job --config_path=/path/to/config.json --init_script_path=/init/script.sh",
     parameters={
@@ -136,7 +136,7 @@ LAUNCH_JOB_DEFINITION = CommandDefinition(
 )
 
 JOB_STATUS_DEFINITION = CommandDefinition(
-    name="job-status",
+    name="job_status",
     description="Get the status of a Databricks job run",
     usage_hint="job_status --run_id=123456",
     parameters={

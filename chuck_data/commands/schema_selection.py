@@ -154,7 +154,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 
 DEFINITION = CommandDefinition(
-    name="select-schema",
+    name="select_schema",
     description="Set the active schema for operations by name with fuzzy matching",
     handler=handle_command,
     parameters={

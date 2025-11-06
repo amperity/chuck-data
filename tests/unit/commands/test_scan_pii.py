@@ -450,7 +450,7 @@ def test_agent_tool_executor_integration():
             ):
                 result = execute_tool(
                     api_client=client_stub,
-                    tool_name="scan-schema-for-pii",
+                    tool_name="scan_schema_for_pii",
                     tool_args={
                         "catalog_name": "integration_catalog",
                         "schema_name": "integration_schema",

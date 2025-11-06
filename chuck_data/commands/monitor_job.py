@@ -412,7 +412,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="monitor-job",
+    name="monitor_job",
     description="Monitor a Chuck job with real-time progress updates until completion. "
     "Provide either --job-id OR --run-id (not both), or omit both to monitor the last launched job.",
     handler=handle_command,

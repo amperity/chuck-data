@@ -531,7 +531,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="job-status",
+    name="job_status",
     description="Check status of a Chuck job via backend or Databricks. "
     "If no parameters provided, uses the last cached job ID.",
     handler=handle_command,
