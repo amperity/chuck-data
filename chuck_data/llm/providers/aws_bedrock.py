@@ -349,7 +349,9 @@ class AWSBedrockProvider:
                 # AWS Bedrock requires empty "required" arrays to be omitted entirely
                 # If "required" is present but empty, remove it
                 if "required" in parameters and not parameters["required"]:
-                    parameters = {k: v for k, v in parameters.items() if k != "required"}
+                    parameters = {
+                        k: v for k, v in parameters.items() if k != "required"
+                    }
 
                 # AWS Bedrock inputSchema only supports a subset of JSON Schema keywords:
                 # type, properties, required, items, enum, description
@@ -359,7 +361,13 @@ class AWSBedrockProvider:
                     for prop_name, prop_schema in parameters["properties"].items():
                         # Create a clean copy with only supported keywords
                         cleaned_prop = {}
-                        supported_keywords = {"type", "description", "items", "enum", "properties"}
+                        supported_keywords = {
+                            "type",
+                            "description",
+                            "items",
+                            "enum",
+                            "properties",
+                        }
                         for key, value in prop_schema.items():
                             if key in supported_keywords:
                                 cleaned_prop[key] = value
