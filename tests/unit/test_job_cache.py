@@ -4,11 +4,6 @@ import os
 import tempfile
 from chuck_data.job_cache import (
     JobCache,
-    cache_job,
-    get_last_job_id,
-    find_run_id_for_job,
-    find_job_id_for_run,
-    clear_cache,
 )
 
 

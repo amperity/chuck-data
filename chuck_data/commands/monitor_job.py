@@ -151,7 +151,7 @@ def _monitor_job_completion(
                 record_count = job_data.get("record-count", 0)
 
                 if normalized_state in ["succeeded", "success"]:
-                    success_msg = f"Job completed successfully!"
+                    success_msg = "Job completed successfully!"
                     if record_count:
                         success_msg += f" Records: {record_count:,}"
                     console.print(f"[{SUCCESS_STYLE}]{success_msg}[/{SUCCESS_STYLE}]")
@@ -369,7 +369,7 @@ def handle_command(
             ):
                 return CommandResult(
                     False,
-                    message=f"Authentication failed. Please authenticate using: chuck auth",
+                    message="Authentication failed. Please authenticate using: chuck auth",
                     error=e,
                 )
             else:
