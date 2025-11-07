@@ -151,7 +151,7 @@ def _monitor_job_completion(
                 record_count = job_data.get("record-count", 0)
 
                 if normalized_state in ["succeeded", "success"]:
-                    success_msg = f"Job completed successfully!"
+                    success_msg = "Job completed successfully!"
                     if record_count:
                         success_msg += f" Records: {record_count:,}"
                     console.print(f"[{SUCCESS_STYLE}]{success_msg}[/{SUCCESS_STYLE}]")
@@ -369,7 +369,7 @@ def handle_command(
             ):
                 return CommandResult(
                     False,
-                    message=f"Authentication failed. Please authenticate using: chuck auth",
+                    message="Authentication failed. Please authenticate using: chuck auth",
                     error=e,
                 )
             else:
@@ -412,7 +412,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="monitor-job",
+    name="monitor_job",
     description="Monitor a Chuck job with real-time progress updates until completion. "
     "Provide either --job-id OR --run-id (not both), or omit both to monitor the last launched job.",
     handler=handle_command,

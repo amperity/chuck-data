@@ -79,7 +79,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="create-volume",
+    name="create_volume",
     description="Create a new volume in Unity Catalog.",
     handler=handle_command,
     parameters={

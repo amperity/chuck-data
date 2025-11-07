@@ -342,7 +342,7 @@ def test_agent_tool_executor_launch_job_integration(
     databricks_client_stub, temp_config
 ):
     """AGENT TEST: End-to-end integration for launching a job via execute_tool.
-    Assumes 'launch-job' is the correct registered tool name.
+    Assumes 'launch_job' is the correct registered tool name.
     """
     with patch("chuck_data.config._config_manager", temp_config):
         databricks_client_stub.submit_job_run = (
@@ -355,7 +355,7 @@ def test_agent_tool_executor_launch_job_integration(
         }
         agent_result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="launch-job",
+            tool_name="launch_job",
             tool_args=tool_args,
         )
         assert agent_result is not None
@@ -366,7 +366,7 @@ def test_agent_tool_executor_job_status_integration(
     databricks_client_stub, temp_config
 ):
     """AGENT TEST: End-to-end integration for getting job status via execute_tool.
-    Assumes 'job-status' is the correct registered tool name.
+    Assumes 'job_status' is the correct registered tool name.
     """
     with patch("chuck_data.config._config_manager", temp_config):
         databricks_client_stub.get_job_run_status = lambda run_id: {
@@ -382,7 +382,7 @@ def test_agent_tool_executor_job_status_integration(
         tool_args = {"run_id": "777888"}
         agent_result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="job-status",
+            tool_name="job_status",
             tool_args=tool_args,
         )
         assert agent_result is not None

@@ -344,7 +344,7 @@ def test_agent_tool_executor_end_to_end_integration(
         # Execute through agent tool executor
         result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="select-warehouse",
+            tool_name="select_warehouse",
             tool_args={"warehouse": "Integration Test Warehouse"},
         )
 

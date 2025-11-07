@@ -91,7 +91,7 @@ After deployment, run the models command again to verify availability."""
 
 
 DEFINITION = CommandDefinition(
-    name="list-models",
+    name="list_models",
     description="List available language models from the LLM provider (by default, only shows models with tool calling support)",
     handler=handle_command,
     parameters={

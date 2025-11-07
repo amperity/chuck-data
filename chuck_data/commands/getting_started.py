@@ -61,7 +61,7 @@ Type [bold]/discord[/bold] to join our discord community and ask experts!
 
 
 DEFINITION = CommandDefinition(
-    name="getting-started",
+    name="getting_started",
     description="Display helpful tips and examples for using Chuck",
     handler=handle_command,
     parameters={},

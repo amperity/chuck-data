@@ -71,7 +71,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="create-warehouse",
+    name="create_warehouse",
     description="Create a new SQL warehouse in the Databricks workspace.",
     handler=handle_command,
     parameters={

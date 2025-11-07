@@ -363,7 +363,7 @@ def test_agent_tool_executor_integration(
 
         result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="bulk-tag-pii",
+            tool_name="bulk_tag_pii",
             tool_args={
                 "catalog_name": "test_catalog",
                 "schema_name": "test_schema",
@@ -627,7 +627,7 @@ def test_interactive_cancellation_cleans_up_context(
 
         # Verify context is set
         context = InteractiveContext()
-        context_data = context.get_context_data("bulk-tag-pii")
+        context_data = context.get_context_data("bulk_tag_pii")
         assert context_data  # Should have data
 
         # Then cancel
@@ -639,7 +639,7 @@ def test_interactive_cancellation_cleans_up_context(
         assert "cancelled" in result2.message.lower()
 
         # Verify context is cleaned up
-        context_data_after = context.get_context_data("bulk-tag-pii")
+        context_data_after = context.get_context_data("bulk_tag_pii")
         assert not context_data_after  # Should be empty
 
 

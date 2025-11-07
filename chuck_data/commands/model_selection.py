@@ -68,7 +68,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 
 DEFINITION = CommandDefinition(
-    name="select-model",
+    name="select_model",
     description="Set the active model for agent operations",
     handler=handle_command,
     parameters={

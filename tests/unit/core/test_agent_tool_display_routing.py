@@ -219,17 +219,17 @@ def test_agent_display_setting_validation(tui):
     # Get all agent-visible commands
     agent_commands = get_agent_commands()
 
-    # Find all list-* commands
-    list_commands = [name for name in agent_commands.keys() if name.startswith("list-")]
+    # Find all list_* commands (using underscore convention internally)
+    list_commands = [name for name in agent_commands.keys() if name.startswith("list_")]
 
     # Ensure we have the expected list commands
     expected_list_commands = {
-        "list-schemas",
-        "list-catalogs",
-        "list-tables",
-        "list-warehouses",
-        "list-volumes",
-        "list-models",
+        "list_schemas",
+        "list_catalogs",
+        "list_tables",
+        "list_warehouses",
+        "list_volumes",
+        "list_models",
     }
 
     found_commands = set(list_commands)
@@ -237,16 +237,16 @@ def test_agent_display_setting_validation(tui):
         found_commands == expected_list_commands
     ), f"Expected list commands changed. Found: {found_commands}, Expected: {expected_list_commands}"
 
-    # Verify each has agent_display="full" (except list-warehouses, list-catalogs, list-schemas, and list-tables which use conditional display)
+    # Verify each has agent_display="full" (except list_warehouses, list_catalogs, list_schemas, and list_tables which use conditional display)
     for cmd_name in list_commands:
         cmd_def = get_command(cmd_name)
         if cmd_name in [
-            "list-warehouses",
-            "list-catalogs",
-            "list-schemas",
-            "list-tables",
+            "list_warehouses",
+            "list_catalogs",
+            "list_schemas",
+            "list_tables",
         ]:
-            # list-warehouses, list-catalogs, list-schemas, and list-tables use conditional display with display parameter
+            # list_warehouses, list_catalogs, list_schemas, and list_tables use conditional display with display parameter
             assert (
                 cmd_def.agent_display == "conditional"
             ), f"Command {cmd_name} should use conditional display with display parameter control"

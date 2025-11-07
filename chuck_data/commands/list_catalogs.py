@@ -108,7 +108,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="list-catalogs",
+    name="list_catalogs",
     description="Lists all catalogs in the current workspace. By default returns data without showing table. Use display=true when user asks to see catalogs.",
     handler=handle_command,
     parameters={

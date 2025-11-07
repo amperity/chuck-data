@@ -762,3 +762,136 @@ class TestAWSBedrockToolConversion:
         # Test "none"
         config_none = provider._convert_tools_to_bedrock(tools, "none")
         assert "toolChoice" not in config_none
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_empty_required_array_is_removed(self, mock_boto3):
+        """Empty 'required' arrays are removed for Bedrock compatibility."""
+        mock_boto3.client.return_value = MagicMock()
+        provider = AWSBedrockProvider()
+
+        # Tool with empty required array (common for optional-only parameters)
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_catalogs",
+                    "description": "List all catalogs",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "display": {"type": "boolean", "description": "Show table"}
+                        },
+                        "required": [],  # Empty - should be removed
+                    },
+                },
+            }
+        ]
+
+        config = provider._convert_tools_to_bedrock(tools, "auto")
+
+        # Verify tool was converted
+        assert len(config["tools"]) == 1
+        tool_spec = config["tools"][0]["toolSpec"]
+
+        # Verify basic structure
+        assert tool_spec["name"] == "list_catalogs"
+        assert tool_spec["description"] == "List all catalogs"
+
+        # Verify empty "required" was removed from inputSchema
+        input_schema = tool_spec["inputSchema"]["json"]
+        assert "type" in input_schema
+        assert "properties" in input_schema
+        assert "required" not in input_schema  # Should be removed!
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_non_empty_required_array_is_kept(self, mock_boto3):
+        """Non-empty 'required' arrays are preserved."""
+        mock_boto3.client.return_value = MagicMock()
+        provider = AWSBedrockProvider()
+
+        # Tool with non-empty required array
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather for location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {"type": "string", "description": "City name"}
+                        },
+                        "required": ["location"],  # Not empty - should be kept
+                    },
+                },
+            }
+        ]
+
+        config = provider._convert_tools_to_bedrock(tools, "auto")
+
+        # Verify required array is preserved when not empty
+        input_schema = config["tools"][0]["toolSpec"]["inputSchema"]["json"]
+        assert "required" in input_schema
+        assert input_schema["required"] == ["location"]
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_unsupported_json_schema_keywords_removed(self, mock_boto3):
+        """Unsupported JSON Schema keywords like 'default' are removed for Bedrock."""
+        mock_boto3.client.return_value = MagicMock()
+        provider = AWSBedrockProvider()
+
+        # Tool with unsupported keywords in property definitions
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_items",
+                    "description": "List items with filters",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "include_archived": {
+                                "type": "boolean",
+                                "description": "Include archived items",
+                                "default": False,  # Not supported by Bedrock
+                            },
+                            "max_results": {
+                                "type": "integer",
+                                "description": "Max items to return",
+                                "minimum": 1,  # Not supported by Bedrock
+                                "maximum": 100,  # Not supported by Bedrock
+                            },
+                            "sort_by": {
+                                "type": "string",
+                                "description": "Sort field",
+                                "enum": ["name", "date"],  # Supported
+                            },
+                        },
+                        "required": [],
+                    },
+                },
+            }
+        ]
+
+        config = provider._convert_tools_to_bedrock(tools, "auto")
+
+        # Verify unsupported keywords were removed
+        input_schema = config["tools"][0]["toolSpec"]["inputSchema"]["json"]
+        properties = input_schema["properties"]
+
+        # Check include_archived - "default" should be removed
+        assert "type" in properties["include_archived"]
+        assert "description" in properties["include_archived"]
+        assert "default" not in properties["include_archived"]
+
+        # Check max_results - "minimum" and "maximum" should be removed
+        assert "type" in properties["max_results"]
+        assert "description" in properties["max_results"]
+        assert "minimum" not in properties["max_results"]
+        assert "maximum" not in properties["max_results"]
+
+        # Check sort_by - "enum" should be kept (supported)
+        assert "type" in properties["sort_by"]
+        assert "description" in properties["sort_by"]
+        assert "enum" in properties["sort_by"]
+        assert properties["sort_by"]["enum"] == ["name", "date"]

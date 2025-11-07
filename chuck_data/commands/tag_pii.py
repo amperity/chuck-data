@@ -194,7 +194,7 @@ def apply_semantic_tags(
 
 
 DEFINITION = CommandDefinition(
-    name="tag-pii-columns",
+    name="tag_pii_columns",
     description="Apply semantic tags to columns identified by the scan_pii command",
     handler=handle_command,
     parameters={

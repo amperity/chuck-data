@@ -3,7 +3,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from chuck_data.llm.providers.databricks import DatabricksProvider
-from chuck_data.llm.provider import ModelInfo
 
 
 class TestDatabricksProviderListModels:

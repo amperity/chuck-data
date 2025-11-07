@@ -1,6 +1,5 @@
 """Test fallback to cached run_id when Chuck backend returns UNSET_DATABRICKS_RUN_ID."""
 
-import pytest
 from unittest.mock import Mock, patch
 from chuck_data.commands.job_status import handle_command, _query_by_job_id
 

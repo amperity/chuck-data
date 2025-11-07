@@ -114,7 +114,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="add-stitch-report",
+    name="add_stitch_report",
     description="Create a Stitch report notebook for a unified table",
     handler=handle_command,
     parameters={

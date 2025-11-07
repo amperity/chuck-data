@@ -95,7 +95,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="upload-file",
+    name="upload_file",
     description="Upload a file to Databricks volumes or DBFS.",
     handler=handle_command,
     parameters={

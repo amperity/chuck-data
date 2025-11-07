@@ -107,7 +107,7 @@ def handle_command(
             )
 
         # Get stored context data
-        builder_data = context.get_context_data("setup-stitch")
+        builder_data = context.get_context_data("setup_stitch")
         if not builder_data:
             return CommandResult(
                 False,
@@ -128,7 +128,7 @@ def handle_command(
 
     except Exception as e:
         # Clear context on error
-        context.clear_active_context("setup-stitch")
+        context.clear_active_context("setup_stitch")
         logging.error(f"Stitch setup error: {e}", exc_info=True)
         return CommandResult(
             False, error=e, message=f"Error setting up Stitch: {str(e)}"
@@ -266,7 +266,7 @@ def _phase_1_prepare_config(
         )
 
     # Set context as active for interactive mode
-    context.set_active_context("setup-stitch")
+    context.set_active_context("setup_stitch")
 
     console.print(
         f"\n[{INFO_STYLE}]Preparing Stitch configuration for {target_catalog}.{target_schema}...[/{INFO_STYLE}]"
@@ -281,15 +281,15 @@ def _phase_1_prepare_config(
     )
 
     if prep_result.get("error"):
-        context.clear_active_context("setup-stitch")
+        context.clear_active_context("setup_stitch")
         return CommandResult(False, message=prep_result["error"])
 
     # Store the prepared data in context (don't store llm_client object)
-    context.store_context_data("setup-stitch", "phase", "review")
+    context.store_context_data("setup_stitch", "phase", "review")
     context.store_context_data(
-        "setup-stitch", "stitch_config", prep_result["stitch_config"]
+        "setup_stitch", "stitch_config", prep_result["stitch_config"]
     )
-    context.store_context_data("setup-stitch", "metadata", prep_result["metadata"])
+    context.store_context_data("setup_stitch", "metadata", prep_result["metadata"])
     # Note: We'll recreate LLMClient in each phase instead of storing it
 
     # Display the configuration preview
@@ -307,7 +307,7 @@ def _phase_2_handle_review(
     client: DatabricksAPIClient, context: InteractiveContext, console, user_input: str
 ) -> CommandResult:
     """Phase 2: Handle user review and potential config modifications."""
-    builder_data = context.get_context_data("setup-stitch")
+    builder_data = context.get_context_data("setup_stitch")
     stitch_config = builder_data["stitch_config"]
     metadata = builder_data["metadata"]
     llm_client = LLMProviderFactory.create()  # Create provider using factory
@@ -317,7 +317,7 @@ def _phase_2_handle_review(
     # Check for launch commands
     if user_input_lower in ["launch", "yes", "y", "launch it", "go", "proceed"]:
         # Move to launch phase
-        context.store_context_data("setup-stitch", "phase", "ready_to_launch")
+        context.store_context_data("setup_stitch", "phase", "ready_to_launch")
 
         console.print(
             "When you launch Stitch it will create a job in Databricks and a notebook that will show you Stitch results when the job completes."
@@ -341,7 +341,7 @@ def _phase_2_handle_review(
 
     # Check for cancel
     if user_input_lower in ["cancel", "abort", "stop", "exit", "quit", "no"]:
-        context.clear_active_context("setup-stitch")
+        context.clear_active_context("setup_stitch")
         console.print(f"\n[{INFO_STYLE}]Stitch setup cancelled.[/{INFO_STYLE}]")
         return CommandResult(True, message="Stitch setup cancelled.")
 
@@ -368,7 +368,7 @@ def _phase_2_handle_review(
 
     # Update stored config
     updated_config = modify_result["stitch_config"]
-    context.store_context_data("setup-stitch", "stitch_config", updated_config)
+    context.store_context_data("setup_stitch", "stitch_config", updated_config)
 
     console.print(f"\n[{SUCCESS_STYLE}]Configuration updated![/{SUCCESS_STYLE}]")
     if modify_result.get("modification_summary"):
@@ -388,7 +388,7 @@ def _phase_3_launch_job(
     client: DatabricksAPIClient, context: InteractiveContext, console, user_input: str
 ) -> CommandResult:
     """Phase 3: Final confirmation and job launch."""
-    builder_data = context.get_context_data("setup-stitch")
+    builder_data = context.get_context_data("setup_stitch")
     stitch_config = builder_data["stitch_config"]
     metadata = builder_data["metadata"]
 
@@ -409,7 +409,7 @@ def _phase_3_launch_job(
         launch_result = _helper_launch_stitch_job(client, stitch_config, metadata)
 
         # Clear context after launch (success or failure)
-        context.clear_active_context("setup-stitch")
+        context.clear_active_context("setup_stitch")
 
         if launch_result.get("error"):
             # Track error event
@@ -474,7 +474,7 @@ def _phase_3_launch_job(
         )
 
     elif user_input_lower in ["cancel", "abort", "stop", "no"]:
-        context.clear_active_context("setup-stitch")
+        context.clear_active_context("setup_stitch")
         console.print(f"\n[{INFO_STYLE}]Stitch job launch cancelled.[/{INFO_STYLE}]")
         return CommandResult(True, message="Stitch job launch cancelled.")
 
@@ -695,7 +695,7 @@ def _build_post_launch_guidance_message(launch_result, metadata, client=None):
 
 
 DEFINITION = CommandDefinition(
-    name="setup-stitch",
+    name="setup_stitch",
     description="Interactively set up a Stitch integration with configuration review and modification",
     handler=handle_command,
     parameters={

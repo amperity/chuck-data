@@ -82,7 +82,7 @@ def test_agent_tool_executor_end_to_end_integration(
         # Execute via agent tool_executor
         result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="select-model",
+            tool_name="select_model",
             tool_args={"model_name": "claude-v1"},
         )
 

@@ -277,7 +277,7 @@ def test_agent_tool_executor_end_to_end_integration(
 
         result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="select-schema",
+            tool_name="select_schema",
             tool_args={"schema": "integration_schema"},
         )
 

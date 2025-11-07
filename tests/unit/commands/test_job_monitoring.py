@@ -1,8 +1,6 @@
 """Tests for job monitoring functionality."""
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch, call
-import time
+from unittest.mock import Mock, patch
 
 from chuck_data.commands.monitor_job import _monitor_job_completion
 from chuck_data.commands.stitch_tools import _helper_launch_stitch_job

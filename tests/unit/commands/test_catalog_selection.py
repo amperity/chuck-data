@@ -263,7 +263,7 @@ def test_agent_tool_executor_end_to_end_integration(
         # Execute through tool_executor like agent does
         result = execute_tool(
             api_client=databricks_client_stub,
-            tool_name="select-catalog",
+            tool_name="select_catalog",
             tool_args={"catalog": "end_to_end_test"},
         )
 

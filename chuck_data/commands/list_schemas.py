@@ -119,7 +119,7 @@ def handle_command(
 
 
 DEFINITION = CommandDefinition(
-    name="list-schemas",
+    name="list_schemas",
     description="Lists all schemas in the current catalog. By default returns data without showing table. Use display=true when user asks to see schemas.",
     handler=handle_command,
     parameters={
