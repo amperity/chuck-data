@@ -11,13 +11,13 @@ import concurrent.futures
 from typing import Dict, Any, Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.llm.client import LLMClient
+from chuck_data.llm.provider import LLMProvider
 from chuck_data.ui.tui import get_console
 
 
 def _helper_tag_pii_columns_logic(
     databricks_client: DatabricksAPIClient,
-    llm_client_instance: LLMClient,
+    llm_client_instance: LLMProvider,
     table_name_param: str,
     catalog_name_context: Optional[str] = None,
     schema_name_context: Optional[str] = None,
@@ -160,7 +160,7 @@ def _helper_tag_pii_columns_logic(
 
 def _helper_scan_schema_for_pii_logic(
     client: DatabricksAPIClient,
-    llm_client_instance: LLMClient,
+    llm_client_instance: LLMProvider,
     catalog_name: str,
     schema_name: str,
     show_progress: bool = True,
