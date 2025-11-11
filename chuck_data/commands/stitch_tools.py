@@ -11,7 +11,7 @@ import datetime
 from typing import Dict, Any
 
 from chuck_data.clients.databricks import DatabricksAPIClient
-from chuck_data.llm.client import LLMClient
+from chuck_data.llm.provider import LLMProvider
 from chuck_data.config import get_amperity_token
 from .pii_tools import _helper_scan_schema_for_pii_logic
 from .cluster_init_tools import _helper_upload_cluster_init_logic
@@ -31,7 +31,7 @@ UNSUPPORTED_TYPES = [
 
 def _helper_setup_stitch_logic(
     client: DatabricksAPIClient,
-    llm_client_instance: LLMClient,
+    llm_client_instance: LLMProvider,
     target_catalog: str,
     target_schema: str,
 ) -> Dict[str, Any]:
@@ -54,7 +54,7 @@ def _helper_setup_stitch_logic(
 
 def _helper_prepare_stitch_config(
     client: DatabricksAPIClient,
-    llm_client_instance: LLMClient,
+    llm_client_instance: LLMProvider,
     target_catalog: str,
     target_schema: str,
 ) -> Dict[str, Any]:
@@ -228,7 +228,7 @@ def _helper_prepare_stitch_config(
 def _helper_modify_stitch_config(
     current_config: Dict[str, Any],
     modification_request: str,
-    llm_client_instance: LLMClient,
+    llm_client_instance: LLMProvider,
     metadata: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Phase 2: Modify Stitch configuration based on user request using LLM."""
