@@ -6,7 +6,7 @@ for PII columns and creating a configuration file.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.llm.factory import LLMProviderFactory
@@ -29,14 +29,41 @@ def _display_config_preview(console, stitch_config, metadata):
     """Display a preview of the Stitch configuration to the user."""
     console.print(f"\n[{INFO_STYLE}]Stitch Configuration Preview:[/{INFO_STYLE}]")
 
-    # Show basic info
-    console.print(f"• Target: {metadata['target_catalog']}.{metadata['target_schema']}")
+    # Show target locations (single or multiple)
+    target_locations = metadata.get("target_locations")
+    if target_locations:
+        console.print(f"• Scanned locations: {len(target_locations)}")
+        for loc in target_locations:
+            console.print(f"  - {loc['catalog']}.{loc['schema']}")
+    else:
+        # Backward compatible - single target
+        console.print(
+            f"• Target: {metadata['target_catalog']}.{metadata['target_schema']}"
+        )
+
+    console.print(
+        f"• Output: {metadata.get('output_catalog', metadata.get('target_catalog'))}.stitch_outputs"
+    )
     console.print(f"• Job Name: {metadata['stitch_job_name']}")
     console.print(f"• Config Path: {metadata['config_file_path']}")
 
+    # Show scan summary if available
+    scan_summary = metadata.get("scan_summary")
+    if scan_summary:
+        console.print("\nScan Results:")
+        for summary in scan_summary:
+            if summary["status"] == "success":
+                console.print(
+                    f"  ✓ {summary['location']} ({summary['tables']} tables, {summary['columns']} PII columns)"
+                )
+            else:
+                console.print(
+                    f"  ⚠ {summary['location']} (error: {summary.get('error', 'unknown')})"
+                )
+
     # Show tables and fields
     table_count = len(stitch_config["tables"])
-    console.print(f"• Tables to process: {table_count}")
+    console.print(f"\n• Tables to process: {table_count}")
 
     total_fields = sum(len(table["fields"]) for table in stitch_config["tables"])
     console.print(f"• Total PII fields: {total_fields}")
@@ -87,11 +114,15 @@ def handle_command(
         client: API client instance
         interactive_input: User input for interactive mode
         **kwargs:
-            catalog_name (str, optional): Target catalog name
-            schema_name (str, optional): Target schema name
+            catalog_name (str, optional): Single target catalog
+            schema_name (str, optional): Single target schema
+            targets (List[str], optional): Multiple targets ["cat.schema", ...]
+            output_catalog (str, optional): Output catalog for multi-target
     """
     catalog_name_arg: Optional[str] = kwargs.get("catalog_name")
     schema_name_arg: Optional[str] = kwargs.get("schema_name")
+    targets_arg: Optional[List[str]] = kwargs.get("targets")
+    output_catalog_arg: Optional[str] = kwargs.get("output_catalog")
 
     if not client:
         return CommandResult(False, message="Client is required for Stitch setup.")
@@ -115,6 +146,8 @@ def handle_command(
                 console,
                 catalog_name_arg,
                 schema_name_arg,
+                targets_arg,
+                output_catalog_arg,
                 policy_id,
             )
 
@@ -130,13 +163,12 @@ def handle_command(
 
         if current_phase == "review":
             return _phase_2_handle_review(client, context, console, interactive_input)
-        elif current_phase == "ready_to_launch":
+        if current_phase == "ready_to_launch":
             return _phase_3_launch_job(client, context, console, interactive_input)
-        else:
-            return CommandResult(
-                False,
-                message=f"Unknown phase: {current_phase}. Please run /setup-stitch again.",
-            )
+        return CommandResult(
+            False,
+            message=f"Unknown phase: {current_phase}. Please run /setup-stitch again.",
+        )
 
     except Exception as e:
         # Clear context on error
@@ -271,32 +303,64 @@ def _phase_1_prepare_config(
     console,
     catalog_name_arg: Optional[str],
     schema_name_arg: Optional[str],
+    targets_arg: Optional[List[str]] = None,
+    output_catalog_arg: Optional[str] = None,
     policy_id: Optional[str] = None,
 ) -> CommandResult:
-    """Phase 1: Prepare the Stitch configuration."""
-    target_catalog = catalog_name_arg or get_active_catalog()
-    target_schema = schema_name_arg or get_active_schema()
-
-    if not target_catalog or not target_schema:
-        return CommandResult(
-            False,
-            message="Target catalog and schema must be specified or active for Stitch setup.",
-        )
+    """Phase 1: Prepare the Stitch configuration for single or multiple targets."""
 
     # Set context as active for interactive mode
     context.set_active_context("setup_stitch")
 
-    console.print(
-        f"\n[{INFO_STYLE}]Preparing Stitch configuration for {target_catalog}.{target_schema}...[/{INFO_STYLE}]"
-    )
-
     # Create LLM provider using factory
     llm_client = LLMProviderFactory.create()
 
-    # Prepare the configuration
-    prep_result = _helper_prepare_stitch_config(
-        client, llm_client, target_catalog, target_schema
-    )
+    # Multi-target mode
+    if targets_arg:
+        target_locations = []
+        for target in targets_arg:
+            parts = target.split(".")
+            if len(parts) != 2:
+                context.clear_active_context("setup_stitch")
+                return CommandResult(
+                    False,
+                    message=f"Invalid target format: '{target}'. Expected 'catalog.schema'",
+                )
+            target_locations.append({"catalog": parts[0], "schema": parts[1]})
+
+        output_catalog = output_catalog_arg or target_locations[0]["catalog"]
+
+        console.print(
+            f"\n[{INFO_STYLE}]Preparing Stitch configuration for {len(target_locations)} locations...[/{INFO_STYLE}]"
+        )
+        for loc in target_locations:
+            console.print(f"  • {loc['catalog']}.{loc['schema']}")
+
+        prep_result = _helper_prepare_stitch_config(
+            client,
+            llm_client,
+            target_locations=target_locations,
+            output_catalog=output_catalog,
+        )
+    else:
+        # Single target mode (backward compatible)
+        target_catalog = catalog_name_arg or get_active_catalog()
+        target_schema = schema_name_arg or get_active_schema()
+
+        if not target_catalog or not target_schema:
+            context.clear_active_context("setup_stitch")
+            return CommandResult(
+                False,
+                message="Target catalog and schema must be specified or active for Stitch setup.",
+            )
+
+        console.print(
+            f"\n[{INFO_STYLE}]Preparing Stitch configuration for {target_catalog}.{target_schema}...[/{INFO_STYLE}]"
+        )
+
+        prep_result = _helper_prepare_stitch_config(
+            client, llm_client, target_catalog, target_schema
+        )
 
     if prep_result.get("error"):
         context.clear_active_context("setup_stitch")
@@ -495,18 +559,17 @@ def _phase_3_launch_job(
             message=result_message,
         )
 
-    elif user_input_lower in ["cancel", "abort", "stop", "no"]:
+    if user_input_lower in ["cancel", "abort", "stop", "no"]:
         context.clear_active_context("setup_stitch")
         console.print(f"\n[{INFO_STYLE}]Stitch job launch cancelled.[/{INFO_STYLE}]")
         return CommandResult(True, message="Stitch job launch cancelled.")
 
-    else:
-        console.print(
-            f"\n[{WARNING}]Please type 'confirm' to launch the job or 'cancel' to abort.[/{WARNING}]"
-        )
-        return CommandResult(
-            True, message="Please type 'confirm' to launch or 'cancel' to abort."
-        )
+    console.print(
+        f"\n[{WARNING}]Please type 'confirm' to launch the job or 'cancel' to abort.[/{WARNING}]"
+    )
+    return CommandResult(
+        True, message="Please type 'confirm' to launch or 'cancel' to abort."
+    )
 
 
 def _display_post_launch_options(console, launch_result, metadata, client=None):
@@ -718,20 +781,29 @@ def _build_post_launch_guidance_message(launch_result, metadata, client=None):
 
 DEFINITION = CommandDefinition(
     name="setup_stitch",
-    description="Interactively set up a Stitch integration with configuration review and modification",
+    description="Set up a Stitch integration for single or multiple catalog/schema locations",
     handler=handle_command,
     parameters={
         "catalog_name": {
             "type": "string",
-            "description": "Optional: Name of the catalog. If not provided, uses the active catalog",
+            "description": "Optional: Single target catalog name (for backward compatibility)",
         },
         "schema_name": {
             "type": "string",
-            "description": "Optional: Name of the schema. If not provided, uses the active schema",
+            "description": "Optional: Single target schema name (for backward compatibility)",
+        },
+        "targets": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Optional: List of catalog.schema pairs to scan (e.g., ['prod.crm', 'prod.ecommerce', 'analytics.customers'])",
+        },
+        "output_catalog": {
+            "type": "string",
+            "description": "Optional: Catalog for outputs and volume storage (defaults to first target's catalog)",
         },
         "auto_confirm": {
             "type": "boolean",
-            "description": "Optional: Skip interactive confirmation and launch job immediately (default: false)",
+            "description": "Optional: Skip interactive confirmation (default: false)",
         },
         "policy_id": {
             "type": "string",
@@ -743,6 +815,6 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     supports_interactive_input=True,
-    usage_hint="Example: /setup-stitch or /setup-stitch --auto-confirm to skip confirmation",
+    usage_hint="Examples:\n  /setup-stitch (uses active catalog/schema)\n  /setup-stitch --catalog_name prod --schema_name crm\n  /setup-stitch --targets prod.crm,prod.ecommerce,analytics.customers --output_catalog prod",
     condensed_action="Setting up Stitch integration",
 )
