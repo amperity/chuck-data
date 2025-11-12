@@ -8,7 +8,7 @@ with Databricks catalogs and schemas.
 import logging
 import json
 import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.llm.provider import LLMProvider
@@ -27,6 +27,43 @@ UNSUPPORTED_TYPES = [
     "GEOGRAPHY",
     "GEOMETRY",
 ]
+
+
+def validate_multi_location_access(
+    client: DatabricksAPIClient, locations: List[Dict[str, str]]
+) -> List[Dict[str, Any]]:
+    """Check read permissions on all target locations before scanning.
+
+    Args:
+        client: DatabricksAPIClient instance
+        locations: List of {"catalog": "...", "schema": "..."} dictionaries
+
+    Returns:
+        List of results with structure:
+        [{"location": {"catalog": "...", "schema": "..."}, "accessible": bool, "error": str}]
+    """
+    results = []
+    for loc in locations:
+        catalog = loc.get("catalog")
+        schema = loc.get("schema")
+
+        if not catalog or not schema:
+            results.append(
+                {
+                    "location": loc,
+                    "accessible": False,
+                    "error": "Missing catalog or schema in location specification",
+                }
+            )
+            continue
+
+        try:
+            # Try to get schema to verify access
+            client.get_schema(f"{catalog}.{schema}")
+            results.append({"location": loc, "accessible": True})
+        except Exception as e:
+            results.append({"location": loc, "accessible": False, "error": str(e)})
+    return results
 
 
 def _helper_setup_stitch_logic(
@@ -55,10 +92,39 @@ def _helper_setup_stitch_logic(
 def _helper_prepare_stitch_config(
     client: DatabricksAPIClient,
     llm_client_instance: LLMProvider,
-    target_catalog: str,
-    target_schema: str,
+    target_catalog: Optional[str] = None,
+    target_schema: Optional[str] = None,
+    target_locations: Optional[List[Dict[str, str]]] = None,
+    output_catalog: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Phase 1: Prepare Stitch configuration without launching job."""
+    """Phase 1: Prepare Stitch configuration without launching job.
+
+    Supports both single-location (backward compatible) and multi-location modes.
+
+    Args:
+        target_catalog: Single target catalog (backward compatible)
+        target_schema: Single target schema (backward compatible)
+        target_locations: List of {"catalog": "...", "schema": "..."} for multi-target
+        output_catalog: Catalog for outputs (defaults to first target's catalog)
+
+    Returns:
+        Dictionary with success/error status, stitch_config, and metadata
+    """
+    # Backward compatibility: single catalog/schema
+    if target_catalog and target_schema and not target_locations:
+        target_locations = [{"catalog": target_catalog, "schema": target_schema}]
+        output_catalog = output_catalog or target_catalog
+
+    # Multi-location path
+    if target_locations:
+        if not output_catalog:
+            output_catalog = target_locations[0]["catalog"]
+
+        return _helper_prepare_multi_location_stitch_config(
+            client, llm_client_instance, target_locations, output_catalog
+        )
+
+    # Original single-location logic (fallback for legacy calls)
     if not target_catalog or not target_schema:
         return {"error": "Target catalog and schema are required for Stitch setup."}
 
@@ -221,6 +287,230 @@ def _helper_prepare_stitch_config(
             "job_id": job_id,
             "pii_scan_output": pii_scan_output,
             "unsupported_columns": unsupported_columns,
+        },
+    }
+
+
+def _helper_prepare_multi_location_stitch_config(
+    client: DatabricksAPIClient,
+    llm_client_instance: LLMProvider,
+    target_locations: List[Dict[str, str]],
+    output_catalog: str,
+) -> Dict[str, Any]:
+    """Scan multiple catalog/schema locations for PII and create unified Stitch config.
+
+    Args:
+        client: DatabricksAPIClient instance
+        llm_client_instance: LLMProvider instance for PII scanning
+        target_locations: List of {"catalog": "...", "schema": "..."} to scan
+        output_catalog: Catalog where outputs and volume will be stored
+
+    Returns:
+        Dictionary with success/error status, stitch_config, and metadata
+    """
+    # Validate access to all locations first
+    access_results = validate_multi_location_access(client, target_locations)
+    accessible_locations = [r for r in access_results if r["accessible"]]
+
+    if not accessible_locations:
+        inaccessible_details = [
+            f"{r['location']['catalog']}.{r['location']['schema']}: {r.get('error', 'unknown error')}"
+            for r in access_results
+            if not r["accessible"]
+        ]
+        return {
+            "error": f"No accessible locations found to scan. Issues: {'; '.join(inaccessible_details)}"
+        }
+
+    # Aggregate PII results from all locations
+    all_pii_results = []
+    scan_summary = []
+
+    for location_result in accessible_locations:
+        location = location_result["location"]
+        catalog = location["catalog"]
+        schema = location["schema"]
+
+        logging.info(f"Scanning {catalog}.{schema} for PII...")
+
+        pii_scan = _helper_scan_schema_for_pii_logic(
+            client, llm_client_instance, catalog, schema
+        )
+
+        if pii_scan.get("error"):
+            logging.warning(f"Failed to scan {catalog}.{schema}: {pii_scan['error']}")
+            scan_summary.append(
+                {
+                    "location": f"{catalog}.{schema}",
+                    "status": "error",
+                    "error": pii_scan["error"],
+                }
+            )
+            continue
+
+        results = pii_scan.get("results_detail", [])
+        all_pii_results.extend(results)
+
+        table_count = len([t for t in results if t.get("has_pii")])
+        column_count = sum(
+            len(t.get("columns", [])) for t in results if t.get("has_pii")
+        )
+
+        scan_summary.append(
+            {
+                "location": f"{catalog}.{schema}",
+                "status": "success",
+                "tables": table_count,
+                "columns": column_count,
+            }
+        )
+
+    if not all_pii_results or not any(r.get("has_pii") for r in all_pii_results):
+        return {
+            "error": "No PII found in any of the scanned locations",
+            "scan_summary": scan_summary,
+        }
+
+    # Build stitch_config with aggregated tables from all locations
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    stitch_job_name = f"stitch-multi-{current_datetime}"
+
+    stitch_config = {
+        "name": stitch_job_name,
+        "tables": [],
+        "settings": {
+            "output_catalog_name": output_catalog,
+            "output_schema_name": "stitch_outputs",
+        },
+    }
+
+    unsupported_columns = []
+
+    for table_pii_data in all_pii_results:
+        if not table_pii_data.get("has_pii"):
+            continue
+
+        table_cfg = {
+            "path": table_pii_data[
+                "full_name"
+            ],  # Already fully qualified: "catalog.schema.table"
+            "fields": [],
+        }
+
+        table_unsupported = []
+        for col_data in table_pii_data.get("columns", []):
+            if col_data["type"] not in UNSUPPORTED_TYPES:
+                field_cfg = {
+                    "field-name": col_data["name"],
+                    "type": col_data["type"],
+                    "semantics": [],
+                }
+                if col_data.get("semantic"):
+                    field_cfg["semantics"].append(col_data["semantic"])
+                table_cfg["fields"].append(field_cfg)
+            else:
+                table_unsupported.append(
+                    {
+                        "column": col_data["name"],
+                        "type": col_data["type"],
+                        "semantic": col_data.get("semantic"),
+                    }
+                )
+
+        if table_unsupported:
+            unsupported_columns.append(
+                {"table": table_pii_data["full_name"], "columns": table_unsupported}
+            )
+
+        if table_cfg["fields"]:
+            stitch_config["tables"].append(table_cfg)
+
+    if not stitch_config["tables"]:
+        return {
+            "error": "No tables with supported PII columns found to include in Stitch configuration.",
+            "scan_summary": scan_summary,
+        }
+
+    # Create/verify volume in output_catalog
+    # Use first accessible location's schema for volume
+    output_schema = accessible_locations[0]["location"]["schema"]
+    volume_name = "chuck"
+
+    # Check if volume exists
+    try:
+        volumes_response = client.list_volumes(
+            catalog_name=output_catalog, schema_name=output_schema
+        )
+        volume_exists = any(
+            v.get("name") == volume_name for v in volumes_response.get("volumes", [])
+        )
+    except Exception as e:
+        return {"error": f"Failed to list volumes: {str(e)}"}
+
+    if not volume_exists:
+        try:
+            client.create_volume(
+                catalog_name=output_catalog, schema_name=output_schema, name=volume_name
+            )
+            logging.debug(f"Volume '{volume_name}' created successfully.")
+        except Exception as e:
+            return {"error": f"Failed to create volume '{volume_name}': {str(e)}"}
+
+    # Prepare file paths
+    config_file_path = f"/Volumes/{output_catalog}/{output_schema}/{volume_name}/{stitch_job_name}.json"
+
+    # Get Amperity token
+    amperity_token = get_amperity_token()
+    if not amperity_token:
+        return {"error": "Amperity token not found. Please run /amp_login first."}
+
+    # Fetch init script content
+    try:
+        init_script_data = client.fetch_amperity_job_init(amperity_token)
+        init_script_content = init_script_data.get("cluster-init")
+        job_id = init_script_data.get("job-id")
+        if not init_script_content:
+            return {"error": "Failed to get cluster init script from Amperity API."}
+        if not job_id:
+            return {"error": "Failed to get job-id from Amperity API."}
+    except Exception as e:
+        return {"error": f"Error fetching Amperity init script: {str(e)}"}
+
+    # Upload cluster init script with versioning
+    upload_result = _helper_upload_cluster_init_logic(
+        client=client,
+        target_catalog=output_catalog,
+        target_schema=output_schema,
+        init_script_content=init_script_content,
+    )
+    if upload_result.get("error"):
+        return upload_result
+
+    init_script_volume_path = upload_result["volume_path"]
+
+    return {
+        "success": True,
+        "stitch_config": stitch_config,
+        "metadata": {
+            "target_locations": target_locations,
+            "output_catalog": output_catalog,
+            "output_schema": "stitch_outputs",
+            "volume_name": volume_name,
+            "stitch_job_name": stitch_job_name,
+            "config_file_path": config_file_path,
+            "init_script_path": init_script_volume_path,
+            "init_script_content": init_script_content,
+            "amperity_token": amperity_token,
+            "job_id": job_id,
+            "scan_summary": scan_summary,
+            "unsupported_columns": unsupported_columns,
+            # Store first location for backward compatibility with launch logic
+            "target_catalog": output_catalog,
+            "target_schema": output_schema,
+            # Add pii_scan_output for launch compatibility (summary of all locations)
+            "pii_scan_output": {
+                "message": f"Multi-location PII scan complete across {len(target_locations)} locations"
+            },
         },
     }
 

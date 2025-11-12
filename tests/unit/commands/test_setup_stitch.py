@@ -149,6 +149,7 @@ def test_agent_failure_shows_error_without_progress(
     assert (
         "No tables with PII found" in result.message
         or "PII Scan failed" in result.message
+        or "No PII found" in result.message
     )
 
     # Current implementation doesn't report progress, so no steps expected
