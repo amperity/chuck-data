@@ -89,6 +89,7 @@ def format_help_text(
         "Job Management": [
             "launch-job",
             "job-status",
+            "monitor-job",
         ],
         "Utilities": [
             "help",
