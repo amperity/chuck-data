@@ -423,10 +423,14 @@ def _helper_launch_stitch_job(
 
         # Launch the Stitch job
         try:
+            # Extract policy_id if present
+            policy_id = metadata.get("policy_id")
+
             job_run_data = client.submit_job_run(
                 config_path=config_file_path,
                 init_script_path=init_script_path,
                 run_name=f"Stitch Setup: {stitch_job_name}",
+                policy_id=policy_id,
             )
             run_id = job_run_data.get("run_id")
             if not run_id:

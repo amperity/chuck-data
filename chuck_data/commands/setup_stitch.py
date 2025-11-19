@@ -77,6 +77,7 @@ def handle_command(
     client: Optional[DatabricksAPIClient],
     interactive_input: Optional[str] = None,
     auto_confirm: bool = False,
+    policy_id: Optional[str] = None,
     **kwargs,
 ) -> CommandResult:
     """
@@ -95,6 +96,12 @@ def handle_command(
     if not client:
         return CommandResult(False, message="Client is required for Stitch setup.")
 
+    # Handle auto-confirm mode
+    if auto_confirm:
+        return _handle_legacy_setup(
+            client, catalog_name_arg, schema_name_arg, policy_id
+        )
+
     # Interactive mode - use context management
     context = InteractiveContext()
     console = get_console()
@@ -103,7 +110,12 @@ def handle_command(
         # Phase determination
         if not interactive_input:  # First call - Phase 1: Prepare config
             return _phase_1_prepare_config(
-                client, context, console, catalog_name_arg, schema_name_arg
+                client,
+                context,
+                console,
+                catalog_name_arg,
+                schema_name_arg,
+                policy_id,
             )
 
         # Get stored context data
@@ -139,6 +151,7 @@ def _handle_legacy_setup(
     client: DatabricksAPIClient,
     catalog_name_arg: Optional[str],
     schema_name_arg: Optional[str],
+    policy_id: Optional[str] = None,
 ) -> CommandResult:
     """Handle auto-confirm mode using the legacy direct setup approach."""
     try:
@@ -182,6 +195,10 @@ def _handle_legacy_setup(
             )
 
             return CommandResult(False, message=prep_result["error"], data=prep_result)
+
+        # Add policy_id to metadata if provided
+        if policy_id:
+            prep_result["metadata"]["policy_id"] = policy_id
 
         # Now we need to explicitly launch the job since _helper_setup_stitch_logic no longer does it
         stitch_result_data = _helper_launch_stitch_job(
@@ -254,6 +271,7 @@ def _phase_1_prepare_config(
     console,
     catalog_name_arg: Optional[str],
     schema_name_arg: Optional[str],
+    policy_id: Optional[str] = None,
 ) -> CommandResult:
     """Phase 1: Prepare the Stitch configuration."""
     target_catalog = catalog_name_arg or get_active_catalog()
@@ -283,6 +301,10 @@ def _phase_1_prepare_config(
     if prep_result.get("error"):
         context.clear_active_context("setup_stitch")
         return CommandResult(False, message=prep_result["error"])
+
+    # Add policy_id to metadata if provided
+    if policy_id:
+        prep_result["metadata"]["policy_id"] = policy_id
 
     # Store the prepared data in context (don't store llm_client object)
     context.store_context_data("setup_stitch", "phase", "review")
@@ -710,6 +732,10 @@ DEFINITION = CommandDefinition(
         "auto_confirm": {
             "type": "boolean",
             "description": "Optional: Skip interactive confirmation and launch job immediately (default: false)",
+        },
+        "policy_id": {
+            "type": "string",
+            "description": "Optional: cluster policy ID to use for the Stitch job run",
         },
     },
     required_params=[],
