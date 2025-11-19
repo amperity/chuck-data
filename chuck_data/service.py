@@ -414,10 +414,18 @@ class ChuckService:
 
         # Interactive Mode Handling
         if command_def.supports_interactive_input:
-            # For interactive commands, the `interactive_input` is the primary payload.
-            # Always include the interactive_input parameter, even if None, for interactive commands
-            # This prevents dropping inputs in complex interactive flows
-            args_for_handler = {"interactive_input": interactive_input}
+            # For interactive commands, we still want to parse any initial arguments/flags if provided.
+            # This supports use cases like "/setup-stitch --auto-confirm --policy_id=..."
+            parsed_args_dict, error_result = self._parse_and_validate_tui_args(
+                command_def, raw_args, raw_kwargs
+            )
+
+            if error_result:
+                return error_result
+
+            args_for_handler = parsed_args_dict or {}
+            # Ensure interactive_input is passed (it overrides any parsed arg with same name, though unlikely)
+            args_for_handler["interactive_input"] = interactive_input
         else:
             # Standard Argument Parsing & Validation
             parsed_args_dict, error_result = self._parse_and_validate_tui_args(

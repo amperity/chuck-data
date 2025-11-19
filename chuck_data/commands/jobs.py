@@ -17,6 +17,7 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
     init_script_path: str = kwargs.get("init_script_path")
     run_name: Optional[str] = kwargs.get("run_name")
     tool_output_callback = kwargs.get("tool_output_callback")
+    policy_id: Optional[str] = kwargs.get("policy_id")
 
     if not config_path or not init_script_path:
         return CommandResult(
@@ -34,6 +35,7 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
             config_path=config_path,
             init_script_path=init_script_path,
             run_name=run_name,
+            policy_id=policy_id,
         )
         run_id = run_data.get("run_id")
         if run_id:
@@ -125,6 +127,10 @@ LAUNCH_JOB_DEFINITION = CommandDefinition(
         "init_script_path": {
             "type": "string",
             "description": "Path to the init script",
+        },
+        "policy_id": {
+            "type": "string",
+            "description": "Optional: cluster policy ID to use for the job run",
         },
         "run_name": {"type": "string", "description": "Optional name for the job run"},
     },
