@@ -435,6 +435,12 @@ class ChuckTUI:
         elif cmd in ["/warehouses", "/list-warehouses"]:
             # For TUI warehouse commands, always show the full table
             result = self.service.execute_command(cmd, *args, display=True)
+        elif cmd in ["/databases", "/list-databases"]:
+            # For TUI database commands, always show the full table
+            result = self.service.execute_command(cmd, *args, display=True)
+        elif cmd in ["/schemas", "/list-schemas"]:
+            # For TUI schema commands, always show the full table
+            result = self.service.execute_command(cmd, *args, display=True)
         else:
             result = self.service.execute_command(cmd, *args)
 
@@ -478,8 +484,15 @@ class ChuckTUI:
             # Specialized display for different commands
             if cmd in ["/catalogs", "/search_catalogs", "/list-catalogs"]:
                 self._display_catalogs(result.data)
+            elif cmd in ["/databases", "/list-databases"]:
+                self._display_databases(result.data)
             elif cmd in ["/schemas", "/search_schemas", "/list-schemas"]:
-                self._display_schemas(result.data)
+                # Route to correct schema display based on data structure
+                # Databricks uses catalog_name, Redshift uses database
+                if "database" in result.data:
+                    self._display_redshift_schemas(result.data)
+                else:
+                    self._display_schemas(result.data)
             elif cmd in ["/tables", "/search_tables", "/list-tables"]:
                 self._display_tables(result.data)
             elif cmd in ["/catalog", "/catalog-details"]:
@@ -631,7 +644,11 @@ class ChuckTUI:
                 if agent_display == "conditional":
                     # Use display_condition function to determine display type
                     display_condition = getattr(command_def, "display_condition", None)
-                    if display_condition and isinstance(tool_result, dict):
+                    if (
+                        display_condition
+                        and callable(display_condition)
+                        and isinstance(tool_result, dict)
+                    ):
                         display_type = (
                             "full" if display_condition(tool_result) else "condensed"
                         )
@@ -667,8 +684,20 @@ class ChuckTUI:
         # This reuses existing display logic to maintain consistency
         if tool_name in ["list-catalogs", "list_catalogs", "catalogs"]:
             self._display_catalogs(tool_result)
-        elif tool_name in ["list-schemas", "list_schemas", "schemas"]:
-            self._display_schemas(tool_result)
+        elif tool_name in ["list-databases", "list_databases", "databases"]:
+            self._display_databases(tool_result)
+        elif tool_name in [
+            "list-schemas",
+            "list_schemas",
+            "schemas",
+            "list-redshift-schemas",
+            "list_redshift_schemas",
+        ]:
+            # Route to correct schema display based on data structure
+            if "database" in tool_result:
+                self._display_redshift_schemas(tool_result)
+            else:
+                self._display_schemas(tool_result)
         elif tool_name in ["list-tables", "list_tables", "tables"]:
             self._display_tables(tool_result)
         elif tool_name in ["get_catalog_details", "catalog"]:
@@ -860,6 +889,93 @@ class ChuckTUI:
         # This prevents agent from continuing processing after catalog display is complete
         raise PaginationCancelled()
 
+    def _display_databases(self, data: Dict[str, Any]) -> None:
+        """Display Redshift databases in a nicely formatted way."""
+        from chuck_data.ui.table_formatter import display_table
+        from chuck_data.exceptions import PaginationCancelled
+
+        databases = data.get("databases", [])
+        current_database = data.get("current_database")
+
+        if not databases:
+            self.console.print(
+                f"[{WARNING_STYLE}]No databases found.[/{WARNING_STYLE}]"
+            )
+            # Raise PaginationCancelled to return to chuck > prompt immediately
+            raise PaginationCancelled()
+
+        # Define column styling based on the active database
+        def name_style(name):
+            return "bold green" if name == current_database else None
+
+        style_map = {"name": name_style}
+
+        # Display the table
+        display_table(
+            console=self.console,
+            data=databases,
+            columns=["name"],
+            headers=["Name"],
+            title="Available Databases",
+            style_map=style_map,
+            title_style=TABLE_TITLE_STYLE,
+            show_lines=False,
+        )
+
+        # Display current database if set
+        if current_database:
+            self.console.print(
+                f"\nCurrent database: [bold green]{current_database}[/bold green]"
+            )
+
+        # Raise PaginationCancelled to return to chuck > prompt immediately
+        # This prevents agent from continuing processing after database display is complete
+        raise PaginationCancelled()
+
+    def _display_redshift_schemas(self, data: Dict[str, Any]) -> None:
+        """Display Redshift schemas in a nicely formatted way."""
+        from chuck_data.ui.table_formatter import display_table
+        from chuck_data.exceptions import PaginationCancelled
+
+        schemas = data.get("schemas", [])
+        database = data.get("database", "")
+        current_schema = data.get("current_schema")
+
+        if not schemas:
+            self.console.print(
+                f"[{WARNING_STYLE}]No schemas found in database '{database}'.[/{WARNING_STYLE}]"
+            )
+            # Raise PaginationCancelled to return to chuck > prompt immediately
+            raise PaginationCancelled()
+
+        # Define column styling based on the active schema
+        def name_style(name):
+            return "bold green" if name == current_schema else None
+
+        style_map = {"name": name_style}
+
+        # Display the table
+        display_table(
+            console=self.console,
+            data=schemas,
+            columns=["name"],
+            headers=["Name"],
+            title=f"Schemas in database '{database}'",
+            style_map=style_map,
+            title_style=TABLE_TITLE_STYLE,
+            show_lines=False,
+        )
+
+        # Display current schema if available
+        if current_schema:
+            self.console.print(
+                f"\nCurrent schema: [bold green]{current_schema}[/bold green]"
+            )
+
+        # Raise PaginationCancelled to return to chuck > prompt immediately
+        # This prevents agent from continuing processing after schema display is complete
+        raise PaginationCancelled()
+
     def _display_schemas(self, data: Dict[str, Any]) -> None:
         """Display schemas in a nicely formatted way."""
         from chuck_data.ui.table_formatter import display_table
@@ -923,10 +1039,11 @@ class ChuckTUI:
 
         # Process the table data for display
         for table in tables:
-            # Convert columns list to count if present
+            # Convert columns list to count if present (Databricks)
             if "columns" in table and isinstance(table["columns"], list):
                 table["column_count"] = len(table["columns"])
-            else:
+            elif "column_count" not in table:
+                # Only set to 0 if column_count doesn't already exist (e.g., not set by backend)
                 table["column_count"] = 0
 
             # Format timestamps if present

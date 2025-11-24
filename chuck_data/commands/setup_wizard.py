@@ -155,8 +155,13 @@ class SetupWizardOrchestrator:
         context_data = {
             "current_step": state.current_step.value,
             "data_provider": state.data_provider,
+            "computation_provider": state.computation_provider,
             "workspace_url": state.workspace_url,
             "token": state.token,
+            "aws_region": state.aws_region,
+            "redshift_cluster_identifier": state.redshift_cluster_identifier,
+            "redshift_workgroup_name": state.redshift_workgroup_name,
+            "s3_bucket": state.s3_bucket,
             "llm_provider": state.llm_provider,
             "models": state.models,
             "selected_model": state.selected_model,
@@ -164,6 +169,7 @@ class SetupWizardOrchestrator:
             "error_message": state.error_message,
         }
 
+        logging.info(f"Saving state to context: aws_region={state.aws_region}")
         for key, value in context_data.items():
             self.context.store_context_data("/setup", key, value)
 
@@ -194,17 +200,28 @@ class SetupWizardOrchestrator:
             except (ValueError, TypeError):
                 current_step = WizardStep.AMPERITY_AUTH
 
-            return WizardState(
+            loaded_state = WizardState(
                 current_step=current_step,
                 data_provider=context_data.get("data_provider"),
+                computation_provider=context_data.get("computation_provider"),
                 workspace_url=context_data.get("workspace_url"),
                 token=context_data.get("token"),
+                aws_region=context_data.get("aws_region"),
+                redshift_cluster_identifier=context_data.get(
+                    "redshift_cluster_identifier"
+                ),
+                redshift_workgroup_name=context_data.get("redshift_workgroup_name"),
+                s3_bucket=context_data.get("s3_bucket"),
                 llm_provider=context_data.get("llm_provider"),
                 models=context_data.get("models", []),
                 selected_model=context_data.get("selected_model"),
                 usage_consent=context_data.get("usage_consent"),
                 error_message=context_data.get("error_message"),
             )
+            logging.info(
+                f"Loaded state from context: aws_region={loaded_state.aws_region}"
+            )
+            return loaded_state
 
         except Exception as e:
             logging.error(f"Error loading wizard state from context: {e}")
@@ -226,6 +243,7 @@ class SetupWizardOrchestrator:
         step_order = [
             WizardStep.AMPERITY_AUTH,
             WizardStep.DATA_PROVIDER_SELECTION,
+            WizardStep.COMPUTATION_PROVIDER_SELECTION,
             WizardStep.WORKSPACE_URL,
             WizardStep.TOKEN_INPUT,
             WizardStep.LLM_PROVIDER_SELECTION,

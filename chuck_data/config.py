@@ -216,10 +216,9 @@ class ConfigManager:
                 # Remove invalid workspace_url so default is maintained
                 kwargs.pop("workspace_url")
 
-        # Set values
+        # Set values - Pydantic model has extra="allow" so we can set any field
         for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
+            setattr(config, key, value)
 
         return self.save()
 
@@ -295,6 +294,12 @@ def set_llm_provider(provider_name):
     return _config_manager.update(llm_provider=provider_name)
 
 
+def get_data_provider():
+    """Get the data provider from config (databricks, aws_redshift, etc.)."""
+    config = _config_manager.get_config()
+    return getattr(config, "data_provider", None)
+
+
 def get_warehouse_id():
     """Get the warehouse ID from config."""
     return _config_manager.get_config().warehouse_id
@@ -323,6 +328,17 @@ def get_active_schema():
 def set_active_schema(schema_name):
     """Set the active schema in config."""
     return _config_manager.update(active_schema=schema_name)
+
+
+def get_active_database():
+    """Get the active Redshift database from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "redshift_database", None)
+
+
+def set_active_database(database_name):
+    """Set the active Redshift database in config."""
+    return _config_manager.update(redshift_database=database_name)
 
 
 def get_databricks_token():

@@ -30,6 +30,7 @@ class CommandDefinition:
         agent_display: str = "condensed" (how to display when called by agent: "condensed", "full", or "conditional")
         display_condition: Optional[Callable] = None (function that takes result dict and returns True for full display, False for condensed)
         condensed_action: Optional[str] = None (friendly action name for condensed display, e.g. "Setting catalog")
+        provider: Optional[str] = None (data provider this command applies to: "databricks", "aws_redshift", or None for all)
     """
 
     name: str
@@ -53,6 +54,9 @@ class CommandDefinition:
         None  # Function to determine display type for conditional
     )
     condensed_action: Optional[str] = None  # Friendly action name for condensed display
+    provider: Optional[str] = (
+        None  # Data provider this command applies to: "databricks", "aws_redshift", or None for all
+    )
 
 
 # Command registry - populated with all available commands
@@ -79,19 +83,28 @@ def register_command(command_def: CommandDefinition) -> None:
             TUI_COMMAND_MAP[f"/{alias}"] = command_def.name
 
 
-def get_command(name: str) -> Optional[CommandDefinition]:
+def get_command(
+    name: str, provider: Optional[str] = None
+) -> Optional[CommandDefinition]:
     """
-    Get a command by name.
+    Get a command by name, optionally filtered by provider.
 
     Args:
         name: Command name to look up (without leading slash)
+        provider: Optional data provider to filter by ("databricks", "aws_redshift", or None)
 
     Returns:
         CommandDefinition if found, None otherwise
     """
     # Direct lookup in registry
     if name in COMMAND_REGISTRY:
-        return COMMAND_REGISTRY[name]
+        cmd = COMMAND_REGISTRY[name]
+        # If provider specified, check if command is available for it
+        if provider is not None and not _is_command_available_for_provider(
+            cmd, provider
+        ):
+            return None
+        return cmd
 
     # Handle TUI command names (with leading slash)
     if name.startswith("/"):
@@ -99,37 +112,89 @@ def get_command(name: str) -> Optional[CommandDefinition]:
     else:
         tui_name = f"/{name}"
 
-    # Check TUI command map
-    if tui_name in TUI_COMMAND_MAP:
-        registry_name = TUI_COMMAND_MAP[tui_name]
-        return COMMAND_REGISTRY.get(registry_name)
+    # For TUI aliases, we need to check all commands that have this alias
+    # and return the one that matches the provider
+    if provider is not None:
+        # Find all commands that have this TUI alias and match the provider
+        for cmd_name, cmd_def in COMMAND_REGISTRY.items():
+            if tui_name in cmd_def.tui_aliases:
+                if _is_command_available_for_provider(cmd_def, provider):
+                    return cmd_def
+        return None
+    else:
+        # Original behavior when no provider specified - use TUI_COMMAND_MAP
+        if tui_name in TUI_COMMAND_MAP:
+            registry_name = TUI_COMMAND_MAP[tui_name]
+            return COMMAND_REGISTRY.get(registry_name)
 
     return None
 
 
-def get_user_commands() -> Dict[str, CommandDefinition]:
+def _is_command_available_for_provider(
+    cmd: CommandDefinition, provider: Optional[str]
+) -> bool:
     """
-    Get all commands available to the user.
+    Check if a command is available for the given provider.
+
+    Args:
+        cmd: Command definition
+        provider: Data provider ("databricks", "aws_redshift", or None)
+
+    Returns:
+        True if command is available for this provider
+    """
+    # If command doesn't specify a provider, it's available for all
+    if cmd.provider is None:
+        return True
+
+    # If no provider configured, only show provider-agnostic commands
+    if provider is None:
+        return False
+
+    # Check if command matches the configured provider
+    return cmd.provider == provider
+
+
+def get_user_commands(provider: Optional[str] = None) -> Dict[str, CommandDefinition]:
+    """
+    Get all commands available to the user for the given provider.
+
+    Args:
+        provider: Data provider to filter by ("databricks", "aws_redshift", or None)
 
     Returns:
         Dict mapping command names to definitions for user-visible commands
     """
-    return {name: cmd for name, cmd in COMMAND_REGISTRY.items() if cmd.visible_to_user}
+    return {
+        name: cmd
+        for name, cmd in COMMAND_REGISTRY.items()
+        if cmd.visible_to_user and _is_command_available_for_provider(cmd, provider)
+    }
 
 
-def get_agent_commands() -> Dict[str, CommandDefinition]:
+def get_agent_commands(provider: Optional[str] = None) -> Dict[str, CommandDefinition]:
     """
-    Get all commands available to the agent.
+    Get all commands available to the agent for the given provider.
+
+    Args:
+        provider: Data provider to filter by ("databricks", "aws_redshift", or None)
 
     Returns:
         Dict mapping command names to definitions for agent-visible commands
     """
-    return {name: cmd for name, cmd in COMMAND_REGISTRY.items() if cmd.visible_to_agent}
+    return {
+        name: cmd
+        for name, cmd in COMMAND_REGISTRY.items()
+        if cmd.visible_to_agent and _is_command_available_for_provider(cmd, provider)
+    }
 
 
-def get_agent_tool_schemas() -> List[Dict[str, Any]]:
+def get_agent_tool_schemas(provider: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Get all command schemas in agent tool format.
+    Get all command schemas in agent tool format for the given provider.
+
+    Args:
+        provider: Data provider to filter by ("databricks", "aws_redshift", or None)
 
     Returns:
         List of tool schema definitions compatible with the LLM agent API
@@ -137,6 +202,9 @@ def get_agent_tool_schemas() -> List[Dict[str, Any]]:
     agent_tools = []
     for name, cmd in COMMAND_REGISTRY.items():
         if not cmd.visible_to_agent:
+            continue
+
+        if not _is_command_available_for_provider(cmd, provider):
             continue
 
         tool = {

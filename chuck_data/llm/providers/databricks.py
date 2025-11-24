@@ -80,26 +80,19 @@ class DatabricksProvider:
             base_url=f"{self.workspace_url}/serving-endpoints",
         )
 
-        # Ensure we have a model - raise if none available
-        if not resolved_model:
-            raise ValueError("No model specified and no active model configured")
+        # Make request
+        # Build parameters conditionally to satisfy type checker
+        params = {
+            "model": resolved_model,
+            "messages": messages,
+            "stream": stream,
+        }
 
-        # Make request - using type: ignore for OpenAI SDK strict typing
-        # The runtime behavior is correct as OpenAI accepts these formats
         if tools:
-            response = client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,  # type: ignore[arg-type]
-                tools=tools,  # type: ignore[arg-type]
-                stream=stream,
-                tool_choice=tool_choice,  # type: ignore[arg-type]
-            )
-        else:
-            response = client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,  # type: ignore[arg-type]
-                stream=stream,
-            )
+            params["tools"] = tools
+            params["tool_choice"] = tool_choice
+
+        response = client.chat.completions.create(**params)
 
         return response
 

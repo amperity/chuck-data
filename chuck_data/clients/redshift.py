@@ -1,0 +1,435 @@
+"""
+Reusable AWS Redshift API client for authentication and requests.
+
+This client uses boto3 and the Redshift Data API to provide interactive
+browsing capabilities similar to DatabricksAPIClient for Unity Catalog.
+"""
+
+import logging
+import time
+from typing import Dict, List, Optional
+
+import boto3
+from botocore.exceptions import ClientError, BotoCoreError
+
+
+class RedshiftAPIClient:
+    """Reusable AWS Redshift API client for authentication and metadata operations."""
+
+    def __init__(
+        self,
+        region: str,
+        cluster_identifier: Optional[str] = None,
+        workgroup_name: Optional[str] = None,
+        database: str = "dev",
+        s3_bucket: Optional[str] = None,
+        aws_access_key_id: Optional[str] = None,
+        aws_secret_access_key: Optional[str] = None,
+    ):
+        """
+        Initialize the Redshift API client.
+
+        Args:
+            region: AWS region (e.g., 'us-west-2')
+            cluster_identifier: Redshift cluster identifier (for provisioned clusters)
+            workgroup_name: Redshift Serverless workgroup name (alternative to cluster_identifier)
+            database: Default database name
+            s3_bucket: S3 bucket for intermediate storage (required for Spark-Redshift connector)
+            aws_access_key_id: AWS access key ID (optional, will use boto3 credential discovery if not provided)
+            aws_secret_access_key: AWS secret access key (optional, will use boto3 credential discovery if not provided)
+
+        Note: Either cluster_identifier or workgroup_name must be provided.
+              If aws_access_key_id and aws_secret_access_key are not provided, boto3 will
+              automatically discover credentials from AWS_PROFILE, ~/.aws/credentials, IAM roles, etc.
+        """
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
+        self.region = region
+        self.cluster_identifier = cluster_identifier
+        self.workgroup_name = workgroup_name
+        self.database = database
+        self.s3_bucket = s3_bucket
+
+        # Validate that either cluster_identifier or workgroup_name is provided
+        if not cluster_identifier and not workgroup_name:
+            raise ValueError(
+                "Either cluster_identifier or workgroup_name must be provided"
+            )
+
+        # Build boto3 client kwargs
+        client_kwargs = {"region_name": region}
+        if aws_access_key_id and aws_secret_access_key:
+            client_kwargs["aws_access_key_id"] = aws_access_key_id
+            client_kwargs["aws_secret_access_key"] = aws_secret_access_key
+
+        # Initialize boto3 clients
+        self.redshift_data = boto3.client("redshift-data", **client_kwargs)
+        self.redshift = boto3.client("redshift", **client_kwargs)
+        self.s3 = boto3.client("s3", **client_kwargs)
+
+    #
+    # Connection validation methods
+    #
+
+    def validate_connection(self) -> bool:
+        """
+        Validate the Redshift connection by attempting to list databases.
+
+        Returns:
+            True if connection is valid, False otherwise
+        """
+        try:
+            self.list_databases()
+            return True
+        except Exception as e:
+            logging.debug(f"Connection validation failed: {e}")
+            return False
+
+    #
+    # SQL execution methods
+    #
+
+    def execute_sql(
+        self, sql: str, database: Optional[str] = None, wait: bool = True
+    ) -> Dict:
+        """
+        Execute SQL using Redshift Data API.
+
+        Args:
+            sql: SQL statement to execute
+            database: Database name (uses default if not specified)
+            wait: Whether to wait for statement completion
+
+        Returns:
+            Dictionary containing statement_id and optionally results
+
+        Raises:
+            ValueError: If an error occurs during execution
+        """
+        db = database or self.database
+
+        try:
+            # Build request parameters
+            params = {
+                "Database": db,
+                "Sql": sql,
+            }
+
+            # Add cluster identifier or workgroup name
+            if self.cluster_identifier:
+                params["ClusterIdentifier"] = self.cluster_identifier
+            elif self.workgroup_name:
+                params["WorkgroupName"] = self.workgroup_name
+
+            response = self.redshift_data.execute_statement(**params)
+            statement_id = response["Id"]
+
+            if wait:
+                return self._wait_for_statement(statement_id)
+
+            return {"statement_id": statement_id}
+
+        except ClientError as e:
+            logging.debug(f"SQL execution error: {e}")
+            raise ValueError(f"SQL execution failed: {e}")
+        except BotoCoreError as e:
+            logging.debug(f"Connection error: {e}")
+            raise ConnectionError(f"Connection error occurred: {e}")
+
+    def _wait_for_statement(self, statement_id: str, timeout: int = 300) -> Dict:
+        """
+        Wait for SQL statement to complete.
+
+        Args:
+            statement_id: Statement ID to wait for
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            Dictionary containing statement result
+
+        Raises:
+            ValueError: If statement fails or times out
+        """
+        start_time = time.time()
+
+        while True:
+            try:
+                response = self.redshift_data.describe_statement(Id=statement_id)
+                status = response["Status"]
+
+                if status == "FINISHED":
+                    # Get results
+                    result = self.redshift_data.get_statement_result(Id=statement_id)
+                    return {
+                        "statement_id": statement_id,
+                        "status": status,
+                        "result": result,
+                    }
+                elif status == "FAILED":
+                    error = response.get("Error", "Unknown error")
+                    raise ValueError(f"Statement failed: {error}")
+                elif status == "ABORTED":
+                    raise ValueError("Statement was aborted")
+
+                # Check timeout
+                if time.time() - start_time > timeout:
+                    raise ValueError(f"Statement timed out after {timeout} seconds")
+
+                # Wait before polling again
+                time.sleep(1)
+
+            except ClientError as e:
+                logging.debug(f"Error waiting for statement: {e}")
+                raise ValueError(f"Error waiting for statement: {e}")
+
+    def get_statement_result(self, statement_id: str) -> Dict:
+        """
+        Retrieve query results for a statement.
+
+        Args:
+            statement_id: Statement ID to retrieve results for
+
+        Returns:
+            Dictionary containing query results
+        """
+        try:
+            return self.redshift_data.get_statement_result(Id=statement_id)
+        except ClientError as e:
+            logging.debug(f"Error getting statement result: {e}")
+            raise ValueError(f"Error getting statement result: {e}")
+
+    #
+    # Database/Schema/Table metadata methods (parallel to DatabricksAPIClient)
+    #
+
+    def list_databases(self, database: Optional[str] = None) -> List[str]:
+        """
+        List Redshift databases.
+
+        This is parallel to DatabricksAPIClient.list_catalogs().
+
+        Args:
+            database: Database name to connect to for listing (uses default if not specified)
+
+        Returns:
+            List of database names
+
+        Raises:
+            ValueError: If an error occurs
+        """
+        db = database or self.database
+
+        try:
+            # Build request parameters
+            params = {"Database": db}
+
+            # Add cluster identifier or workgroup name
+            if self.cluster_identifier:
+                params["ClusterIdentifier"] = self.cluster_identifier
+            elif self.workgroup_name:
+                params["WorkgroupName"] = self.workgroup_name
+
+            response = self.redshift_data.list_databases(**params)
+            return [db for db in response.get("Databases", [])]
+
+        except ClientError as e:
+            logging.debug(f"Error listing databases: {e}")
+            raise ValueError(f"Error listing databases: {e}")
+        except BotoCoreError as e:
+            logging.debug(f"Connection error: {e}")
+            raise ConnectionError(f"Connection error occurred: {e}")
+
+    def list_schemas(self, database: Optional[str] = None) -> List[str]:
+        """
+        List schemas in a database.
+
+        This is parallel to DatabricksAPIClient.list_schemas(catalog_name).
+
+        Args:
+            database: Database name (uses default if not specified)
+
+        Returns:
+            List of schema names
+
+        Raises:
+            ValueError: If an error occurs
+        """
+        db = database or self.database
+
+        try:
+            # Build request parameters
+            params = {"Database": db}
+
+            # Add cluster identifier or workgroup name
+            if self.cluster_identifier:
+                params["ClusterIdentifier"] = self.cluster_identifier
+            elif self.workgroup_name:
+                params["WorkgroupName"] = self.workgroup_name
+
+            response = self.redshift_data.list_schemas(**params)
+            return [schema for schema in response.get("Schemas", [])]
+
+        except ClientError as e:
+            logging.debug(f"Error listing schemas: {e}")
+            raise ValueError(f"Error listing schemas: {e}")
+        except BotoCoreError as e:
+            logging.debug(f"Connection error: {e}")
+            raise ConnectionError(f"Connection error occurred: {e}")
+
+    def list_tables(
+        self,
+        database: Optional[str] = None,
+        schema_pattern: Optional[str] = None,
+        table_pattern: Optional[str] = None,
+        omit_columns: bool = False,
+    ) -> Dict[str, List[Dict]]:
+        """
+        List tables in a schema.
+
+        This is parallel to DatabricksAPIClient.list_tables(catalog_name, schema_name).
+
+        Args:
+            database: Database name (uses default if not specified)
+            schema_pattern: Schema pattern to filter (optional)
+            table_pattern: Table pattern to filter (optional)
+            omit_columns: Whether to omit column information (optional, for API parity with Databricks)
+
+        Returns:
+            Dictionary with "tables" key containing list of table metadata dictionaries
+
+        Raises:
+            ValueError: If an error occurs
+        """
+        db = database or self.database
+
+        try:
+            # Build request parameters
+            params = {"Database": db}
+
+            # Add cluster identifier or workgroup name
+            if self.cluster_identifier:
+                params["ClusterIdentifier"] = self.cluster_identifier
+            elif self.workgroup_name:
+                params["WorkgroupName"] = self.workgroup_name
+
+            # Add optional filters
+            if schema_pattern:
+                params["SchemaPattern"] = schema_pattern
+            if table_pattern:
+                params["TablePattern"] = table_pattern
+
+            # Note: omit_columns parameter is accepted for API compatibility with Databricks
+            # but has no effect since Redshift's list_tables API doesn't return column information
+
+            response = self.redshift_data.list_tables(**params)
+            # Return in same format as Databricks for consistency
+            return {"tables": response.get("Tables", [])}
+
+        except ClientError as e:
+            logging.debug(f"Error listing tables: {e}")
+            raise ValueError(f"Error listing tables: {e}")
+        except BotoCoreError as e:
+            logging.debug(f"Connection error: {e}")
+            raise ConnectionError(f"Connection error occurred: {e}")
+
+    def describe_table(
+        self,
+        database: Optional[str] = None,
+        schema: Optional[str] = None,
+        table: Optional[str] = None,
+    ) -> Dict:
+        """
+        Get table schema/metadata.
+
+        This is parallel to DatabricksAPIClient.get_table(full_name).
+
+        Args:
+            database: Database name (uses default if not specified)
+            schema: Schema name
+            table: Table name
+
+        Returns:
+            Dictionary containing table metadata and column information
+
+        Raises:
+            ValueError: If an error occurs or required parameters are missing
+        """
+        if not schema or not table:
+            raise ValueError("Both schema and table must be specified")
+
+        db = database or self.database
+
+        try:
+            # Build request parameters
+            params = {
+                "Database": db,
+                "Schema": schema,
+                "Table": table,
+            }
+
+            # Add cluster identifier or workgroup name
+            if self.cluster_identifier:
+                params["ClusterIdentifier"] = self.cluster_identifier
+            elif self.workgroup_name:
+                params["WorkgroupName"] = self.workgroup_name
+
+            response = self.redshift_data.describe_table(**params)
+            return response
+
+        except ClientError as e:
+            logging.debug(f"Error describing table: {e}")
+            raise ValueError(f"Error describing table: {e}")
+        except BotoCoreError as e:
+            logging.debug(f"Connection error: {e}")
+            raise ConnectionError(f"Connection error occurred: {e}")
+
+    #
+    # S3 operations (for Spark-Redshift connector)
+    #
+
+    def upload_to_s3(self, local_path: str, s3_key: str) -> str:
+        """
+        Upload file to S3 bucket.
+
+        Args:
+            local_path: Local file path to upload
+            s3_key: S3 key (path within bucket)
+
+        Returns:
+            S3 URI (s3://bucket/key)
+
+        Raises:
+            ValueError: If S3 bucket is not configured
+        """
+        if not self.s3_bucket:
+            raise ValueError("S3 bucket not configured")
+
+        try:
+            self.s3.upload_file(local_path, self.s3_bucket, s3_key)
+            return f"s3://{self.s3_bucket}/{s3_key}"
+        except ClientError as e:
+            logging.debug(f"Error uploading to S3: {e}")
+            raise ValueError(f"Error uploading to S3: {e}")
+
+    def list_s3_objects(self, prefix: str) -> List[str]:
+        """
+        List objects in S3 bucket.
+
+        Args:
+            prefix: S3 key prefix to filter
+
+        Returns:
+            List of S3 keys
+
+        Raises:
+            ValueError: If S3 bucket is not configured
+        """
+        if not self.s3_bucket:
+            raise ValueError("S3 bucket not configured")
+
+        try:
+            response = self.s3.list_objects_v2(Bucket=self.s3_bucket, Prefix=prefix)
+            return [obj["Key"] for obj in response.get("Contents", [])]
+        except ClientError as e:
+            logging.debug(f"Error listing S3 objects: {e}")
+            raise ValueError(f"Error listing S3 objects: {e}")

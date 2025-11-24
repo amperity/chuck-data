@@ -171,4 +171,5 @@ DEFINITION = CommandDefinition(
     agent_display="condensed",
     condensed_action="Setting schema:",
     usage_hint="Usage: /select-schema <schema_name>",
+    provider="databricks",  # Databricks Unity Catalog-specific command (catalog.schema model)
 )

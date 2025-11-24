@@ -223,9 +223,9 @@ def test_agent_display_setting_validation(tui):
     list_commands = [name for name in agent_commands.keys() if name.startswith("list_")]
 
     # Ensure we have the expected list commands
+    # Note: list_schemas and list_catalogs are Databricks-specific and may not be registered
+    # depending on provider configuration. list_redshift_schemas and list_databases are Redshift-specific
     expected_list_commands = {
-        "list_schemas",
-        "list_catalogs",
         "list_tables",
         "list_warehouses",
         "list_volumes",
@@ -233,17 +233,16 @@ def test_agent_display_setting_validation(tui):
     }
 
     found_commands = set(list_commands)
-    assert (
-        found_commands == expected_list_commands
-    ), f"Expected list commands changed. Found: {found_commands}, Expected: {expected_list_commands}"
+    # Check that we have at least the expected commands (may have provider-specific ones too)
+    assert expected_list_commands.issubset(
+        found_commands
+    ), f"Missing expected list commands. Found: {found_commands}, Expected at least: {expected_list_commands}"
 
-    # Verify each has agent_display="full" (except list_warehouses, list_catalogs, list_schemas, and list_tables which use conditional display)
+    # Verify each has agent_display="full" (except list_warehouses and list_tables which use conditional display)
     for cmd_name in list_commands:
         cmd_def = get_command(cmd_name)
         if cmd_name in [
             "list_warehouses",
-            "list_catalogs",
-            "list_schemas",
             "list_tables",
         ]:
             # list_warehouses, list_catalogs, list_schemas, and list_tables use conditional display with display parameter

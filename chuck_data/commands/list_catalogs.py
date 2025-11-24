@@ -109,7 +109,7 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="list_catalogs",
-    description="Lists all catalogs in the current workspace. By default returns data without showing table. Use display=true when user asks to see catalogs.",
+    description="Lists all catalogs in the current Databricks workspace (Unity Catalog). By default returns data without showing table. Use display=true when user asks to see catalogs.",
     handler=handle_command,
     parameters={
         "display": {
@@ -141,4 +141,5 @@ DEFINITION = CommandDefinition(
     ),  # Show full table only when display=True
     condensed_action="Listing catalogs",  # Friendly name for condensed display
     usage_hint="Usage: /list-catalogs [--display true|false] [--include_browse true|false] [--max_results <number>] [--page_token <token>]",
+    provider="databricks",  # Databricks Unity Catalog-specific command
 )
