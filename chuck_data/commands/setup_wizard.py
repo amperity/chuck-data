@@ -155,6 +155,7 @@ class SetupWizardOrchestrator:
         context_data = {
             "current_step": state.current_step.value,
             "data_provider": state.data_provider,
+            "computation_provider": state.computation_provider,
             "workspace_url": state.workspace_url,
             "token": state.token,
             "llm_provider": state.llm_provider,
@@ -197,6 +198,7 @@ class SetupWizardOrchestrator:
             return WizardState(
                 current_step=current_step,
                 data_provider=context_data.get("data_provider"),
+                computation_provider=context_data.get("computation_provider"),
                 workspace_url=context_data.get("workspace_url"),
                 token=context_data.get("token"),
                 llm_provider=context_data.get("llm_provider"),
@@ -226,6 +228,7 @@ class SetupWizardOrchestrator:
         step_order = [
             WizardStep.AMPERITY_AUTH,
             WizardStep.DATA_PROVIDER_SELECTION,
+            WizardStep.COMPUTATION_PROVIDER_SELECTION,
             WizardStep.WORKSPACE_URL,
             WizardStep.TOKEN_INPUT,
             WizardStep.LLM_PROVIDER_SELECTION,

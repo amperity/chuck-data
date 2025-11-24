@@ -17,6 +17,8 @@ from chuck_data.commands.setup_wizard import (
 from chuck_data.commands.wizard import WizardStep, WizardState, InputValidator
 from chuck_data.commands.wizard.steps import (
     AmperityAuthStep,
+    DataProviderSelectionStep,
+    ComputationProviderSelectionStep,
     WorkspaceUrlStep,
     TokenInputStep,
     ModelSelectionStep,
@@ -38,11 +40,21 @@ class TestWizardComponents:
         assert state.is_valid_for_step(WizardStep.AMPERITY_AUTH)
         assert state.is_valid_for_step(WizardStep.DATA_PROVIDER_SELECTION)
         assert not state.is_valid_for_step(
-            WizardStep.WORKSPACE_URL
+            WizardStep.COMPUTATION_PROVIDER_SELECTION
         )  # Requires data_provider
+        assert not state.is_valid_for_step(
+            WizardStep.WORKSPACE_URL
+        )  # Requires computation_provider
 
-        # With data provider set, workspace URL should be valid
+        # With data provider set, computation provider selection should be valid
         state.data_provider = "databricks"
+        assert state.is_valid_for_step(WizardStep.COMPUTATION_PROVIDER_SELECTION)
+        assert not state.is_valid_for_step(
+            WizardStep.WORKSPACE_URL
+        )  # Requires computation_provider
+
+        # With computation provider set, workspace URL should be valid
+        state.computation_provider = "databricks"
         assert state.is_valid_for_step(WizardStep.WORKSPACE_URL)
         assert not state.is_valid_for_step(
             WizardStep.TOKEN_INPUT
@@ -242,6 +254,65 @@ class TestStepHandlers:
             assert result.next_step == WizardStep.DATA_PROVIDER_SELECTION
             assert "authentication complete" in result.message.lower()
 
+    def test_data_provider_selection_step(self):
+        """Test data provider selection step."""
+        validator = InputValidator()
+        step = DataProviderSelectionStep(validator)
+        state = WizardState()
+
+        # Only mock external config setting
+        with patch("chuck_data.config.get_config_manager") as mock_config_manager:
+            mock_manager = mock_config_manager.return_value
+            mock_manager.update.return_value = True
+
+            # Test selecting Databricks
+            result = step.handle_input("1", state)
+            assert result.success
+            assert result.next_step == WizardStep.COMPUTATION_PROVIDER_SELECTION
+            assert result.data["data_provider"] == "databricks"
+            assert "computation provider" in result.message.lower()
+
+            # Test selecting AWS Redshift
+            result = step.handle_input("2", state)
+            assert result.success
+            assert result.next_step == WizardStep.AWS_REGION_INPUT
+            assert result.data["data_provider"] == "aws_redshift"
+            assert "aws" in result.message.lower()
+
+            # Test invalid selection
+            result = step.handle_input("3", state)
+            assert not result.success
+            assert result.action.name == "RETRY"
+
+    def test_computation_provider_selection_step(self):
+        """Test computation provider selection step."""
+        validator = InputValidator()
+        step = ComputationProviderSelectionStep(validator)
+        state = WizardState()
+
+        # Only mock external config setting
+        with patch("chuck_data.config.get_config_manager") as mock_config_manager:
+            mock_manager = mock_config_manager.return_value
+            mock_manager.update.return_value = True
+
+            # Test selecting Databricks
+            result = step.handle_input("1", state)
+            assert result.success
+            assert result.next_step == WizardStep.WORKSPACE_URL
+            assert result.data["computation_provider"] == "databricks"
+            assert "workspace url" in result.message.lower()
+
+            # Test empty input (default to Databricks)
+            result = step.handle_input("", state)
+            assert result.success
+            assert result.next_step == WizardStep.WORKSPACE_URL
+            assert result.data["computation_provider"] == "databricks"
+
+            # Test invalid selection
+            result = step.handle_input("2", state)
+            assert not result.success
+            assert result.action.name == "RETRY"
+
     def test_workspace_url_step_real_validation(self):
         """Test workspace URL step with real validation."""
         validator = InputValidator()
@@ -409,7 +480,13 @@ class TestSetupWizardOrchestrator:
 
         mock_render_step.reset_mock()
 
-        # Select provider (Databricks)
+        # Select data provider (Databricks)
+        result = orchestrator.handle_interactive_input("1")
+        assert result.success
+
+        mock_render_step.reset_mock()
+
+        # Select computation provider (Databricks)
         result = orchestrator.handle_interactive_input("1")
         assert result.success
 
@@ -510,7 +587,11 @@ class TestSetupWizardOrchestrator:
         result = orchestrator.start_wizard()
         assert result.success
 
-        # Select provider (Databricks)
+        # Select data provider (Databricks)
+        result = orchestrator.handle_interactive_input("1")
+        assert result.success
+
+        # Select computation provider (Databricks)
         result = orchestrator.handle_interactive_input("1")
         assert result.success
 
@@ -551,7 +632,11 @@ class TestWizardOrchestratorIntegration:
             WizardStep.AMPERITY_AUTH, WizardStep.DATA_PROVIDER_SELECTION
         )
         assert orchestrator._is_forward_progression(
-            WizardStep.DATA_PROVIDER_SELECTION, WizardStep.WORKSPACE_URL
+            WizardStep.DATA_PROVIDER_SELECTION,
+            WizardStep.COMPUTATION_PROVIDER_SELECTION,
+        )
+        assert orchestrator._is_forward_progression(
+            WizardStep.COMPUTATION_PROVIDER_SELECTION, WizardStep.WORKSPACE_URL
         )
         assert orchestrator._is_forward_progression(
             WizardStep.TOKEN_INPUT, WizardStep.LLM_PROVIDER_SELECTION
@@ -606,11 +691,15 @@ class TestErrorFlowIntegration:
                 result = orchestrator.start_wizard()
                 assert result.success
 
-                # 2. Select provider (Databricks)
+                # 2. Select data provider (Databricks)
                 result = orchestrator.handle_interactive_input("1")
                 assert result.success
 
-                # 3. Enter valid workspace URL - should succeed
+                # 3. Select computation provider (Databricks)
+                result = orchestrator.handle_interactive_input("1")
+                assert result.success
+
+                # 4. Enter valid workspace URL - should succeed
                 result = orchestrator.handle_interactive_input("workspace123")
                 assert result.success
 
@@ -840,7 +929,11 @@ class TestSecurityFixes:
             result = orchestrator.start_wizard()
             assert result.success
 
-            # Select provider (Databricks)
+            # Select data provider (Databricks)
+            result = orchestrator.handle_interactive_input("1")
+            assert result.success
+
+            # Select computation provider (Databricks)
             result = orchestrator.handle_interactive_input("1")
             assert result.success
 
@@ -873,7 +966,13 @@ class TestSecurityFixes:
                 # Re-do the setup since we created a new orchestrator
                 result = orchestrator.start_wizard()
                 assert result.success
-                result = orchestrator.handle_interactive_input("1")  # Select Databricks
+                result = orchestrator.handle_interactive_input(
+                    "1"
+                )  # Select data provider (Databricks)
+                assert result.success
+                result = orchestrator.handle_interactive_input(
+                    "1"
+                )  # Select computation provider (Databricks)
                 assert result.success
                 result = orchestrator.handle_interactive_input("workspace123")
                 assert result.success
@@ -1029,7 +1128,11 @@ class TestTokenSecurityAndInputMode:
             result = orchestrator.start_wizard()
             assert result.success
 
-            # Select provider (Databricks)
+            # Select data provider (Databricks)
+            result = orchestrator.handle_interactive_input("1")
+            assert result.success
+
+            # Select computation provider (Databricks)
             result = orchestrator.handle_interactive_input("1")
             assert result.success
 
@@ -1113,7 +1216,11 @@ class TestTokenSecurityAndInputMode:
         result = orchestrator.start_wizard()
         assert result.success
 
-        # Select provider (Databricks)
+        # Select data provider (Databricks)
+        result = orchestrator.handle_interactive_input("1")
+        assert result.success
+
+        # Select computation provider (Databricks)
         result = orchestrator.handle_interactive_input("1")
         assert result.success
 
@@ -1143,7 +1250,13 @@ class TestTokenSecurityAndInputMode:
             # Re-do the setup since we created a new orchestrator
             result = orchestrator.start_wizard()
             assert result.success
-            result = orchestrator.handle_interactive_input("1")  # Select Databricks
+            result = orchestrator.handle_interactive_input(
+                "1"
+            )  # Select data provider (Databricks)
+            assert result.success
+            result = orchestrator.handle_interactive_input(
+                "1"
+            )  # Select computation provider (Databricks)
             assert result.success
             result = orchestrator.handle_interactive_input("workspace123")
             assert result.success
@@ -1298,7 +1411,11 @@ class TestTUISecurityIntegration:
             result = orchestrator.start_wizard()
             assert result.success
 
-            # Select provider (Databricks)
+            # Select data provider (Databricks)
+            result = orchestrator.handle_interactive_input("1")
+            assert result.success
+
+            # Select computation provider (Databricks)
             result = orchestrator.handle_interactive_input("1")
             assert result.success
 
@@ -1331,7 +1448,13 @@ class TestTUISecurityIntegration:
                 # Re-do the setup since we created a new orchestrator
                 result = orchestrator.start_wizard()
                 assert result.success
-                result = orchestrator.handle_interactive_input("1")  # Select Databricks
+                result = orchestrator.handle_interactive_input(
+                    "1"
+                )  # Select data provider (Databricks)
+                assert result.success
+                result = orchestrator.handle_interactive_input(
+                    "1"
+                )  # Select computation provider (Databricks)
                 assert result.success
                 result = orchestrator.handle_interactive_input("workspace123")
                 assert result.success

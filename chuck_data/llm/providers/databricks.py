@@ -81,20 +81,18 @@ class DatabricksProvider:
         )
 
         # Make request
+        # Build parameters conditionally to satisfy type checker
+        params = {
+            "model": resolved_model,
+            "messages": messages,
+            "stream": stream,
+        }
+
         if tools:
-            response = client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,
-                tools=tools,
-                stream=stream,
-                tool_choice=tool_choice,
-            )
-        else:
-            response = client.chat.completions.create(
-                model=resolved_model,
-                messages=messages,
-                stream=stream,
-            )
+            params["tools"] = tools
+            params["tool_choice"] = tool_choice
+
+        response = client.chat.completions.create(**params)
 
         return response
 
