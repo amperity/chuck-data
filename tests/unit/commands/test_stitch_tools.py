@@ -837,7 +837,7 @@ class TestJobIdTracking:
         # Mock upload and submit
         databricks_client_stub.upload_file = lambda path, content, overwrite: True
 
-        def mock_submit(config_path, init_script_path, run_name):
+        def mock_submit(config_path, init_script_path, run_name, policy_id=None):
             return {"run_id": "run-789"}
 
         databricks_client_stub.submit_job_run = mock_submit
@@ -907,7 +907,7 @@ class TestJobIdTracking:
         # Mock upload and submit
         databricks_client_stub.upload_file = lambda path, content, overwrite: True
 
-        def mock_submit(config_path, init_script_path, run_name):
+        def mock_submit(config_path, init_script_path, run_name, policy_id=None):
             return {"run_id": "run-456"}
 
         databricks_client_stub.submit_job_run = mock_submit
@@ -985,7 +985,7 @@ class TestJobIdTracking:
         # Mock upload and submit
         databricks_client_stub.upload_file = lambda path, content, overwrite: True
 
-        def mock_submit(config_path, init_script_path, run_name):
+        def mock_submit(config_path, init_script_path, run_name, policy_id=None):
             return {"run_id": "run-999"}
 
         databricks_client_stub.submit_job_run = mock_submit
@@ -1063,7 +1063,7 @@ class TestJobIdTracking:
         # Mock upload and submit
         databricks_client_stub.upload_file = lambda path, content, overwrite: True
 
-        def mock_submit(config_path, init_script_path, run_name):
+        def mock_submit(config_path, init_script_path, run_name, policy_id=None):
             return {"run_id": "run-888"}
 
         databricks_client_stub.submit_job_run = mock_submit
