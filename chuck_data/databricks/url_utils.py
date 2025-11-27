@@ -22,7 +22,7 @@ DATABRICKS_DOMAINS = {v: k for k, v in DATABRICKS_DOMAIN_MAP.items()}
 WORKSPACE_ID_PATTERN = r"^([0-9]{10,}|[a-z0-9][a-z0-9\-]*[a-z0-9]|[a-z0-9]{3,})$"
 
 
-def normalize_workspace_url(url: str) -> str:
+def normalize_workspace_url(url: Optional[str]) -> str:
     """Return just the workspace identifier portion of a URL."""
     if not url:
         return ""
@@ -67,7 +67,7 @@ def get_full_workspace_url(workspace_id: str, cloud_provider: str = "AWS") -> st
     return f"https://{workspace_id}.{domain}"
 
 
-def detect_cloud_provider(url: str) -> str:
+def detect_cloud_provider(url: Optional[str]) -> str:
     """Infer the cloud provider from ``url``."""
     if not url:
         return "AWS"  # Default to AWS if no URL provided
