@@ -65,6 +65,7 @@ class DatabricksClientStub(
 
         # Reset call tracking
         self.create_stitch_notebook_calls = []
+        self.submit_job_run_calls = []
         self.list_catalogs_calls = []
         self.get_catalog_calls = []
         self.list_schemas_calls = []

@@ -6,6 +6,7 @@ class JobStubMixin:
 
     def __init__(self):
         self.create_stitch_notebook_calls = []
+        self.submit_job_run_calls = []
 
     def list_jobs(self, **kwargs):
         """List jobs."""
@@ -23,14 +24,33 @@ class JobStubMixin:
         """Run a job."""
         return {"run_id": f"run_{job_id}_001", "job_id": job_id, "state": "RUNNING"}
 
-    def submit_job_run(self, config_path, init_script_path, run_name=None):
-        """Submit a job run and return run_id."""
+    def submit_job_run(
+        self, config_path, init_script_path, run_name=None, policy_id=None
+    ):
+        """Submit a job run and return run_id.
+
+        Args:
+            config_path: Path to the job configuration file
+            init_script_path: Path to the init script
+            run_name: Optional name for the job run
+            policy_id: Optional cluster policy ID to use for the job run
+        """
         from datetime import datetime
 
         if not run_name:
             run_name = (
                 f"Chuck AI One-Time Run {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             )
+
+        # Track the call for test verification
+        self.submit_job_run_calls.append(
+            {
+                "config_path": config_path,
+                "init_script_path": init_script_path,
+                "run_name": run_name,
+                "policy_id": policy_id,
+            }
+        )
 
         # Return a successful job submission
         return {"run_id": 123456}

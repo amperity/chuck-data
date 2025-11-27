@@ -235,3 +235,194 @@ def test_parameter_parsing_flag_equals_with_dashes(databricks_client_stub, temp_
         # Should parse correctly with dash-to-underscore conversion
         assert isinstance(result, CommandResult)
         assert result.success
+
+
+# --- Interactive Command Argument Parsing Tests ---
+
+
+def _setup_stitch_test_data(databricks_client_stub, llm_client_stub):
+    """Helper function to set up test data for Stitch operations."""
+    # Setup test data in client stub
+    databricks_client_stub.add_catalog("test_catalog")
+    databricks_client_stub.add_schema("test_catalog", "test_schema")
+    databricks_client_stub.add_table(
+        "test_catalog",
+        "test_schema",
+        "users",
+        columns=[
+            {"name": "email", "type": "STRING"},
+            {"name": "name", "type": "STRING"},
+            {"name": "id", "type": "BIGINT"},
+        ],
+    )
+
+    # Mock PII scan results - set up table with PII columns
+    llm_client_stub.set_pii_detection_result(
+        [
+            {"column": "email", "semantic": "email"},
+            {"column": "name", "semantic": "name"},
+        ]
+    )
+
+    # Fix API compatibility issues
+    original_create_volume = databricks_client_stub.create_volume
+
+    def mock_create_volume(catalog_name, schema_name, name, **kwargs):
+        return original_create_volume(catalog_name, schema_name, name, **kwargs)
+
+    databricks_client_stub.create_volume = mock_create_volume
+
+    # Override upload_file to match real API signature
+    def mock_upload_file(path, content=None, overwrite=False, **kwargs):
+        return True
+
+    databricks_client_stub.upload_file = mock_upload_file
+
+    # Set up other required API responses
+    databricks_client_stub.fetch_amperity_job_init_response = {
+        "cluster-init": "#!/bin/bash\necho init",
+        "job-id": "test-job-setup-123",
+    }
+    databricks_client_stub.submit_job_run_response = {"run_id": "12345"}
+    databricks_client_stub.create_stitch_notebook_response = {
+        "notebook_path": "/Workspace/test"
+    }
+
+
+def test_interactive_command_parses_policy_id_flag(
+    databricks_client_stub, llm_client_stub, temp_config
+):
+    """Test that interactive commands correctly parse --policy_id flag."""
+    from unittest.mock import patch
+    from chuck_data.interactive_context import InteractiveContext
+
+    # Setup test data
+    _setup_stitch_test_data(databricks_client_stub, llm_client_stub)
+
+    # Reset interactive context
+    context = InteractiveContext()
+    context.clear_active_context("setup_stitch")
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        with patch(
+            "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+            return_value=llm_client_stub,
+        ):
+            with patch(
+                "chuck_data.commands.stitch_tools.get_amperity_token",
+                return_value="test_token",
+            ):
+                service = ChuckService(client=databricks_client_stub)
+
+                # Test --policy_id=value syntax for interactive command
+                result = service.execute_command(
+                    "/setup-stitch",
+                    "--policy_id=TEST_POLICY_123",
+                    "catalog_name=test_catalog",
+                    "schema_name=test_schema",
+                )
+
+                # Should parse correctly and store in context
+                assert isinstance(result, CommandResult)
+                assert result.success
+
+                # Verify policy_id was stored in context
+                context_data = context.get_context_data("setup_stitch")
+                assert (
+                    context_data.get("metadata", {}).get("policy_id")
+                    == "TEST_POLICY_123"
+                )
+
+    # Clean up
+    context.clear_active_context("setup_stitch")
+
+
+def test_interactive_command_parses_auto_confirm_and_policy_id(
+    databricks_client_stub, llm_client_stub, temp_config
+):
+    """Test that interactive commands correctly parse combined --auto-confirm and --policy_id flags."""
+    from unittest.mock import patch, MagicMock
+
+    # Setup test data
+    _setup_stitch_test_data(databricks_client_stub, llm_client_stub)
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        with patch(
+            "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+            return_value=llm_client_stub,
+        ):
+            with patch(
+                "chuck_data.commands.stitch_tools.get_amperity_token",
+                return_value="test_token",
+            ):
+                with patch(
+                    "chuck_data.commands.setup_stitch.get_metrics_collector",
+                    return_value=MagicMock(),
+                ):
+                    service = ChuckService(client=databricks_client_stub)
+
+                    # Test combined --auto-confirm and --policy_id flags
+                    result = service.execute_command(
+                        "/setup-stitch",
+                        "--auto-confirm",
+                        "--policy_id=COMBINED_POLICY_456",
+                        "catalog_name=test_catalog",
+                        "schema_name=test_schema",
+                    )
+
+                    # Should parse correctly and execute
+                    assert isinstance(result, CommandResult)
+                    assert result.success
+
+                    # Verify policy_id was passed to submit_job_run
+                    assert len(databricks_client_stub.submit_job_run_calls) == 1
+                    call_args = databricks_client_stub.submit_job_run_calls[0]
+                    assert call_args["policy_id"] == "COMBINED_POLICY_456"
+
+
+def test_interactive_command_parses_policy_id_key_value_syntax(
+    databricks_client_stub, llm_client_stub, temp_config
+):
+    """Test that interactive commands correctly parse policy_id=value syntax."""
+    from unittest.mock import patch
+    from chuck_data.interactive_context import InteractiveContext
+
+    # Setup test data
+    _setup_stitch_test_data(databricks_client_stub, llm_client_stub)
+
+    # Reset interactive context
+    context = InteractiveContext()
+    context.clear_active_context("setup_stitch")
+
+    with patch("chuck_data.config._config_manager", temp_config):
+        with patch(
+            "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+            return_value=llm_client_stub,
+        ):
+            with patch(
+                "chuck_data.commands.stitch_tools.get_amperity_token",
+                return_value="test_token",
+            ):
+                service = ChuckService(client=databricks_client_stub)
+
+                # Test key=value syntax for policy_id (like policy_id=XYZ)
+                result = service.execute_command(
+                    "/setup-stitch",
+                    "policy_id=KEY_VALUE_POLICY_789",
+                    "catalog_name=test_catalog",
+                    "schema_name=test_schema",
+                )
+
+                # Should parse correctly and store in context
+                assert isinstance(result, CommandResult)
+                assert result.success
+
+                # Verify policy_id was stored in context
+                context_data = context.get_context_data("setup_stitch")
+                assert (
+                    context_data.get("metadata", {}).get("policy_id")
+                    == "KEY_VALUE_POLICY_789"
+                )
+
+    # Clean up
+    context.clear_active_context("setup_stitch")

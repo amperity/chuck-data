@@ -184,6 +184,78 @@ def test_agent_callback_errors_bubble_up_as_command_errors(
     assert not result.success  # Will fail due to missing context/data
 
 
+# Auto-confirm mode tests with policy_id
+
+
+def test_auto_confirm_mode_passes_policy_id(databricks_client_stub, llm_client_stub):
+    """Auto-confirm mode passes policy_id to the job submission."""
+    # Setup test data for successful operation
+    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
+
+    with patch(
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+        return_value=llm_client_stub,
+    ):
+        with patch(
+            "chuck_data.commands.stitch_tools.get_amperity_token",
+            return_value="test_token",
+        ):
+            with patch(
+                "chuck_data.commands.setup_stitch.get_metrics_collector",
+                return_value=MagicMock(),
+            ):
+                # Call with auto_confirm=True and policy_id
+                result = handle_command(
+                    databricks_client_stub,
+                    catalog_name="test_catalog",
+                    schema_name="test_schema",
+                    auto_confirm=True,
+                    policy_id="000F957411D99C1F",
+                )
+
+    # Verify success
+    assert result.success
+
+    # Verify policy_id was passed to submit_job_run
+    assert len(databricks_client_stub.submit_job_run_calls) == 1
+    call_args = databricks_client_stub.submit_job_run_calls[0]
+    assert call_args["policy_id"] == "000F957411D99C1F"
+
+
+def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_stub):
+    """Auto-confirm mode works without policy_id (passes None)."""
+    # Setup test data for successful operation
+    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
+
+    with patch(
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+        return_value=llm_client_stub,
+    ):
+        with patch(
+            "chuck_data.commands.stitch_tools.get_amperity_token",
+            return_value="test_token",
+        ):
+            with patch(
+                "chuck_data.commands.setup_stitch.get_metrics_collector",
+                return_value=MagicMock(),
+            ):
+                # Call with auto_confirm=True but no policy_id
+                result = handle_command(
+                    databricks_client_stub,
+                    catalog_name="test_catalog",
+                    schema_name="test_schema",
+                    auto_confirm=True,
+                )
+
+    # Verify success
+    assert result.success
+
+    # Verify policy_id was passed as None
+    assert len(databricks_client_stub.submit_job_run_calls) == 1
+    call_args = databricks_client_stub.submit_job_run_calls[0]
+    assert call_args["policy_id"] is None
+
+
 # Interactive mode tests
 def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client_stub):
     """Interactive mode Phase 1 prepares configuration and shows preview."""
@@ -209,3 +281,44 @@ def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client
     assert result.success
     # Interactive mode should return empty message (console output handles display)
     assert result.message == ""
+
+
+def test_interactive_mode_phase_1_stores_policy_id(
+    databricks_client_stub, llm_client_stub
+):
+    """Interactive mode Phase 1 stores policy_id in context metadata."""
+    from chuck_data.interactive_context import InteractiveContext
+
+    # Setup test data for successful operation
+    setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
+
+    # Reset the interactive context before test
+    context = InteractiveContext()
+    context.clear_active_context("setup_stitch")
+
+    with patch(
+        "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
+        return_value=llm_client_stub,
+    ):
+        with patch(
+            "chuck_data.commands.stitch_tools.get_amperity_token",
+            return_value="test_token",
+        ):
+            # Call without auto_confirm to enter interactive mode, with policy_id
+            result = handle_command(
+                databricks_client_stub,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+                policy_id="INTERACTIVE_POLICY_123",
+            )
+
+    # Verify Phase 1 behavior
+    assert result.success
+
+    # Verify policy_id was stored in context metadata
+    context_data = context.get_context_data("setup_stitch")
+    assert "metadata" in context_data
+    assert context_data["metadata"].get("policy_id") == "INTERACTIVE_POLICY_123"
+
+    # Clean up context
+    context.clear_active_context("setup_stitch")

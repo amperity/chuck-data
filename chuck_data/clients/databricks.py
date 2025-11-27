@@ -571,7 +571,9 @@ class DatabricksAPIClient:
     # Jobs methods
     #
 
-    def submit_job_run(self, config_path, init_script_path, run_name=None):
+    def submit_job_run(
+        self, config_path, init_script_path, run_name=None, policy_id=None
+    ):
         """
         Submit a one-time Databricks job run using the /runs/submit endpoint.
 
@@ -579,6 +581,7 @@ class DatabricksAPIClient:
             config_path: Path to the configuration file for the job in the Volume
             init_script_path: Path to the initialization script
             run_name: Optional name for the run. If None, a default name will be generated.
+            policy_id: Optional cluster policy ID to use for the job run.
 
         Returns:
             Dict containing the job run information (including run_id)
@@ -617,6 +620,9 @@ class DatabricksAPIClient:
             "runtime_engine": "STANDARD",
             "autoscale": {"min_workers": 10, "max_workers": 50},
         }
+
+        if policy_id:
+            cluster_config["policy_id"] = policy_id
 
         # Add cloud-specific attributes
         cluster_config.update(self.get_cloud_attributes())
