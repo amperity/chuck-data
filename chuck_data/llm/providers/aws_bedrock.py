@@ -20,6 +20,8 @@ import time
 from typing import Any, Dict, List, Literal, Optional
 
 from openai.types.chat.chat_completion import ChatCompletion, Choice
+
+from chuck_data.llm.provider import ModelInfo
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from openai.types.completion_usage import CompletionUsage
 from openai.types.chat.chat_completion_message_tool_call import (
@@ -591,7 +593,7 @@ class AWSBedrockProvider:
 
         return False
 
-    def list_models(self, tool_calling_only: bool = True) -> List[Dict[str, Any]]:
+    def list_models(self, tool_calling_only: bool = True) -> List[ModelInfo]:
         """List available Bedrock foundation models.
 
         Similar to Databricks list_models() but for Bedrock model catalog.
@@ -601,15 +603,14 @@ class AWSBedrockProvider:
                              Defaults to True since tool calling is required for agent workflows.
 
         Returns:
-            List of model dicts with metadata:
+            List of ModelInfo dicts with metadata:
                 [
                     {
                         "model_id": "anthropic.claude-3-5-sonnet-20241022-v2:0",
                         "model_name": "Claude 3.5 Sonnet",
-                        "provider": "Anthropic",
+                        "provider_name": "Anthropic",
                         "supports_tool_use": True,
-                        "input_modalities": ["TEXT"],
-                        "output_modalities": ["TEXT"]
+                        ...
                     },
                     ...
                 ]
@@ -633,18 +634,13 @@ class AWSBedrockProvider:
                 continue
 
             models.append(
-                {
-                    "model_id": model_id,
-                    "model_name": model.get("modelName"),
-                    "provider": provider,
-                    "supports_tool_use": supports_tool_use,
-                    "state": "READY",  # AWS Bedrock models are always ready if returned
-                    "input_modalities": model.get("inputModalities", []),
-                    "output_modalities": model.get("outputModalities", []),
-                    "response_streaming_supported": model.get(
-                        "responseStreamingSupported", False
-                    ),
-                }
+                ModelInfo(
+                    model_id=model_id,
+                    model_name=model.get("modelName"),
+                    provider_name=provider,
+                    supports_tool_use=supports_tool_use,
+                    state="READY",  # AWS Bedrock models are always ready if returned
+                )
             )
 
         return models

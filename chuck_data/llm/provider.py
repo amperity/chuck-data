@@ -4,13 +4,19 @@ from typing import Protocol, Optional, List, Dict, Any, TypedDict
 from openai.types.chat import ChatCompletion
 
 
-class ModelInfo(TypedDict, total=False):
+class _ModelInfoRequired(TypedDict):
+    """Required fields for ModelInfo."""
+
+    model_id: str  # Provider-specific model identifier
+
+
+class ModelInfo(_ModelInfoRequired, total=False):
     """Unified model information across LLM providers.
 
     All providers must return model information in this format.
+    Required field: model_id
     """
 
-    model_id: str  # Provider-specific model identifier
     model_name: str  # Human-readable model name
     provider_name: str  # Provider name (e.g., "databricks", "aws_bedrock")
     supports_tool_use: bool  # Whether model supports function calling
