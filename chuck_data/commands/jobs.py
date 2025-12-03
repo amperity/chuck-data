@@ -64,57 +64,6 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         return CommandResult(False, error=e, message=str(e))
 
 
-def handle_job_status(client: Optional[DatabricksAPIClient], **kwargs) -> CommandResult:
-    """Query Databricks for the status of a one-time run.
-
-    Args:
-        client: API client instance
-        **kwargs: run_id (str), tool_output_callback (callable, optional)
-    """
-    run_id_str: str = kwargs.get("run_id")
-    tool_output_callback = kwargs.get("tool_output_callback")
-
-    if not run_id_str:
-        return CommandResult(False, message="run_id parameter is required.")
-    if not client:
-        return CommandResult(False, message="Client required to get job status.")
-    try:
-        if tool_output_callback:
-            tool_output_callback(
-                "job_status_progress",
-                {"step": f"Attempting to get status for run ID {run_id_str}."},
-            )
-
-        data = client.get_job_run_status(run_id_str)
-        status = data.get("status", data.get("state", {}))
-        life_cycle_state = status.get("life_cycle_state", status.get("state"))
-        result_state = status.get(
-            "result_state", status.get("termination_details", {}).get("code")
-        )
-        state_message = status.get(
-            "state_message", status.get("termination_details", {}).get("message")
-        )
-        run_page_url = data.get("run_page_url")
-        msg = f"Run {run_id_str}: Status: {life_cycle_state or 'N/A'}, Result: {result_state or 'N/A'}, Message: {state_message or ''}"
-        if run_page_url:
-            msg += f" URL: {run_page_url}"
-
-        if tool_output_callback:
-            tool_output_callback(
-                "job_status_progress",
-                {
-                    "step": f"Status for run ID {run_id_str} retrieved.",
-                    "status_data": data,
-                },
-            )
-        return CommandResult(True, data=data, message=msg)
-    except Exception as e:
-        logging.error(
-            f"Failed to get job status for run '{run_id_str}': {e}", exc_info=True
-        )
-        return CommandResult(False, error=e, message=str(e))
-
-
 LAUNCH_JOB_DEFINITION = CommandDefinition(
     name="launch_job",
     description="Launch a Databricks job using a config file",
@@ -141,19 +90,4 @@ LAUNCH_JOB_DEFINITION = CommandDefinition(
     tui_aliases=["launch-job"],
 )
 
-JOB_STATUS_DEFINITION = CommandDefinition(
-    name="job_status",
-    description="Get the status of a Databricks job run",
-    usage_hint="job_status --run_id=123456",
-    parameters={
-        "run_id": {"type": "string", "description": "ID of the job run to check"},
-    },
-    required_params=["run_id"],
-    handler=handle_job_status,
-    needs_api_client=True,
-    visible_to_agent=True,
-    tui_aliases=["job-status"],
-)
-
-# Combined definition for module
-DEFINITION = [LAUNCH_JOB_DEFINITION, JOB_STATUS_DEFINITION]
+DEFINITION = LAUNCH_JOB_DEFINITION

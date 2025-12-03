@@ -85,7 +85,7 @@ ALL_COMMAND_DEFINITIONS = [
     setup_stitch_definition,
     add_stitch_report_definition,
     # Job commands
-    *jobs_definition,
+    jobs_definition,
     job_status_definition,
     list_jobs_definition,
     monitor_job_definition,

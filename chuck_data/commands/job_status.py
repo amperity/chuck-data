@@ -536,11 +536,11 @@ DEFINITION = CommandDefinition(
     "If no parameters provided, uses the last cached job ID.",
     handler=handle_command,
     parameters={
-        "job-id": {
+        "job_id": {
             "type": "string",
             "description": "Chuck job ID (primary parameter).",
         },
-        "run-id": {
+        "run_id": {
             "type": "string",
             "description": "Databricks run ID (legacy fallback).",
         },
@@ -554,7 +554,7 @@ DEFINITION = CommandDefinition(
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    usage_hint="Usage: /job-status [--job_id <job_id>] [--live] OR /job-status --run_id <run_id> OR /job-status (uses cached ID)",
+    usage_hint="Usage: /job-status [--job-id <job_id>] [--live] OR /job-status --run-id <run_id> OR /job-status (uses cached ID)",
     condensed_action="Checking job status",
 )
 
