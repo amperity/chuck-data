@@ -3,7 +3,7 @@
 import pytest
 import tempfile
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tests.fixtures.databricks.client import DatabricksClientStub
 from tests.fixtures.amperity import AmperityClientStub
@@ -12,6 +12,20 @@ from tests.fixtures.collectors import MetricsCollectorStub
 from chuck_data.config import ConfigManager
 
 # Import environment fixtures to make them available globally
+
+
+@pytest.fixture(autouse=True)
+def mock_job_cache():
+    """
+    Automatically mock job cache for all tests to prevent cache pollution.
+
+    This fixture runs automatically for every test and prevents tests from
+    writing to the user's actual job cache file (~/.chuck_job_cache.json).
+    Tests that specifically need to test cache behavior should use the
+    JobCache class directly with a temporary file.
+    """
+    with patch("chuck_data.job_cache.cache_job") as mock_cache:
+        yield mock_cache
 
 
 @pytest.fixture
