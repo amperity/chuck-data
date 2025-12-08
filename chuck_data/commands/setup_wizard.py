@@ -248,7 +248,7 @@ class SetupWizardOrchestrator:
 
 
 def handle_command(
-    client: Optional[DatabricksAPIClient], interactive_input: str = None, **kwargs: Any
+    client: Optional[DatabricksAPIClient], interactive_input: Optional[str] = None, **kwargs: Any
 ) -> CommandResult:
     """
     Setup wizard command handler using the new architecture.

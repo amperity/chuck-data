@@ -29,7 +29,7 @@ class MetricsCollector:
         Returns:
             bool: True if user has provided consent, False otherwise.
         """
-        return self.config_manager.get_config().usage_tracking_consent
+        return self.config_manager.get_config().usage_tracking_consent or False
 
     def _get_chuck_configuration_for_metric(self) -> Dict[str, Any]:
         """

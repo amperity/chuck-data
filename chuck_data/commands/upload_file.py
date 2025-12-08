@@ -64,6 +64,8 @@ def handle_command(
                     path=destination_path, contents=contents, overwrite=overwrite
                 )
             else:
+                # local_path is guaranteed non-None by validation above
+                assert local_path is not None
                 with open(local_path, "r") as file:
                     file_contents = file.read()
                 client.store_dbfs_file(

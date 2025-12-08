@@ -23,7 +23,8 @@ from chuck_data.commands.base import (
 from chuck_data.clients.databricks import (
     DatabricksAPIClient,
 )  # For type hinting api_client
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
+from jsonschema.exceptions import ValidationError
 
 
 # The display_to_user utility and individual tool implementation functions
@@ -48,7 +49,7 @@ def execute_tool(
     api_client: Optional[DatabricksAPIClient],
     tool_name: str,
     tool_args: Dict[str, Any],
-    output_callback: Optional[callable] = None,
+    output_callback: Optional[Callable[..., Any]] = None,
 ) -> Dict[str, Any]:
     """Execute a tool (command) by its name with the provided arguments.
 
@@ -87,7 +88,7 @@ def execute_tool(
     try:
         jsonschema.validate(instance=tool_args, schema=schema_to_validate)
         logging.debug(f"Tool arguments for '{tool_name}' validated successfully.")
-    except jsonschema.exceptions.ValidationError as ve:
+    except ValidationError as ve:
         logging.error(
             f"Validation error for tool '{tool_name}' args {tool_args}: {ve.message}"
         )

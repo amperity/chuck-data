@@ -64,7 +64,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         client: API client instance
         **kwargs: catalog (str) - catalog name, tool_output_callback (optional)
     """
-    catalog: str = kwargs.get("catalog")
+    catalog = kwargs.get("catalog")
     tool_output_callback = kwargs.get("tool_output_callback")
 
     if not catalog:

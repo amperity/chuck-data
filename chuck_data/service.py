@@ -6,8 +6,9 @@ Provides a facade for all business operations needed by the UI.
 import json
 import logging
 import jsonschema
+from jsonschema.exceptions import ValidationError
 import traceback
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple, Callable
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.commands.base import CommandResult
@@ -355,7 +356,7 @@ class ChuckService:
             jsonschema.validate(
                 instance=final_args_for_validation, schema=full_schema_for_validation
             )
-        except jsonschema.exceptions.ValidationError as ve:
+        except ValidationError as ve:
             usage = (
                 command_def.usage_hint
                 or f"Use '/help' for details on '{command_def.name}'."
@@ -373,7 +374,7 @@ class ChuckService:
         command_name_from_ui: str,
         *raw_args: str,
         interactive_input: Optional[str] = None,
-        tool_output_callback: Optional[callable] = None,
+        tool_output_callback: Optional[Callable[..., Any]] = None,
         **raw_kwargs: Any,  # For future TUI use, e.g. /cmd --named_arg value
     ) -> CommandResult:
         """
@@ -409,7 +410,7 @@ class ChuckService:
                 )
                 return CommandResult(False, message=f"Not authenticated. {error_msg}")
 
-        parsed_args_dict: Dict[str, Any]
+        parsed_args_dict: Optional[Dict[str, Any]]
         args_for_handler: Dict[str, Any]
 
         # Interactive Mode Handling
@@ -439,6 +440,8 @@ class ChuckService:
                 return CommandResult(
                     False, message="Internal error during argument parsing."
                 )
+            # Type is narrowed to Dict[str, Any] after None check
+            assert parsed_args_dict is not None
             args_for_handler = parsed_args_dict
 
         # Pass tool output callback for agent commands

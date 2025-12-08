@@ -50,8 +50,12 @@ class LLMProvider(Protocol):
         """
         ...
 
-    def list_models(self) -> List[ModelInfo]:
+    def list_models(self, tool_calling_only: bool = True) -> List[ModelInfo]:
         """List available models from this provider.
+
+        Args:
+            tool_calling_only: If True, only return models that support tool calling.
+                             Defaults to True since tool calling is required for agent workflows.
 
         Returns:
             List of ModelInfo dicts containing model metadata

@@ -26,17 +26,16 @@ def _helper_tag_pii_columns_logic(
     response_content_for_error = ""
     try:
         # Resolve full table name using APIs directly instead of handler
-        table_details_kwargs = {"full_name": table_name_param}
+        resolved_table_name = table_name_param
         if catalog_name_context and schema_name_context and "." not in table_name_param:
             # Only a table name was provided, construct full name
-            full_name = (
+            resolved_table_name = (
                 f"{catalog_name_context}.{schema_name_context}.{table_name_param}"
             )
-            table_details_kwargs = {"full_name": full_name}
 
         try:
             # Use direct API call instead of handle_table
-            table_info = databricks_client.get_table(**table_details_kwargs)
+            table_info = databricks_client.get_table(full_name=resolved_table_name)
             if not table_info:
                 error_msg = f"Failed to retrieve table details for PII tagging: {table_name_param}"
                 return {
@@ -102,7 +101,7 @@ def _helper_tag_pii_columns_logic(
         )
         response_content_for_error = llm_response_obj.choices[
             0
-        ].message.content  # Store for potential error reporting
+        ].message.content or ""  # Store for potential error reporting
         response_content_clean = response_content_for_error.strip()
         if response_content_clean.startswith("```json"):
             response_content_clean = response_content_clean[7:-3].strip()

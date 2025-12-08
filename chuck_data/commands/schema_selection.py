@@ -65,7 +65,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         client: API client instance
         **kwargs: schema (str) - schema name, tool_output_callback (optional)
     """
-    schema: str = kwargs.get("schema")
+    schema = kwargs.get("schema")
     tool_output_callback = kwargs.get("tool_output_callback")
 
     if not schema:

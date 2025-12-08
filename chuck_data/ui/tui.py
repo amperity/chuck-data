@@ -228,6 +228,9 @@ class ChuckTUI:
                 # Check if we're in interactive mode
                 if interactive_context.is_in_interactive_mode():
                     current_cmd = interactive_context.current_command
+                    if current_cmd is None:
+                        # Should not happen if is_in_interactive_mode() returns True
+                        continue
 
                     # Use prompt toolkit with interactive styling
                     prompt_message = HTML(
@@ -321,6 +324,12 @@ class ChuckTUI:
                 self.console.print(
                     f"\n[{WARNING_STYLE}]Interrupted by user. Type 'exit' to quit.[/{WARNING_STYLE}]"
                 )
+            except EOFError:
+                # Handle Ctrl+D
+                self.console.print(
+                    f"\n[{WARNING_STYLE}]Thank you for using chuck![/{WARNING_STYLE}]"
+                )
+                break
             except Exception as e:
                 # Import at the top of the method to avoid scoping issues
                 from chuck_data.exceptions import PaginationCancelled
@@ -329,21 +338,13 @@ class ChuckTUI:
                     # Handle pagination cancellation silently - just return to prompt
                     pass
                 else:
-                    raise  # Re-raise other exceptions
-            except EOFError:
-                # Handle Ctrl+D
-                self.console.print(
-                    f"\n[{WARNING_STYLE}]Thank you for using chuck![/{WARNING_STYLE}]"
-                )
-                break
-            except Exception as e:
-                # Handle other exceptions
-                self.console.print(
-                    f"[{ERROR_STYLE}]Unexpected Error: {str(e)}[/{ERROR_STYLE}]"
-                )
-                # Print stack trace in debug mode
-                if self.debug:
-                    self.console.print("[dim]" + traceback.format_exc() + "[/dim]")
+                    # Handle other exceptions
+                    self.console.print(
+                        f"[{ERROR_STYLE}]Unexpected Error: {str(e)}[/{ERROR_STYLE}]"
+                    )
+                    # Print stack trace in debug mode
+                    if self.debug:
+                        self.console.print("[dim]" + traceback.format_exc() + "[/dim]")
 
     def _needs_shlex_parsing(self, command: str) -> bool:
         """Determine if command needs shlex parsing (has quotes or flags)."""
@@ -504,7 +505,7 @@ class ChuckTUI:
             elif cmd == "/usage":
                 # For the usage command, we just display the message
                 if result.message:
-                    self._display_usage(result.message)
+                    self.console.print(result.message)
             elif (
                 cmd.startswith("/help")
                 and isinstance(result.data, dict)
@@ -677,8 +678,11 @@ class ChuckTUI:
         elif tool_name in ["detailed-models", "list-models", "list_models", "models"]:
             if "models" in tool_result:
                 self._display_models_consolidated(tool_result)
-            else:
+            elif isinstance(tool_result, list):
                 self._display_models(tool_result)
+            else:
+                # Fallback: display as consolidated if it's a dict without "models" key
+                self._display_models_consolidated(tool_result)
         elif tool_name in ["list-warehouses", "list_warehouses", "warehouses"]:
             self._display_warehouses(tool_result)
         elif tool_name in ["list-volumes", "list_volumes", "volumes"]:
@@ -1122,7 +1126,7 @@ class ChuckTUI:
                 f"[{WARNING_STYLE}]No models found in workspace.[/{WARNING_STYLE}]"
             )
             if data.get("message"):
-                self.console.print("\n" + data.get("message"))
+                self.console.print("\n" + (data.get("message") or ""))
             # Raise PaginationCancelled to return to chuck > prompt immediately
             raise PaginationCancelled()
 
