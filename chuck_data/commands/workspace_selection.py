@@ -22,7 +22,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         client: API client instance (not used by this handler)
         **kwargs: workspace_url (str)
     """
-    workspace_url: str = kwargs.get("workspace_url")
+    workspace_url = kwargs.get("workspace_url")
     if not workspace_url:
         return CommandResult(False, message="workspace_url parameter is required.")
 

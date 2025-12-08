@@ -736,7 +736,7 @@ def _build_post_launch_guidance_message(launch_result, metadata, client=None):
         )
 
     # Get workspace URL for constructing browser links
-    workspace_url = get_workspace_url()
+    workspace_url = get_workspace_url() or ""
     # If workspace_url is already a full URL, normalize it to get just the workspace ID
     # If it's just the workspace ID, this will return it as-is
     workspace_id = normalize_workspace_url(workspace_url)

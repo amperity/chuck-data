@@ -210,29 +210,36 @@ class AgentManager:
             if response_message.tool_calls:
                 # Add the assistant's response (requesting tool calls) to history
                 # Convert ChatCompletionMessage to dict format for consistency
+                tool_calls_list = []
+                for tc in response_message.tool_calls:
+                    func = getattr(tc, "function", None)
+                    if func is not None:
+                        tool_calls_list.append(
+                            {
+                                "id": tc.id,
+                                "type": getattr(tc, "type", "function"),
+                                "function": {
+                                    "name": getattr(func, "name", ""),
+                                    "arguments": getattr(func, "arguments", "{}"),
+                                },
+                            }
+                        )
                 assistant_msg = {
                     "role": "assistant",
                     "content": response_message.content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": getattr(tc, "type", "function"),
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in response_message.tool_calls
-                    ],
+                    "tool_calls": tool_calls_list,
                 }
                 self.conversation_history.append(assistant_msg)
 
                 # Execute each tool call
                 for tool_call in response_message.tool_calls:
-                    tool_name = tool_call.function.name
+                    func = getattr(tool_call, "function", None)
+                    if func is None:
+                        continue
+                    tool_name = getattr(func, "name", "")
                     tool_id = tool_call.id
                     try:
-                        tool_args = json.loads(tool_call.function.arguments)
+                        tool_args = json.loads(getattr(func, "arguments", "{}"))
                         tool_result = execute_tool(
                             self.api_client,
                             tool_name,
@@ -276,7 +283,7 @@ class AgentManager:
                 continue
             else:
                 # No tool calls, this is the final response
-                final_content = response_message.content
+                final_content = response_message.content or ""
                 # remove all lines with any <function> tags
                 final_content = "\n".join(
                     line

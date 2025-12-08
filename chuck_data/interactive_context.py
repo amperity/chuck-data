@@ -15,9 +15,11 @@ class InteractiveContext:
     Helps coordinate between command handlers and the TUI.
     """
 
-    _instance = None
+    _instance: Optional["InteractiveContext"] = None
+    _active_contexts: Dict[str, Any]
+    _current_command: Optional[str]
 
-    def __new__(cls):
+    def __new__(cls) -> "InteractiveContext":
         if cls._instance is None:
             cls._instance = super(InteractiveContext, cls).__new__(cls)
             cls._instance._active_contexts = {}

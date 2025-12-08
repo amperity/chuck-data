@@ -125,7 +125,7 @@ def get_paginated_rows(
         if start_row < chunk_end and current_row < start_row + num_rows:
             # We need some data from this chunk
             try:
-                chunk_data = fetch_chunk_data([link], link.get("chunk_index"))
+                chunk_data = fetch_chunk_data([link], link.get("chunk_index", 0))
                 if chunk_data:
                     # Calculate which rows from this chunk we need
                     local_start = max(0, start_row - chunk_start)

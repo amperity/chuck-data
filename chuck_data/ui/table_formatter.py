@@ -147,13 +147,14 @@ def format_cell(value: Any, style: Any = None, none_display: str = "N/A") -> Tex
             logging.error(f"Error applying style function: {e}")
             applied_style = None
 
-    return Text(value, style=applied_style)
+    # Cast applied_style to the expected type - it can be str, Style, or None
+    return Text(value, style=cast(Any, applied_style))
 
 
 def add_row_with_styles(
     table: Table,
     row_data: List[Any],
-    styles: Optional[List[str]] = None,
+    styles: Optional[List[Optional[str]]] = None,
 ) -> None:
     """
     Add a row to a table with optional styling per cell.
@@ -161,11 +162,11 @@ def add_row_with_styles(
     Args:
         table: The Rich Table to add the row to
         row_data: List of cell values
-        styles: Optional list of styles to apply to each cell
+        styles: Optional list of styles to apply to each cell (can contain None)
     """
     # Initialize defaults if not provided
     if styles is None:
-        styles = [None] * len(row_data)
+        styles = cast(List[Optional[str]], [None] * len(row_data))
 
     # Format each cell and add to table
     formatted_cells = [

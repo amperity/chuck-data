@@ -639,7 +639,7 @@ def handle_list_jobs(client=None, **kwargs) -> CommandResult:
         cached_job_data = job_entry.get("job_data")
 
         # If we have cached data for a terminal state, use it
-        if cached_job_data:
+        if cached_job_data and isinstance(cached_job_data, dict):
             state = (cached_job_data.get("state") or "").lower().replace(":", "")
             # Only use cache for terminal states (succeeded, failed, unknown)
             if state in ["succeeded", "success", "failed", "error", "unknown"]:

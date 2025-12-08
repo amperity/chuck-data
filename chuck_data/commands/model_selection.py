@@ -24,7 +24,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         client: API client instance (used for Databricks provider)
         **kwargs: model_name (str)
     """
-    model_name: str = kwargs.get("model_name")
+    model_name = kwargs.get("model_name")
     if not model_name:
         return CommandResult(False, message="model_name parameter is required.")
 
@@ -45,7 +45,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         models_list = provider.list_models(tool_calling_only=False)
 
         # Extract model IDs (field name varies by provider)
-        model_ids = [m.get("model_id") or m.get("name") for m in models_list]
+        model_ids = [m.get("model_id") or m.get("name") or "" for m in models_list]
 
         # Validate model exists
         if model_name not in model_ids:

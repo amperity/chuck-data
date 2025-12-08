@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Any
 
+from chuck_data.llm.provider import ModelInfo
+
 
 class WizardStep(Enum):
     """Steps in the setup wizard."""
@@ -38,7 +40,7 @@ class WizardState:
     workspace_url: Optional[str] = None
     token: Optional[str] = None
     llm_provider: Optional[str] = None
-    models: List[Dict[str, Any]] = field(default_factory=list)
+    models: List[ModelInfo] = field(default_factory=list)
     selected_model: Optional[str] = None
     usage_consent: Optional[bool] = None
     error_message: Optional[str] = None

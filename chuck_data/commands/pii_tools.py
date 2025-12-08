@@ -26,17 +26,16 @@ def _helper_tag_pii_columns_logic(
     response_content_for_error = ""
     try:
         # Resolve full table name using APIs directly instead of handler
-        table_details_kwargs = {"full_name": table_name_param}
+        resolved_table_name = table_name_param
         if catalog_name_context and schema_name_context and "." not in table_name_param:
             # Only a table name was provided, construct full name
-            full_name = (
+            resolved_table_name = (
                 f"{catalog_name_context}.{schema_name_context}.{table_name_param}"
             )
-            table_details_kwargs = {"full_name": full_name}
 
         try:
             # Use direct API call instead of handle_table
-            table_info = databricks_client.get_table(**table_details_kwargs)
+            table_info = databricks_client.get_table(full_name=resolved_table_name)
             if not table_info:
                 error_msg = f"Failed to retrieve table details for PII tagging: {table_name_param}"
                 return {
@@ -88,6 +87,8 @@ def _helper_tag_pii_columns_logic(
             "and assign a PII semantic tag to each column if applicable. Use ONLY the following PII semantic tags: "
             "address, address2, birthdate, city, country, create-dt, email, full-name, gender, generational-suffix, "
             "given-name, phone, postal, state, surname, title, update-dt. If a column does not contain PII, assign null. "
+            "IMPORTANT: Do NOT assign semantic tags to numeric columns (types: LONG, BIGINT, INT, INTEGER, SMALLINT, "
+            "TINYINT, DOUBLE, FLOAT, DECIMAL, NUMERIC). Always assign null to numeric columns. "
             "Respond ONLY with a valid JSON list of objects, where each object represents a column and has the following structure: "
             '{"name": "column_name", "semantic": "pii_tag_or_null"}. '
             "Maintain original order. No explanations or introductory text."
@@ -100,9 +101,9 @@ def _helper_tag_pii_columns_logic(
                 {"role": "user", "content": user_prompt},
             ]
         )
-        response_content_for_error = llm_response_obj.choices[
-            0
-        ].message.content  # Store for potential error reporting
+        response_content_for_error = (
+            llm_response_obj.choices[0].message.content or ""
+        )  # Store for potential error reporting
         response_content_clean = response_content_for_error.strip()
         if response_content_clean.startswith("```json"):
             response_content_clean = response_content_clean[7:-3].strip()

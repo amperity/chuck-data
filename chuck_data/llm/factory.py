@@ -104,7 +104,7 @@ class LLMProviderFactory:
 
         elif provider_name == "openai":
             try:
-                from chuck_data.llm.providers.openai import OpenAIProvider
+                from chuck_data.llm.providers.openai import OpenAIProvider  # type: ignore[reportMissingImports]
 
                 return OpenAIProvider(**config)
             except ImportError as e:
@@ -114,7 +114,7 @@ class LLMProviderFactory:
 
         elif provider_name == "anthropic":
             try:
-                from chuck_data.llm.providers.anthropic import AnthropicProvider
+                from chuck_data.llm.providers.anthropic import AnthropicProvider  # type: ignore[reportMissingImports]
 
                 return AnthropicProvider(**config)
             except ImportError as e:
@@ -123,7 +123,7 @@ class LLMProviderFactory:
                 ) from e
 
         elif provider_name == "mock":
-            from chuck_data.llm.providers.mock import MockProvider
+            from chuck_data.llm.providers.mock import MockProvider  # type: ignore[reportMissingImports]
 
             return MockProvider(**config)
 

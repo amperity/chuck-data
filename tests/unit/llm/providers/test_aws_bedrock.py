@@ -409,7 +409,7 @@ class TestAWSBedrockProvider:
         assert len(models) == 1
         assert models[0]["model_id"] == "anthropic.claude-3-5-sonnet-20241022-v2:0"
         assert models[0]["model_name"] == "Claude 3.5 Sonnet"
-        assert models[0]["provider"] == "Anthropic"
+        assert models[0]["provider_name"] == "Anthropic"
         assert models[0]["supports_tool_use"] is True
 
         # Test with show_all: all models (tool_calling_only=False)
@@ -423,7 +423,7 @@ class TestAWSBedrockProvider:
 
         # Verify second model (Llama 3 70B - does NOT support tool calling, not 3.1+)
         assert all_models[1]["model_id"] == "meta.llama3-70b-instruct-v1:0"
-        assert all_models[1]["provider"] == "Meta"
+        assert all_models[1]["provider_name"] == "Meta"
         assert all_models[1]["supports_tool_use"] is False
 
         # Verify third model (Claude 2 - does NOT support tool calling)

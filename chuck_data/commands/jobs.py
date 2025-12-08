@@ -13,8 +13,8 @@ def handle_launch_job(client: Optional[DatabricksAPIClient], **kwargs) -> Comman
         client: API client instance
         **kwargs: config_path (str), init_script_path (str), run_name (str, optional), tool_output_callback (callable, optional)
     """
-    config_path: str = kwargs.get("config_path")
-    init_script_path: str = kwargs.get("init_script_path")
+    config_path = kwargs.get("config_path")
+    init_script_path = kwargs.get("init_script_path")
     run_name: Optional[str] = kwargs.get("run_name")
     tool_output_callback = kwargs.get("tool_output_callback")
     policy_id: Optional[str] = kwargs.get("policy_id")

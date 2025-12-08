@@ -65,7 +65,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         client: API client instance
         **kwargs: warehouse (str) - warehouse ID or name, tool_output_callback (optional)
     """
-    warehouse: str = kwargs.get("warehouse")
+    warehouse = kwargs.get("warehouse")
     tool_output_callback = kwargs.get("tool_output_callback")
 
     # Must provide warehouse parameter
@@ -125,6 +125,8 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
                 _report_step(f"Found warehouse '{selected_name}'", tool_output_callback)
 
         # Set the active warehouse
+        # target_warehouse is guaranteed to be a dict at this point
+        assert isinstance(target_warehouse, dict)
         warehouse_id_to_set = target_warehouse.get("id")
         warehouse_display_name = target_warehouse.get("name", "Unknown")
         warehouse_state = target_warehouse.get("state", "Unknown")

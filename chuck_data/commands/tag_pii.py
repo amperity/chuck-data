@@ -31,7 +31,7 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
             table_name (str): Name of the table to tag
             pii_columns (list): List of columns with PII semantic info
     """
-    table_name: str = kwargs.get("table_name")
+    table_name = kwargs.get("table_name")
     pii_columns: List[Dict[str, Any]] = kwargs.get("pii_columns", [])
 
     if not table_name:

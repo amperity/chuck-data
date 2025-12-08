@@ -724,6 +724,8 @@ class DatabricksAPIClient:
                 binary_data = f.read()
         else:
             # Convert string content to bytes
+            # content is guaranteed non-None by the validation above
+            assert content is not None
             binary_data = content.encode("utf-8")
 
         try:

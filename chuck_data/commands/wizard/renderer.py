@@ -5,11 +5,12 @@ UI rendering for setup wizard.
 import platform
 import subprocess
 import logging
-from typing import List, Dict, Any
+from typing import List
 from rich.console import Console
 from rich.table import Table
 from rich import box
 
+from chuck_data.llm.provider import ModelInfo
 from .state import WizardState, WizardStep
 from .steps import SetupStep
 
@@ -105,7 +106,7 @@ class WizardRenderer:
         self.console.print("You are now ready to use Chuck with all features enabled.")
         self.console.print("Type /help to see available commands.")
 
-    def _render_models_list(self, models: List[Dict[str, Any]]):
+    def _render_models_list(self, models: List[ModelInfo]):
         """Render the list of available models."""
         if not models:
             self.render_warning("No models available.")

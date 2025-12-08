@@ -10,7 +10,7 @@ from rich.console import Console
 
 from chuck_data.ui.table_formatter import display_table
 
-from chuck_data.command_result import CommandResult
+from chuck_data.commands.base import CommandResult
 from chuck_data.ui.theme import (
     SUCCESS,
     WARNING,
@@ -132,7 +132,7 @@ class OutputFormatter:
             }
 
         # Start with a base response
-        response = {"success": True}
+        response: Dict[str, Any] = {"success": True}
 
         # Add the message if available
         if result.message:

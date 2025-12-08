@@ -8,6 +8,7 @@ import time
 import webbrowser
 import readchar
 import json
+from typing import Optional
 from rich.console import Console
 
 from chuck_data.config import set_amperity_token
@@ -113,7 +114,7 @@ class AmperityAPIClient:
         return {"state": self.state, "nonce": self.nonce, "has_token": bool(self.token)}
 
     def wait_for_auth_completion(
-        self, poll_interval: int = 1, timeout: int = None
+        self, poll_interval: int = 1, timeout: Optional[int] = None
     ) -> tuple[bool, str]:
         """Wait for authentication to complete in a blocking manner."""
         if not self.nonce:
