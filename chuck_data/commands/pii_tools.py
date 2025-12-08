@@ -101,9 +101,9 @@ def _helper_tag_pii_columns_logic(
                 {"role": "user", "content": user_prompt},
             ]
         )
-        response_content_for_error = llm_response_obj.choices[
-            0
-        ].message.content or ""  # Store for potential error reporting
+        response_content_for_error = (
+            llm_response_obj.choices[0].message.content or ""
+        )  # Store for potential error reporting
         response_content_clean = response_content_for_error.strip()
         if response_content_clean.startswith("```json"):
             response_content_clean = response_content_clean[7:-3].strip()

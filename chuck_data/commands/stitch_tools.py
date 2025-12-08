@@ -216,7 +216,10 @@ def _helper_prepare_stitch_config(
                     "semantics": [],
                 }
                 # Only add semantics for non-numeric types (Stitch doesn't support semantics on LONG, etc.)
-                if col_data.get("semantic") and col_data["type"].upper() not in NUMERIC_TYPES:
+                if (
+                    col_data.get("semantic")
+                    and col_data["type"].upper() not in NUMERIC_TYPES
+                ):
                     field_cfg["semantics"].append(col_data["semantic"])
                 table_cfg["fields"].append(field_cfg)
             else:
