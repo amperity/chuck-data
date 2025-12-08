@@ -87,6 +87,8 @@ def _helper_tag_pii_columns_logic(
             "and assign a PII semantic tag to each column if applicable. Use ONLY the following PII semantic tags: "
             "address, address2, birthdate, city, country, create-dt, email, full-name, gender, generational-suffix, "
             "given-name, phone, postal, state, surname, title, update-dt. If a column does not contain PII, assign null. "
+            "IMPORTANT: Do NOT assign semantic tags to numeric columns (types: LONG, BIGINT, INT, INTEGER, SMALLINT, "
+            "TINYINT, DOUBLE, FLOAT, DECIMAL, NUMERIC). Always assign null to numeric columns. "
             "Respond ONLY with a valid JSON list of objects, where each object represents a column and has the following structure: "
             '{"name": "column_name", "semantic": "pii_tag_or_null"}. '
             "Maintain original order. No explanations or introductory text."

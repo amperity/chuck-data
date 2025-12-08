@@ -28,6 +28,20 @@ UNSUPPORTED_TYPES = [
     "GEOMETRY",
 ]
 
+# Numeric types that don't support semantic tags in Stitch
+NUMERIC_TYPES = [
+    "LONG",
+    "BIGINT",
+    "INT",
+    "INTEGER",
+    "SMALLINT",
+    "TINYINT",
+    "DOUBLE",
+    "FLOAT",
+    "DECIMAL",
+    "NUMERIC",
+]
+
 
 def validate_multi_location_access(
     client: DatabricksAPIClient, locations: List[Dict[str, str]]
@@ -201,7 +215,8 @@ def _helper_prepare_stitch_config(
                     "type": col_data["type"],
                     "semantics": [],
                 }
-                if col_data.get("semantic"):  # Only add non-null/empty semantics
+                # Only add semantics for non-numeric types (Stitch doesn't support semantics on LONG, etc.)
+                if col_data.get("semantic") and col_data["type"].upper() not in NUMERIC_TYPES:
                     field_cfg["semantics"].append(col_data["semantic"])
                 table_cfg["fields"].append(field_cfg)
             else:
