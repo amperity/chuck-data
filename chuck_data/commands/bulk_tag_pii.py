@@ -5,12 +5,18 @@ Bulk PII tagging command with interactive confirmation.
 1. Scan: Use scan-pii logic to find PII columns
 2. Review: Show results, handle modifications/confirmations
 3. Tag: Execute bulk tag-pii operations
+
+For Databricks: Applies semantic tags using SQL ALTER TABLE statements
+For Redshift: Stores semantic tags in chuck_metadata.semantic_tags table (Redshift doesn't support column tags)
 """
+
+import logging
 
 from chuck_data.interactive_context import InteractiveContext
 from chuck_data.commands.base import CommandResult
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.commands.pii_tools import _helper_scan_schema_for_pii_logic
+from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.ui.tui import get_console
 from chuck_data.ui.theme import INFO_STYLE, ERROR_STYLE, SUCCESS_STYLE
@@ -64,90 +70,147 @@ def handle_bulk_tag_pii(client, **kwargs):
 
 def _validate_parameters(client, **kwargs):
     """Comprehensive parameter validation."""
+    from chuck_data.clients.redshift import RedshiftAPIClient
+
     errors = []
 
-    # Get catalog name (explicit or from config)
-    catalog_name = kwargs.get("catalog_name")
-    if not catalog_name:
-        try:
-            catalog_name = config.get_active_catalog()
-            if not catalog_name:
+    # Check if this is a Redshift client (different validation rules)
+    is_redshift = isinstance(client, RedshiftAPIClient)
+
+    if is_redshift:
+        # Redshift validation: check database and schema
+        database = kwargs.get("database") or config.get_active_database()
+        if not database:
+            errors.append(
+                "No database specified and no active database configured. "
+                "Please run 'select_database' command to set the active database, or provide the 'database' parameter."
+            )
+
+        schema_name = kwargs.get("schema_name") or config.get_active_schema()
+        if not schema_name:
+            errors.append(
+                "No schema specified and no active schema configured. "
+                "Please run 'select_redshift_schema' command to set the active schema, or provide the 'schema_name' parameter."
+            )
+
+        # Redshift manifest requires these configs
+        if not config.get_redshift_iam_role() and not kwargs.get("iam_role"):
+            errors.append(
+                "No IAM role configured. Configure via setup wizard or provide iam_role parameter."
+            )
+
+        if not config.get_redshift_s3_temp_dir() and not kwargs.get("s3_temp_dir"):
+            errors.append(
+                "No S3 temp directory configured. Configure via setup wizard or provide s3_temp_dir parameter."
+            )
+    else:
+        # Databricks validation: check catalog, schema, and warehouse
+        catalog_name = kwargs.get("catalog_name")
+        if not catalog_name:
+            try:
+                catalog_name = config.get_active_catalog()
+                if not catalog_name:
+                    errors.append(
+                        "No catalog specified and no active catalog configured"
+                    )
+            except Exception:
                 errors.append("No catalog specified and no active catalog configured")
-        except Exception:
-            errors.append("No catalog specified and no active catalog configured")
 
-    # Get schema name (explicit or from config)
-    schema_name = kwargs.get("schema_name")
-    if not schema_name:
-        try:
-            schema_name = config.get_active_schema()
-            if not schema_name:
+        # Get schema name (explicit or from config)
+        schema_name = kwargs.get("schema_name")
+        if not schema_name:
+            try:
+                schema_name = config.get_active_schema()
+                if not schema_name:
+                    errors.append("No schema specified and no active schema configured")
+            except Exception:
                 errors.append("No schema specified and no active schema configured")
-        except Exception:
-            errors.append("No schema specified and no active schema configured")
 
-    # Check warehouse configuration for SQL operations
-    try:
-        warehouse_id = config.get_warehouse_id()
-        if not warehouse_id:
+        # Check warehouse configuration for SQL operations
+        try:
+            warehouse_id = config.get_warehouse_id()
+            if not warehouse_id:
+                errors.append(
+                    "No warehouse configured. Please configure a warehouse for SQL operations."
+                )
+        except Exception:
             errors.append(
                 "No warehouse configured. Please configure a warehouse for SQL operations."
             )
-    except Exception:
-        errors.append(
-            "No warehouse configured. Please configure a warehouse for SQL operations."
-        )
 
     if errors:
         return CommandResult(
             False, message=f"Configuration errors: {'; '.join(errors)}"
         )
 
-    # Validate catalog exists
-    try:
-        client.get_catalog(catalog_name)
-    except Exception:
+    # Additional validation for Databricks only (Redshift doesn't have catalog/warehouse APIs)
+    if not is_redshift:
+        # Validate catalog exists
         try:
-            catalogs_result = client.list_catalogs()
-            catalog_names = [
-                c.get("name", "Unknown") for c in catalogs_result.get("catalogs", [])
-            ]
-            available = ", ".join(catalog_names)
-            return CommandResult(
-                False,
-                message=f"Catalog '{catalog_name}' not found. Available catalogs: {available}",
-            )
-        except Exception as e:
-            return CommandResult(False, message=f"Unable to validate catalog: {str(e)}")
+            client.get_catalog(catalog_name)
+        except Exception:
+            try:
+                catalogs_result = client.list_catalogs()
+                catalog_names = [
+                    c.get("name", "Unknown")
+                    for c in catalogs_result.get("catalogs", [])
+                ]
+                available = ", ".join(catalog_names)
+                return CommandResult(
+                    False,
+                    message=f"Catalog '{catalog_name}' not found. Available catalogs: {available}",
+                )
+            except Exception as e:
+                return CommandResult(
+                    False, message=f"Unable to validate catalog: {str(e)}"
+                )
 
-    # Validate schema exists
-    try:
-        client.get_schema(f"{catalog_name}.{schema_name}")
-    except Exception:
+        # Validate schema exists
         try:
-            schemas_result = client.list_schemas(catalog_name)
-            schemas = schemas_result.get("schemas", [])
-            schema_names = [s.get("name", "Unknown") for s in schemas]
-            available = ", ".join(schema_names)
-            return CommandResult(
-                False,
-                message=f"Schema '{schema_name}' not found. Available schemas: {available}",
-            )
-        except Exception as e:
-            return CommandResult(False, message=f"Unable to validate schema: {str(e)}")
+            client.get_schema(f"{catalog_name}.{schema_name}")
+        except Exception:
+            try:
+                schemas_result = client.list_schemas(catalog_name)
+                schemas = schemas_result.get("schemas", [])
+                schema_names = [s.get("name", "Unknown") for s in schemas]
+                available = ", ".join(schema_names)
+                return CommandResult(
+                    False,
+                    message=f"Schema '{schema_name}' not found. Available schemas: {available}",
+                )
+            except Exception as e:
+                return CommandResult(
+                    False, message=f"Unable to validate schema: {str(e)}"
+                )
 
     return CommandResult(True, message="Parameters valid")
 
 
 def _execute_directly(client, **kwargs):
     """Execute workflow directly without interaction."""
-    # Get parameters (validated already)
-    catalog_name = kwargs.get("catalog_name") or config.get_active_catalog()
-    schema_name = kwargs.get("schema_name") or config.get_active_schema()
+    from chuck_data.clients.redshift import RedshiftAPIClient
+
+    logging.debug(f"_execute_directly called with kwargs: {kwargs}")
+
+    # Get parameters (validated already) - different for Databricks vs Redshift
+    is_redshift = isinstance(client, RedshiftAPIClient)
+    logging.debug(f"is_redshift: {is_redshift}")
+
+    if is_redshift:
+        # For Redshift, use database instead of catalog
+        catalog_name = kwargs.get("database") or config.get_active_database()
+        schema_name = kwargs.get("schema_name") or config.get_active_schema()
+    else:
+        # For Databricks, use catalog
+        catalog_name = kwargs.get("catalog_name") or config.get_active_catalog()
+        schema_name = kwargs.get("schema_name") or config.get_active_schema()
+
     tool_output_callback = kwargs.get("tool_output_callback")
 
     # Assert non-None since validation has passed
-    assert catalog_name is not None, "catalog_name should not be None after validation"
+    assert (
+        catalog_name is not None
+    ), "catalog_name/database should not be None after validation"
     assert schema_name is not None, "schema_name should not be None after validation"
 
     # Phase 1: Scan for PII using actual scan-pii logic
@@ -195,26 +258,43 @@ def _execute_directly(client, **kwargs):
                     "schema_name": schema_name,
                     "tables_processed": tables_processed,
                     "columns_tagged": 0,
-                    "scan_summary": scan_summary_data,
                 },
             )
 
-        # Phase 2: Execute bulk tagging
-        _report_progress(
-            f"Starting bulk tagging of {total_pii_columns} PII columns",
-            tool_output_callback,
-        )
+        # Phase 2: Execute bulk tagging (provider-specific)
+        is_redshift = isinstance(client, RedshiftAPIClient)
 
-        # Execute bulk tagging using scan results
-        try:
-            tagging_results = _execute_bulk_tagging(
-                client, scan_summary_data, tool_output_callback
+        if is_redshift:
+            # Redshift: Generate manifest instead of SQL tagging
+            # Remove database/schema_name/tool_output_callback from kwargs since they're positional params
+            redshift_kwargs = {
+                k: v for k, v in kwargs.items() if k not in ["database", "schema_name", "tool_output_callback"]
+            }
+            return _execute_redshift_manifest_generation(
+                client,
+                scan_summary_data,
+                catalog_name,
+                schema_name,
+                tool_output_callback,
+                **redshift_kwargs,
             )
-        except Exception as e:
-            _report_progress(f"Bulk tagging failed: {str(e)}", tool_output_callback)
-            return CommandResult(
-                False, message=f"Error during bulk tagging execution: {str(e)}"
+        else:
+            # Databricks: Execute SQL ALTER TABLE tagging
+            _report_progress(
+                f"Starting bulk tagging of {total_pii_columns} PII columns",
+                tool_output_callback,
             )
+
+            # Execute bulk tagging using scan results
+            try:
+                tagging_results = _execute_bulk_tagging(
+                    client, scan_summary_data, tool_output_callback
+                )
+            except Exception as e:
+                _report_progress(f"Bulk tagging failed: {str(e)}", tool_output_callback)
+                return CommandResult(
+                    False, message=f"Error during bulk tagging execution: {str(e)}"
+                )
 
         # Count successful taggings
         columns_tagged = sum(
@@ -260,13 +340,170 @@ def _execute_directly(client, **kwargs):
                 "tables_with_pii": tables_with_pii,
                 "columns_tagged": columns_tagged,
                 "columns_failed": failed_taggings,
-                "scan_summary": scan_summary_data,
-                "tagging_results": tagging_results,
             },
         )
 
     except Exception as e:
         return CommandResult(False, message=f"Error during bulk PII tagging: {str(e)}")
+
+
+def _execute_redshift_manifest_generation(
+    client,
+    scan_summary_data,
+    database,
+    schema_name,
+    tool_output_callback=None,
+    **kwargs,
+):
+    """
+    Store PII semantic tags in a Redshift metadata table.
+
+    Redshift doesn't support column tags natively, so we create a metadata table
+    to store semantic type information that can be queried by stitch and other tools.
+
+    The metadata table schema:
+        CREATE TABLE IF NOT EXISTS chuck_metadata.semantic_tags (
+            database_name VARCHAR(256),
+            schema_name VARCHAR(256),
+            table_name VARCHAR(256),
+            column_name VARCHAR(256),
+            semantic_type VARCHAR(256),
+            updated_at TIMESTAMP DEFAULT GETDATE(),
+            PRIMARY KEY (database_name, schema_name, table_name, column_name)
+        );
+    """
+    logging.debug(f"_execute_redshift_manifest_generation called with database={database}, schema={schema_name}")
+
+    _report_progress(
+        f"Storing PII tags in Redshift metadata table (Redshift doesn't support column tags)",
+        tool_output_callback,
+    )
+
+    try:
+        # Step 1: Create chuck_metadata schema if it doesn't exist
+        _report_progress(
+            "Creating chuck_metadata schema if not exists...",
+            tool_output_callback,
+        )
+
+        create_schema_sql = "CREATE SCHEMA IF NOT EXISTS chuck_metadata"
+        client.execute_sql(create_schema_sql, database=database)
+
+        # Step 2: Create semantic_tags table if it doesn't exist
+        _report_progress(
+            "Creating semantic_tags table if not exists...",
+            tool_output_callback,
+        )
+
+        create_table_sql = """
+        CREATE TABLE IF NOT EXISTS chuck_metadata.semantic_tags (
+            database_name VARCHAR(256),
+            schema_name VARCHAR(256),
+            table_name VARCHAR(256),
+            column_name VARCHAR(256),
+            semantic_type VARCHAR(256),
+            updated_at TIMESTAMP DEFAULT GETDATE(),
+            PRIMARY KEY (database_name, schema_name, table_name, column_name)
+        )
+        """
+        client.execute_sql(create_table_sql, database=database)
+
+        # Step 3: Extract PII columns from scan results
+        results_detail = scan_summary_data.get("results_detail", [])
+        pii_tags = []
+
+        for table_result in results_detail:
+            if (
+                table_result.get("error")
+                or table_result.get("skipped")
+                or not table_result.get("has_pii")
+            ):
+                continue
+
+            table_name = table_result.get("table_name")
+            pii_columns = table_result.get("pii_columns", [])
+
+            for col in pii_columns:
+                pii_tags.append({
+                    "table": table_name,
+                    "column": col.get("name"),
+                    "semantic": col.get("semantic"),
+                })
+
+        if not pii_tags:
+            return CommandResult(
+                True,
+                message=f"No PII columns found in {database}.{schema_name}",
+                data={
+                    "database": database,
+                    "schema": schema_name,
+                    "tags_stored": 0,
+                },
+            )
+
+        # Step 4: Delete existing tags for this schema (to handle re-tagging)
+        _report_progress(
+            f"Clearing existing tags for {database}.{schema_name}...",
+            tool_output_callback,
+        )
+
+        delete_sql = f"""
+        DELETE FROM chuck_metadata.semantic_tags
+        WHERE database_name = '{database}'
+        AND schema_name = '{schema_name}'
+        """
+        client.execute_sql(delete_sql, database=database)
+
+        # Step 5: Insert PII tags
+        _report_progress(
+            f"Inserting {len(pii_tags)} PII tags...",
+            tool_output_callback,
+        )
+
+        # Build INSERT statement with all values
+        values_list = []
+        for tag in pii_tags:
+            values_list.append(
+                f"('{database}', '{schema_name}', '{tag['table']}', '{tag['column']}', '{tag['semantic']}', GETDATE())"
+            )
+
+        insert_sql = f"""
+        INSERT INTO chuck_metadata.semantic_tags
+            (database_name, schema_name, table_name, column_name, semantic_type, updated_at)
+        VALUES {', '.join(values_list)}
+        """
+
+        client.execute_sql(insert_sql, database=database)
+
+        _report_progress(
+            f"Successfully stored {len(pii_tags)} PII tags",
+            tool_output_callback,
+        )
+
+        # Success!
+        message = (
+            f"Stored {len(pii_tags)} PII tags for {database}.{schema_name} "
+            f"in chuck_metadata.semantic_tags table. "
+            f"Query with: SELECT * FROM chuck_metadata.semantic_tags WHERE database_name = '{database}' AND schema_name = '{schema_name}'"
+        )
+
+        return CommandResult(
+            True,
+            message=message,
+            data={
+                "database": database,
+                "schema": schema_name,
+                "tags_stored": len(pii_tags),
+                "tables_processed": scan_summary_data.get("tables_successfully_processed", 0),
+                "tables_with_pii": scan_summary_data.get("tables_with_pii", 0),
+            },
+        )
+
+    except Exception as e:
+        import traceback
+        logging.error(f"Error storing PII tags in Redshift: {str(e)}")
+        logging.error(traceback.format_exc())
+        return CommandResult(False, message=f"Error storing PII tags: {str(e)}")
 
 
 def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
@@ -491,12 +728,24 @@ def _report_progress(step_message, tool_output_callback=None):
 
 def _start_interactive_mode(client, **kwargs):
     """Start interactive workflow - Phase 1: Scan and Preview."""
-    # Get parameters (validated already)
-    catalog_name = kwargs.get("catalog_name") or config.get_active_catalog()
-    schema_name = kwargs.get("schema_name") or config.get_active_schema()
+    from chuck_data.clients.redshift import RedshiftAPIClient
+
+    # Get parameters (validated already) - different for Databricks vs Redshift
+    is_redshift = isinstance(client, RedshiftAPIClient)
+
+    if is_redshift:
+        # For Redshift, use database instead of catalog
+        catalog_name = kwargs.get("database") or config.get_active_database()
+        schema_name = kwargs.get("schema_name") or config.get_active_schema()
+    else:
+        # For Databricks, use catalog
+        catalog_name = kwargs.get("catalog_name") or config.get_active_catalog()
+        schema_name = kwargs.get("schema_name") or config.get_active_schema()
 
     # Assert non-None since validation has passed
-    assert catalog_name is not None, "catalog_name should not be None after validation"
+    assert (
+        catalog_name is not None
+    ), "catalog_name/database should not be None after validation"
     assert schema_name is not None, "schema_name should not be None after validation"
 
     try:
@@ -535,7 +784,6 @@ def _start_interactive_mode(client, **kwargs):
                     "schema_name": schema_name,
                     "tables_processed": tables_processed,
                     "columns_tagged": 0,
-                    "scan_summary": scan_summary_data,
                 },
             )
 
@@ -651,6 +899,8 @@ def _handle_interactive_input(client, user_input, **kwargs):
 
 def _proceed_with_tagging(client, context_data, tool_output_callback):
     """Execute bulk tagging with current scan results."""
+    from chuck_data.clients.redshift import RedshiftAPIClient
+
     catalog_name = context_data.get("catalog_name")
     schema_name = context_data.get("schema_name")
     scan_summary = context_data.get("scan_summary")
@@ -665,61 +915,90 @@ def _proceed_with_tagging(client, context_data, tool_output_callback):
         total_pii_columns = scan_summary.get("total_pii_columns", 0)
         excluded_tables_count = scan_summary.get("excluded_tables_count", 0)
 
-        # Execute bulk tagging
-        _report_progress(
-            f"Starting bulk tagging of {total_pii_columns} PII columns",
-            tool_output_callback,
-        )
+        # Check if this is Redshift - route to manifest generation
+        is_redshift = isinstance(client, RedshiftAPIClient)
 
-        tagging_results = _execute_bulk_tagging(
-            client, scan_summary, tool_output_callback
-        )
-
-        # Count successful taggings
-        columns_tagged = sum(
-            1 for result in tagging_results if result.get("success", False)
-        )
-        failed_taggings = len(tagging_results) - columns_tagged
-
-        # Report final results
-        if failed_taggings > 0:
+        if is_redshift:
+            # For Redshift: Generate manifest instead of SQL tagging
             _report_progress(
-                f"Bulk tagging completed: {columns_tagged} successful, {failed_taggings} failed",
+                f"Generating manifest for {total_pii_columns} PII columns",
                 tool_output_callback,
             )
-            failure_summary = _summarize_failures(tagging_results)
-            exclusion_note = (
-                f" ({excluded_tables_count} tables excluded)"
-                if excluded_tables_count > 0
-                else ""
+
+            # Get original kwargs from context (for manifest parameters)
+            original_kwargs = context_data.get("original_kwargs", {})
+
+            # Remove database/schema_name/tool_output_callback from kwargs since they're positional params
+            redshift_kwargs = {
+                k: v
+                for k, v in original_kwargs.items()
+                if k not in ["database", "schema_name", "tool_output_callback"]
+            }
+
+            return _execute_redshift_manifest_generation(
+                client,
+                scan_summary,
+                catalog_name,  # This is actually the database name for Redshift
+                schema_name,
+                tool_output_callback,
+                **redshift_kwargs,
             )
-            message = f"Bulk PII tagging partially completed for {catalog_name}.{schema_name}. Tagged {columns_tagged} of {columns_tagged + failed_taggings} PII columns{exclusion_note}. {failure_summary}"
         else:
+            # For Databricks: Execute SQL ALTER TABLE tagging
             _report_progress(
-                f"Bulk tagging completed successfully: {columns_tagged} columns tagged",
+                f"Starting bulk tagging of {total_pii_columns} PII columns",
                 tool_output_callback,
             )
-            exclusion_note = (
-                f" ({excluded_tables_count} tables excluded)"
-                if excluded_tables_count > 0
-                else ""
-            )
-            message = f"Bulk PII tagging completed for {catalog_name}.{schema_name}. Tagged {columns_tagged} PII columns in {tables_with_pii} tables{exclusion_note}."
 
-        return CommandResult(
-            failed_taggings == 0,
-            message=message,
-            data={
-                "catalog_name": catalog_name,
-                "schema_name": schema_name,
-                "tables_with_pii": tables_with_pii,
-                "columns_tagged": columns_tagged,
-                "columns_failed": failed_taggings,
-                "excluded_tables_count": excluded_tables_count,
-                "scan_summary": scan_summary,
-                "tagging_results": tagging_results,
-            },
-        )
+            tagging_results = _execute_bulk_tagging(
+                client, scan_summary, tool_output_callback
+            )
+
+            # Count successful taggings
+            columns_tagged = sum(
+                1 for result in tagging_results if result.get("success", False)
+            )
+            failed_taggings = len(tagging_results) - columns_tagged
+
+            # Report final results
+            if failed_taggings > 0:
+                _report_progress(
+                    f"Bulk tagging completed: {columns_tagged} successful, {failed_taggings} failed",
+                    tool_output_callback,
+                )
+                failure_summary = _summarize_failures(tagging_results)
+                exclusion_note = (
+                    f" ({excluded_tables_count} tables excluded)"
+                    if excluded_tables_count > 0
+                    else ""
+                )
+                message = f"Bulk PII tagging partially completed for {catalog_name}.{schema_name}. Tagged {columns_tagged} of {columns_tagged + failed_taggings} PII columns{exclusion_note}. {failure_summary}"
+            else:
+                _report_progress(
+                    f"Bulk tagging completed successfully: {columns_tagged} columns tagged",
+                    tool_output_callback,
+                )
+                exclusion_note = (
+                    f" ({excluded_tables_count} tables excluded)"
+                    if excluded_tables_count > 0
+                    else ""
+                )
+                message = f"Bulk PII tagging completed for {catalog_name}.{schema_name}. Tagged {columns_tagged} PII columns in {tables_with_pii} tables{exclusion_note}."
+
+            return CommandResult(
+                failed_taggings == 0,
+                message=message,
+                data={
+                    "catalog_name": catalog_name,
+                    "schema_name": schema_name,
+                    "tables_with_pii": tables_with_pii,
+                    "columns_tagged": columns_tagged,
+                    "columns_failed": failed_taggings,
+                    "excluded_tables_count": excluded_tables_count,
+                    "scan_summary": scan_summary,
+                    "tagging_results": tagging_results,
+                },
+            )
 
     except Exception as e:
         return CommandResult(
@@ -1201,20 +1480,49 @@ If you cannot understand the request, set action to "unknown".
 
 DEFINITION = CommandDefinition(
     name="bulk_tag_pii",
-    description="Scan schema for PII columns and bulk tag them with semantic tags after interactive confirmation",
+    description="Scan schema for PII columns and bulk tag them. For Databricks: applies SQL tags directly. For Redshift: stores tags in chuck_metadata.semantic_tags table. IMPORTANT: This command will ALWAYS show a preview and require user confirmation before tagging - the agent cannot bypass this safety feature. The agent should call this command and then wait for the user to review the preview and type 'proceed' or provide modifications. All Redshift connection parameters (host, user, password, IAM role, S3 temp dir) are automatically loaded from the configured connection - you don't need to provide them. For Redshift: if you previously ran scan_schema_for_pii on a specific database and schema, provide those same values as 'database' and 'schema_name' parameters. If you don't provide them, the command will use the active database and schema from config (if set).",
     handler=handle_bulk_tag_pii,
     parameters={
         "catalog_name": {
             "type": "string",
-            "description": "Optional: Name of the catalog. If not provided, uses the active catalog",
+            "description": "Optional: Name of the catalog (Databricks only). If not provided, uses the active catalog",
+        },
+        "database": {
+            "type": "string",
+            "description": "Optional: Name of the database (Redshift only). If not provided, uses the active database configured during setup. IMPORTANT: If you previously ran scan_schema_for_pii, use the same database name from that scan.",
         },
         "schema_name": {
             "type": "string",
-            "description": "Optional: Name of the schema. If not provided, uses the active schema",
+            "description": "Optional: Name of the schema. If not provided, uses the active schema configured during setup. IMPORTANT: If you previously ran scan_schema_for_pii, use the same schema name from that scan.",
         },
         "auto_confirm": {
             "type": "boolean",
-            "description": "Optional: Skip interactive confirmation and proceed automatically. Default: false",
+            "description": "Optional: Skip interactive confirmation and proceed automatically. NOTE: This is intended for non-interactive/scripted use only. When called by the agent, confirmation is ALWAYS required for safety - the agent cannot set this parameter. Default: false",
+        },
+        # Advanced override parameters (rarely needed - loaded from config by default)
+        "s3_temp_dir": {
+            "type": "string",
+            "description": "Advanced: Override S3 temp directory (automatically loaded from config by default)",
+        },
+        "iam_role": {
+            "type": "string",
+            "description": "Advanced: Override IAM role ARN (automatically loaded from config by default)",
+        },
+        "redshift_host": {
+            "type": "string",
+            "description": "Advanced: Override Redshift host (automatically loaded from config by default)",
+        },
+        "redshift_port": {
+            "type": "integer",
+            "description": "Advanced: Override Redshift port (automatically loaded from config by default)",
+        },
+        "redshift_user": {
+            "type": "string",
+            "description": "Advanced: Override Redshift username (automatically loaded from config by default)",
+        },
+        "redshift_password": {
+            "type": "string",
+            "description": "Advanced: Override Redshift password (automatically loaded from config by default)",
         },
     },
     required_params=[],

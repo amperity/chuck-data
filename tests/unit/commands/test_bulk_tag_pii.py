@@ -876,3 +876,178 @@ def mock_scan_results():
             },
         ],
     }
+
+
+# ===== REDSHIFT MANIFEST GENERATION TESTS =====
+
+
+def test_redshift_manifest_auto_default_filename(temp_config, llm_client_stub):
+    """Redshift manifest generation uses auto-generated default filename when none specified."""
+    from chuck_data.clients.redshift import RedshiftAPIClient
+    from unittest.mock import MagicMock
+
+    with (
+        patch("chuck_data.config._config_manager", temp_config),
+        patch(
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
+        ),
+        patch("chuck_data.commands.bulk_tag_pii.save_manifest_to_file") as mock_save,
+        patch(
+            "chuck_data.commands.bulk_tag_pii._helper_scan_schema_for_pii_logic"
+        ) as mock_scan,
+    ):
+        # Setup config with Redshift connection
+        temp_config.update(
+            redshift_region="us-west-2",
+            redshift_workgroup_name="test-workgroup",
+            redshift_host="test.us-west-2.redshift.amazonaws.com",
+            redshift_user="testuser",
+            redshift_database="dev",
+            redshift_iam_role="arn:aws:iam::123456789012:role/TestRole",
+            redshift_s3_temp_dir="s3://test-bucket/temp/",
+            active_schema="public",
+        )
+
+        # Mock scan results with PII
+        mock_scan.return_value = {
+            "catalog": "dev",
+            "schema": "public",
+            "tables_with_pii": 1,
+            "total_pii_columns": 2,
+            "tables_successfully_processed": 1,
+            "tables_scanned_attempted": 1,
+            "results_detail": [
+                {
+                    "table_name": "customers",
+                    "full_name": "dev.public.customers",
+                    "has_pii": True,
+                    "pii_column_count": 2,
+                    "columns": [
+                        {"name": "email", "type": "varchar", "semantic": "email"},
+                        {"name": "phone", "type": "varchar", "semantic": "phone"},
+                    ],
+                }
+            ],
+        }
+
+        # Mock successful file save
+        mock_save.return_value = True
+
+        # Create Redshift client
+        redshift_client = MagicMock(spec=RedshiftAPIClient)
+        redshift_client.__class__ = RedshiftAPIClient
+
+        # Call bulk_tag_pii without specifying output location
+        result = handle_bulk_tag_pii(
+            redshift_client,
+            database="dev",
+            schema_name="public",
+            auto_confirm=True,
+        )
+
+        # Verify success
+        assert result.success
+        assert "Manifest generated" in result.message
+        assert "dev.public" in result.message
+
+        # Verify file was saved with auto-generated name in ~/.chuck/manifests/
+        mock_save.assert_called_once()
+        saved_filename = mock_save.call_args[0][1]
+        import os
+
+        expected_dir = os.path.join(os.path.expanduser("~"), ".chuck", "manifests")
+        assert saved_filename.startswith(
+            expected_dir
+        ), f"Expected path to start with {expected_dir}, got {saved_filename}"
+        assert "redshift-pii-manifest-dev-public-" in saved_filename
+        assert saved_filename.endswith(".json")
+
+        # Verify manifest data
+        assert result.data["tables_count"] == 1
+        assert result.data["total_pii_columns"] == 2
+
+
+def test_redshift_manifest_cleanup_after_s3_upload(temp_config, llm_client_stub):
+    """Redshift manifest: local file is deleted after successful S3 upload."""
+    from chuck_data.clients.redshift import RedshiftAPIClient
+    from unittest.mock import MagicMock
+
+    with (
+        patch("chuck_data.config._config_manager", temp_config),
+        patch(
+            "chuck_data.commands.bulk_tag_pii.LLMProviderFactory.create",
+            return_value=llm_client_stub,
+        ),
+        patch("chuck_data.commands.bulk_tag_pii.save_manifest_to_file") as mock_save,
+        patch("chuck_data.commands.bulk_tag_pii.upload_manifest_to_s3") as mock_upload,
+        patch(
+            "chuck_data.commands.bulk_tag_pii._helper_scan_schema_for_pii_logic"
+        ) as mock_scan,
+        patch("os.path.exists") as mock_exists,
+        patch("os.remove") as mock_remove,
+    ):
+        # Setup config with Redshift connection
+        temp_config.update(
+            redshift_region="us-west-2",
+            redshift_workgroup_name="test-workgroup",
+            redshift_database="dev",
+            redshift_iam_role="arn:aws:iam::123456789012:role/TestRole",
+            redshift_s3_temp_dir="s3://test-bucket/temp/",
+            active_schema="public",
+        )
+
+        # Mock scan results with PII
+        mock_scan.return_value = {
+            "catalog": "dev",
+            "schema": "public",
+            "tables_with_pii": 1,
+            "total_pii_columns": 2,
+            "tables_successfully_processed": 1,
+            "tables_scanned_attempted": 1,
+            "results_detail": [
+                {
+                    "table_name": "customers",
+                    "full_name": "dev.public.customers",
+                    "has_pii": True,
+                    "pii_column_count": 2,
+                    "columns": [
+                        {"name": "email", "type": "varchar", "semantic": "email"},
+                        {"name": "phone", "type": "varchar", "semantic": "phone"},
+                    ],
+                }
+            ],
+        }
+
+        # Mock successful file save and S3 upload
+        mock_save.return_value = True
+        mock_upload.return_value = True
+        mock_exists.return_value = True
+
+        # Create Redshift client
+        redshift_client = MagicMock(spec=RedshiftAPIClient)
+        redshift_client.__class__ = RedshiftAPIClient
+
+        # Call bulk_tag_pii with S3 path (and auto-generated local file)
+        result = handle_bulk_tag_pii(
+            redshift_client,
+            database="dev",
+            schema_name="public",
+            auto_confirm=True,
+            manifest_s3_path="s3://test-bucket/manifests/test-manifest.json",
+        )
+
+        # Verify success
+        assert result.success
+        assert "S3: s3://test-bucket/manifests/test-manifest.json" in result.message
+
+        # Verify local file was saved first
+        mock_save.assert_called_once()
+        local_file = mock_save.call_args[0][1]
+
+        # Verify S3 upload was called
+        mock_upload.assert_called_once()
+
+        # Verify local file was deleted after S3 upload
+        mock_exists.assert_called_with(local_file)
+        mock_remove.assert_called_once_with(local_file)

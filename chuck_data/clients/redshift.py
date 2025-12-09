@@ -158,13 +158,24 @@ class RedshiftAPIClient:
                 status = response["Status"]
 
                 if status == "FINISHED":
-                    # Get results
-                    result = self.redshift_data.get_statement_result(Id=statement_id)
-                    return {
-                        "statement_id": statement_id,
-                        "status": status,
-                        "result": result,
-                    }
+                    # Check if statement has results (SELECT queries return results, DDL statements don't)
+                    has_result_set = response.get("HasResultSet", False)
+
+                    if has_result_set:
+                        # Get results for SELECT queries
+                        result = self.redshift_data.get_statement_result(Id=statement_id)
+                        return {
+                            "statement_id": statement_id,
+                            "status": status,
+                            "result": result,
+                        }
+                    else:
+                        # DDL statements (CREATE, DROP, INSERT, etc.) don't have results
+                        return {
+                            "statement_id": statement_id,
+                            "status": status,
+                            "result": None,
+                        }
                 elif status == "FAILED":
                     error = response.get("Error", "Unknown error")
                     raise ValueError(f"Statement failed: {error}")
@@ -179,6 +190,15 @@ class RedshiftAPIClient:
                 time.sleep(1)
 
             except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                # ResourceNotFoundException means the query doesn't have results (DDL statement)
+                if error_code == "ResourceNotFoundException":
+                    # This is actually success for DDL statements
+                    return {
+                        "statement_id": statement_id,
+                        "status": "FINISHED",
+                        "result": None,
+                    }
                 logging.debug(f"Error waiting for statement: {e}")
                 raise ValueError(f"Error waiting for statement: {e}")
 

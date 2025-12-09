@@ -184,11 +184,16 @@ class WizardRenderer:
         step_numbers = {
             WizardStep.AMPERITY_AUTH: 1,
             WizardStep.DATA_PROVIDER_SELECTION: 2,
-            WizardStep.WORKSPACE_URL: 3,
-            WizardStep.TOKEN_INPUT: 4,
-            WizardStep.LLM_PROVIDER_SELECTION: 5,
-            WizardStep.MODEL_SELECTION: 6,
-            WizardStep.USAGE_CONSENT: 7,
-            WizardStep.COMPLETE: 8,
+            WizardStep.AWS_REGION_INPUT: 3,
+            WizardStep.REDSHIFT_CLUSTER_SELECTION: 4,
+            WizardStep.S3_BUCKET_INPUT: 5,
+            WizardStep.IAM_ROLE_INPUT: 6,
+            WizardStep.COMPUTATION_PROVIDER_SELECTION: 7,
+            WizardStep.WORKSPACE_URL: 8,
+            WizardStep.TOKEN_INPUT: 9,
+            WizardStep.LLM_PROVIDER_SELECTION: 10,
+            WizardStep.MODEL_SELECTION: 11,
+            WizardStep.USAGE_CONSENT: 12,
+            WizardStep.COMPLETE: 13,
         }
         return step_numbers.get(step, 1)

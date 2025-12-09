@@ -162,6 +162,7 @@ class SetupWizardOrchestrator:
             "redshift_cluster_identifier": state.redshift_cluster_identifier,
             "redshift_workgroup_name": state.redshift_workgroup_name,
             "s3_bucket": state.s3_bucket,
+            "iam_role": state.iam_role,
             "llm_provider": state.llm_provider,
             "models": state.models,
             "selected_model": state.selected_model,
@@ -212,6 +213,7 @@ class SetupWizardOrchestrator:
                 ),
                 redshift_workgroup_name=context_data.get("redshift_workgroup_name"),
                 s3_bucket=context_data.get("s3_bucket"),
+                iam_role=context_data.get("iam_role"),
                 llm_provider=context_data.get("llm_provider"),
                 models=context_data.get("models", []),
                 selected_model=context_data.get("selected_model"),
@@ -229,11 +231,12 @@ class SetupWizardOrchestrator:
 
     def _should_clear_screen_after_step(self, completed_step: WizardStep) -> bool:
         """Determine if screen should be cleared after successful completion of a step."""
-        # Clear screen after successful completion of steps 1, 3, and 4
+        # Clear screen after successful completion of major steps
         return completed_step in [
-            WizardStep.AMPERITY_AUTH,  # Step 1
-            WizardStep.TOKEN_INPUT,  # Step 3
-            WizardStep.MODEL_SELECTION,  # Step 4
+            WizardStep.AMPERITY_AUTH,
+            WizardStep.IAM_ROLE_INPUT,
+            WizardStep.TOKEN_INPUT,
+            WizardStep.MODEL_SELECTION,
         ]
 
     def _is_forward_progression(
@@ -243,6 +246,10 @@ class SetupWizardOrchestrator:
         step_order = [
             WizardStep.AMPERITY_AUTH,
             WizardStep.DATA_PROVIDER_SELECTION,
+            WizardStep.AWS_REGION_INPUT,
+            WizardStep.REDSHIFT_CLUSTER_SELECTION,
+            WizardStep.S3_BUCKET_INPUT,
+            WizardStep.IAM_ROLE_INPUT,
             WizardStep.COMPUTATION_PROVIDER_SELECTION,
             WizardStep.WORKSPACE_URL,
             WizardStep.TOKEN_INPUT,

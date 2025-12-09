@@ -969,8 +969,8 @@ class S3BucketInputStep(SetupStep):
 
             return StepResult(
                 success=True,
-                message=f"S3 bucket '{bucket}' configured successfully. Proceeding to computation provider selection.",
-                next_step=WizardStep.COMPUTATION_PROVIDER_SELECTION,
+                message=f"S3 bucket '{bucket}' configured successfully. Proceeding to IAM role configuration.",
+                next_step=WizardStep.IAM_ROLE_INPUT,
                 action=WizardAction.CONTINUE,
                 data={"s3_bucket": bucket},
             )
@@ -980,6 +980,82 @@ class S3BucketInputStep(SetupStep):
             return StepResult(
                 success=False,
                 message=f"Error saving S3 bucket: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class IAMRoleInputStep(SetupStep):
+    """Handle IAM role ARN configuration for Redshift."""
+
+    def get_step_title(self) -> str:
+        return "IAM Role Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Enter the IAM role ARN for Redshift:\n"
+            "(Required for Databricks to access Redshift and S3)\n"
+            "Example: arn:aws:iam::123456789012:role/RedshiftRole"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle IAM role ARN input."""
+        iam_role = input_text.strip()
+
+        if not iam_role:
+            return StepResult(
+                success=False,
+                message="IAM role ARN cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+
+        # Basic IAM role ARN validation
+        if not iam_role.startswith("arn:aws:iam::"):
+            return StepResult(
+                success=False,
+                message="Invalid IAM role ARN format. Must start with 'arn:aws:iam::'",
+                action=WizardAction.RETRY,
+            )
+
+        # Check that the ARN contains :role/ (allows for path components like service-role/)
+        if ":role/" not in iam_role:
+            return StepResult(
+                success=False,
+                message="Invalid IAM role ARN format. Must contain ':role/' followed by role name",
+                action=WizardAction.RETRY,
+            )
+
+        # Save IAM role to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            # Construct S3 temp dir from bucket and default path
+            s3_temp_dir = f"s3://{state.s3_bucket}/redshift-temp/"
+
+            # Save both IAM role and construct S3 temp dir
+            success = get_config_manager().update(
+                redshift_iam_role=iam_role, redshift_s3_temp_dir=s3_temp_dir
+            )
+
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save IAM role configuration. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=f"IAM role configured successfully. Proceeding to computation provider selection.",
+                next_step=WizardStep.COMPUTATION_PROVIDER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"iam_role": iam_role},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving IAM role: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving IAM role: {str(e)}",
                 action=WizardAction.RETRY,
             )
 
@@ -1053,6 +1129,7 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
         WizardStep.AWS_REGION_INPUT: AWSRegionInputStep,
         WizardStep.REDSHIFT_CLUSTER_SELECTION: RedshiftClusterSelectionStep,
         WizardStep.S3_BUCKET_INPUT: S3BucketInputStep,
+        WizardStep.IAM_ROLE_INPUT: IAMRoleInputStep,
         WizardStep.USAGE_CONSENT: UsageConsentStep,
     }
 

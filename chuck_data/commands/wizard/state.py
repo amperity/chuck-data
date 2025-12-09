@@ -18,6 +18,7 @@ class WizardStep(Enum):
     AWS_REGION_INPUT = "aws_region_input"
     REDSHIFT_CLUSTER_SELECTION = "redshift_cluster_selection"
     S3_BUCKET_INPUT = "s3_bucket_input"
+    IAM_ROLE_INPUT = "iam_role_input"
     # Computation provider selection
     COMPUTATION_PROVIDER_SELECTION = "computation_provider_selection"
     # Databricks-specific steps
@@ -55,6 +56,7 @@ class WizardState:
     redshift_cluster_identifier: Optional[str] = None
     redshift_workgroup_name: Optional[str] = None
     s3_bucket: Optional[str] = None
+    iam_role: Optional[str] = None
     emr_cluster_id: Optional[str] = None
     # LLM provider fields
     llm_provider: Optional[str] = None
@@ -79,6 +81,8 @@ class WizardState:
                 self.redshift_cluster_identifier is not None
                 or self.redshift_workgroup_name is not None
             )
+        elif step == WizardStep.IAM_ROLE_INPUT:
+            return self.data_provider == "aws_redshift" and self.s3_bucket is not None
         # Computation provider selection
         elif step == WizardStep.COMPUTATION_PROVIDER_SELECTION:
             # For Databricks: just need data_provider set
@@ -86,7 +90,7 @@ class WizardState:
             if self.data_provider == "databricks":
                 return True
             elif self.data_provider == "aws_redshift":
-                return self.s3_bucket is not None
+                return self.s3_bucket is not None and self.iam_role is not None
             return self.data_provider is not None
         # Databricks-specific steps
         elif step == WizardStep.WORKSPACE_URL:
@@ -144,9 +148,14 @@ class WizardStateMachine:
                 WizardStep.AWS_REGION_INPUT,
             ],
             WizardStep.S3_BUCKET_INPUT: [
-                WizardStep.COMPUTATION_PROVIDER_SELECTION,
+                WizardStep.IAM_ROLE_INPUT,
                 WizardStep.S3_BUCKET_INPUT,
                 WizardStep.REDSHIFT_CLUSTER_SELECTION,
+            ],
+            WizardStep.IAM_ROLE_INPUT: [
+                WizardStep.COMPUTATION_PROVIDER_SELECTION,
+                WizardStep.IAM_ROLE_INPUT,
+                WizardStep.S3_BUCKET_INPUT,
             ],
             WizardStep.COMPUTATION_PROVIDER_SELECTION: [
                 WizardStep.WORKSPACE_URL,
@@ -250,6 +259,8 @@ class WizardStateMachine:
         elif current_step == WizardStep.REDSHIFT_CLUSTER_SELECTION:
             return WizardStep.S3_BUCKET_INPUT
         elif current_step == WizardStep.S3_BUCKET_INPUT:
+            return WizardStep.IAM_ROLE_INPUT
+        elif current_step == WizardStep.IAM_ROLE_INPUT:
             return WizardStep.COMPUTATION_PROVIDER_SELECTION
         elif current_step == WizardStep.COMPUTATION_PROVIDER_SELECTION:
             # For Databricks computation provider, go to workspace config

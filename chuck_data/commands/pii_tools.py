@@ -111,8 +111,12 @@ def _helper_tag_pii_columns_logic(
             }
 
         # Use the LLM client instance passed to the function
+        # Handle both Databricks (type_name) and Redshift (type) column formats
         column_details_for_llm = [
-            {"name": col.get("name", ""), "type": col.get("type_name", "")}
+            {
+                "name": col.get("name", ""),
+                "type": col.get("type_name", col.get("type", "")),
+            }
             for col in columns
         ]
 
@@ -158,10 +162,12 @@ def _helper_tag_pii_columns_logic(
         tagged_columns_list = []
         for col in columns:
             col_name = col.get("name", "")
+            # Handle both Databricks (type_name) and Redshift (type) column formats
+            col_type = col.get("type_name", col.get("type", ""))
             tagged_columns_list.append(
                 {
                     "name": col_name,
-                    "type": col.get("type_name", ""),
+                    "type": col_type,
                     "semantic": semantic_map.get(col_name),
                 }
             )

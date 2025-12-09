@@ -47,6 +47,37 @@ class ChuckConfig(BaseModel):
         description="Provider-specific configuration (nested dict by provider name)",
     )
 
+    # Redshift connection configuration
+    redshift_region: Optional[str] = Field(
+        default=None, description="AWS region for Redshift (e.g., 'us-west-2')"
+    )
+    redshift_cluster_identifier: Optional[str] = Field(
+        default=None,
+        description="Redshift cluster identifier (for provisioned clusters)",
+    )
+    redshift_workgroup_name: Optional[str] = Field(
+        default=None, description="Redshift Serverless workgroup name"
+    )
+    redshift_host: Optional[str] = Field(
+        default=None, description="Redshift cluster/serverless endpoint host"
+    )
+    redshift_port: Optional[int] = Field(
+        default=5439, description="Redshift port number"
+    )
+    redshift_user: Optional[str] = Field(default=None, description="Redshift username")
+    redshift_password: Optional[str] = Field(
+        default=None, description="Redshift password (stored securely)"
+    )
+    redshift_database: Optional[str] = Field(
+        default=None, description="Active Redshift database"
+    )
+    redshift_iam_role: Optional[str] = Field(
+        default=None, description="IAM role ARN for Spark-Redshift connector"
+    )
+    redshift_s3_temp_dir: Optional[str] = Field(
+        default=None, description="S3 temp directory for Spark-Redshift staging"
+    )
+
     # No validator - use defaults instead of failing
 
     model_config = {
@@ -349,6 +380,107 @@ def get_databricks_token():
 def set_databricks_token(token):
     """Set the Databricks token in config."""
     return _config_manager.update(databricks_token=token)
+
+
+# ---- Redshift configuration ----
+def get_redshift_region():
+    """Get the Redshift region from config."""
+    return _config_manager.get_config().redshift_region
+
+
+def get_redshift_cluster_identifier():
+    """Get the Redshift cluster identifier from config."""
+    return _config_manager.get_config().redshift_cluster_identifier
+
+
+def get_redshift_workgroup_name():
+    """Get the Redshift workgroup name from config."""
+    return _config_manager.get_config().redshift_workgroup_name
+
+
+def get_redshift_host():
+    """Get the Redshift host from config."""
+    return _config_manager.get_config().redshift_host
+
+
+def get_redshift_port():
+    """Get the Redshift port from config."""
+    return _config_manager.get_config().redshift_port or 5439
+
+
+def get_redshift_user():
+    """Get the Redshift username from config."""
+    return _config_manager.get_config().redshift_user
+
+
+def get_redshift_password():
+    """Get the Redshift password from config."""
+    return _config_manager.get_config().redshift_password
+
+
+def get_redshift_database():
+    """Get the active Redshift database from config."""
+    return _config_manager.get_config().redshift_database
+
+
+def get_redshift_iam_role():
+    """Get the Redshift IAM role from config."""
+    return _config_manager.get_config().redshift_iam_role
+
+
+def get_redshift_s3_temp_dir():
+    """Get the Redshift S3 temp directory from config."""
+    return _config_manager.get_config().redshift_s3_temp_dir
+
+
+def get_s3_bucket():
+    """Get the S3 bucket from config."""
+    config = _config_manager.get_config()
+    # Access via __dict__ since s3_bucket is not in the Pydantic schema but allowed via "extra": "allow"
+    return getattr(config, "s3_bucket", None)
+
+
+def set_redshift_connection(
+    region,
+    cluster_identifier=None,
+    workgroup_name=None,
+    host=None,
+    port=5439,
+    user=None,
+    password=None,
+    database=None,
+    iam_role=None,
+    s3_temp_dir=None,
+):
+    """Set Redshift connection configuration."""
+    return _config_manager.update(
+        redshift_region=region,
+        redshift_cluster_identifier=cluster_identifier,
+        redshift_workgroup_name=workgroup_name,
+        redshift_host=host,
+        redshift_port=port,
+        redshift_user=user,
+        redshift_password=password,
+        redshift_database=database,
+        redshift_iam_role=iam_role,
+        redshift_s3_temp_dir=s3_temp_dir,
+    )
+
+
+def clear_redshift_connection():
+    """Clear Redshift connection configuration."""
+    return _config_manager.update(
+        redshift_region=None,
+        redshift_cluster_identifier=None,
+        redshift_workgroup_name=None,
+        redshift_host=None,
+        redshift_port=5439,
+        redshift_user=None,
+        redshift_password=None,
+        redshift_database=None,
+        redshift_iam_role=None,
+        redshift_s3_temp_dir=None,
+    )
 
 
 # For direct access to config manager

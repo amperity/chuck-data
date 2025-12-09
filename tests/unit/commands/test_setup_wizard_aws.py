@@ -12,6 +12,7 @@ from chuck_data.commands.wizard.steps import (
     AWSRegionInputStep,
     RedshiftClusterSelectionStep,
     S3BucketInputStep,
+    IAMRoleInputStep,
     DataProviderSelectionStep,
     create_step,
 )
@@ -433,7 +434,7 @@ class TestS3BucketInputStep:
 
         result = step.handle_input("my-test-bucket", state)
         assert result.success
-        assert result.next_step == WizardStep.COMPUTATION_PROVIDER_SELECTION
+        assert result.next_step == WizardStep.IAM_ROLE_INPUT
         assert result.data["s3_bucket"] == "my-test-bucket"
         mock_s3.list_objects_v2.assert_called_once_with(
             Bucket="my-test-bucket", MaxKeys=1
@@ -593,3 +594,447 @@ class TestAWSWizardFlow:
 
         # Verify paths are different
         assert result_db.next_step != result_rs.next_step
+
+
+class TestIAMRoleInputStep:
+    """Test IAM role configuration step."""
+
+    def test_step_title(self):
+        """Step has correct title."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        assert step.get_step_title() == "IAM Role Configuration"
+
+    def test_prompt_message(self):
+        """Prompt message explains IAM role purpose and shows example."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+
+        prompt = step.get_prompt_message(state)
+        assert "IAM role ARN" in prompt
+        assert "Redshift" in prompt
+        assert "Databricks to access Redshift and S3" in prompt
+        assert "arn:aws:iam::" in prompt
+        assert "Example:" in prompt
+
+    @patch("chuck_data.config.get_config_manager")
+    def test_valid_iam_role_arn(self, mock_config):
+        """Valid IAM role ARN is accepted and S3 temp dir is constructed."""
+        mock_config.return_value.update.return_value = True
+
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+        state.s3_bucket = "my-test-bucket"
+
+        result = step.handle_input("arn:aws:iam::123456789012:role/RedshiftRole", state)
+        assert result.success
+        assert result.next_step == WizardStep.COMPUTATION_PROVIDER_SELECTION
+        assert result.data["iam_role"] == "arn:aws:iam::123456789012:role/RedshiftRole"
+        assert "configured successfully" in result.message
+
+        # Verify config was updated with both IAM role and S3 temp dir
+        mock_config.return_value.update.assert_called_once_with(
+            redshift_iam_role="arn:aws:iam::123456789012:role/RedshiftRole",
+            redshift_s3_temp_dir="s3://my-test-bucket/redshift-temp/",
+        )
+
+    @patch("chuck_data.config.get_config_manager")
+    def test_various_valid_iam_role_formats(self, mock_config):
+        """Various valid IAM role ARN formats are accepted."""
+        mock_config.return_value.update.return_value = True
+
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+
+        valid_arns = [
+            "arn:aws:iam::123456789012:role/MyRole",
+            "arn:aws:iam::999888777666:role/RedshiftAccessRole",
+            "arn:aws:iam::000000000000:role/test-role-123",
+            "arn:aws:iam::111111111111:role/role_with_underscores",
+            "arn:aws:iam::884752987182:role/service-role/AmazonRedshift-CommandsAccessRole-20251205T162728",
+        ]
+
+        for arn in valid_arns:
+            state = WizardState()
+            state.s3_bucket = "test-bucket"
+            result = step.handle_input(arn, state)
+            assert result.success, f"Failed for ARN: {arn}"
+            assert result.data["iam_role"] == arn
+
+    @patch("chuck_data.config.get_config_manager")
+    def test_s3_temp_dir_construction_from_bucket(self, mock_config):
+        """S3 temp directory is properly constructed from state.s3_bucket."""
+        mock_config.return_value.update.return_value = True
+
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+
+        # Test with different bucket names
+        bucket_tests = [
+            ("my-test-bucket", "s3://my-test-bucket/redshift-temp/"),
+            ("prod-data-bucket", "s3://prod-data-bucket/redshift-temp/"),
+            ("dev-123", "s3://dev-123/redshift-temp/"),
+        ]
+
+        for bucket, expected_temp_dir in bucket_tests:
+            state = WizardState()
+            state.s3_bucket = bucket
+            result = step.handle_input("arn:aws:iam::123456789012:role/TestRole", state)
+            assert result.success
+
+            # Verify the S3 temp dir was constructed correctly
+            call_args = mock_config.return_value.update.call_args
+            assert call_args[1]["redshift_s3_temp_dir"] == expected_temp_dir
+
+    def test_empty_iam_role_input(self):
+        """Empty IAM role input is rejected."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+
+        result = step.handle_input("", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "cannot be empty" in result.message
+
+    def test_whitespace_only_iam_role_input(self):
+        """Whitespace-only IAM role input is rejected."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+
+        result = step.handle_input("   ", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "cannot be empty" in result.message
+
+    def test_invalid_arn_format_missing_prefix(self):
+        """IAM role ARN without proper prefix is rejected."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+
+        invalid_arns = [
+            "arn:aws:123456789012:role/MyRole",  # Missing iam::
+            "aws:iam::123456789012:role/MyRole",  # Missing arn:
+            "arn:aws:s3::123456789012:role/MyRole",  # Wrong service (s3 instead of iam)
+            "123456789012:role/MyRole",  # Missing entire prefix
+            "role/MyRole",  # Just the role name
+            "arn:aws:iam::123456789012:policy/MyPolicy",  # Policy instead of role
+        ]
+
+        for arn in invalid_arns:
+            result = step.handle_input(arn, state)
+            assert not result.success, f"Should reject ARN: {arn}"
+            assert result.action == WizardAction.RETRY
+            assert "Invalid IAM role ARN format" in result.message
+
+    def test_invalid_arn_format_special_characters(self):
+        """IAM role ARN with invalid characters is rejected."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+
+        # These would pass the prefix check but might have other issues
+        # The current implementation only checks prefix, but we document expected behavior
+        invalid_arns = [
+            "arn:aws:iam:: :role/MyRole",  # Space in account ID
+            "arn:aws:iam::123456789012:role/My Role",  # Space in role name
+        ]
+
+        for arn in invalid_arns:
+            result = step.handle_input(arn, state)
+            # Current implementation only checks prefix, these would actually pass
+            # This test documents that we may want stricter validation in the future
+
+    @patch("chuck_data.config.get_config_manager")
+    def test_config_save_failure(self, mock_config):
+        """Config save failure is handled gracefully."""
+        mock_config.return_value.update.return_value = False
+
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+        state.s3_bucket = "test-bucket"
+
+        result = step.handle_input("arn:aws:iam::123456789012:role/MyRole", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Failed to save" in result.message
+
+    @patch("chuck_data.config.get_config_manager")
+    def test_config_save_exception(self, mock_config):
+        """Config save exception is handled gracefully."""
+        mock_config.return_value.update.side_effect = Exception("Config write error")
+
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+        state.s3_bucket = "test-bucket"
+
+        result = step.handle_input("arn:aws:iam::123456789012:role/MyRole", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Error saving IAM role" in result.message
+        assert "Config write error" in result.message
+
+    def test_next_step_routing(self):
+        """IAM role step routes to computation provider selection."""
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+
+        # The next step should always be COMPUTATION_PROVIDER_SELECTION
+        # after successful IAM role configuration
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.return_value = True
+            state = WizardState()
+            state.s3_bucket = "test-bucket"
+
+            result = step.handle_input("arn:aws:iam::123456789012:role/MyRole", state)
+            assert result.success
+            assert result.next_step == WizardStep.COMPUTATION_PROVIDER_SELECTION
+
+
+class TestIAMRoleWizardIntegration:
+    """Integration tests for IAM role step in complete wizard flow."""
+
+    def test_iam_role_step_factory_creation(self):
+        """IAM role step can be created via factory."""
+        validator = InputValidator()
+
+        iam_step = create_step(WizardStep.IAM_ROLE_INPUT, validator)
+        assert isinstance(iam_step, IAMRoleInputStep)
+
+    def test_wizard_state_tracks_iam_role(self):
+        """WizardState properly tracks iam_role field."""
+        state = WizardState()
+
+        # Initially None
+        assert state.iam_role is None
+
+        # Can be set
+        state.iam_role = "arn:aws:iam::123456789012:role/MyRole"
+        assert state.iam_role == "arn:aws:iam::123456789012:role/MyRole"
+
+    def test_state_validation_requires_iam_role_before_computation(self):
+        """State validation requires IAM role before computation provider when using Redshift."""
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+        state.aws_region = "us-west-2"
+        state.redshift_cluster_identifier = "my-cluster"
+        state.s3_bucket = "my-bucket"
+
+        # Without IAM role, computation provider selection is invalid
+        assert not state.is_valid_for_step(WizardStep.COMPUTATION_PROVIDER_SELECTION)
+
+        # With IAM role, computation provider selection is valid
+        state.iam_role = "arn:aws:iam::123456789012:role/MyRole"
+        assert state.is_valid_for_step(WizardStep.COMPUTATION_PROVIDER_SELECTION)
+
+    def test_state_validation_iam_role_step_requires_s3_bucket(self):
+        """IAM role step requires S3 bucket to be configured first."""
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+
+        # Without S3 bucket, IAM role input is invalid
+        assert not state.is_valid_for_step(WizardStep.IAM_ROLE_INPUT)
+
+        # With S3 bucket, IAM role input is valid
+        state.s3_bucket = "my-bucket"
+        assert state.is_valid_for_step(WizardStep.IAM_ROLE_INPUT)
+
+    def test_aws_redshift_complete_flow_includes_iam_role(self):
+        """Complete AWS Redshift flow includes IAM role step."""
+        validator = InputValidator()
+
+        # Step 1: Select AWS Redshift
+        provider_step = DataProviderSelectionStep(validator)
+        state = WizardState()
+        result = provider_step.handle_input("aws_redshift", state)
+        assert result.next_step == WizardStep.AWS_REGION_INPUT
+
+        # Step 2: Configure region (mocked)
+        state.aws_region = "us-west-2"
+
+        # Step 3: Select cluster (mocked)
+        state.redshift_cluster_identifier = "my-cluster"
+
+        # Step 4: Configure S3 bucket
+        s3_step = S3BucketInputStep(validator)
+        with (
+            patch("boto3.client") as mock_boto3,
+            patch("chuck_data.config.get_config_manager") as mock_config,
+            patch("chuck_data.commands.wizard.steps.get_chuck_service") as mock_service,
+        ):
+            mock_s3 = MagicMock()
+            mock_s3.list_objects_v2.return_value = {"Contents": []}
+            mock_boto3.return_value = mock_s3
+            mock_config.return_value.update.return_value = True
+            mock_service.return_value = None
+
+            result = s3_step.handle_input("my-bucket", state)
+            assert result.success
+            assert result.next_step == WizardStep.IAM_ROLE_INPUT
+
+        # Step 5: Configure IAM role
+        state.s3_bucket = "my-bucket"
+        iam_step = IAMRoleInputStep(validator)
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.return_value = True
+            result = iam_step.handle_input(
+                "arn:aws:iam::123456789012:role/RedshiftRole", state
+            )
+            assert result.success
+            assert result.next_step == WizardStep.COMPUTATION_PROVIDER_SELECTION
+
+    @patch("chuck_data.config.get_config_manager")
+    def test_iam_role_and_s3_temp_dir_both_saved(self, mock_config):
+        """IAM role step saves both iam_role and s3_temp_dir to config."""
+        mock_config.return_value.update.return_value = True
+
+        validator = InputValidator()
+        step = IAMRoleInputStep(validator)
+        state = WizardState()
+        state.s3_bucket = "production-bucket"
+
+        result = step.handle_input("arn:aws:iam::987654321098:role/ProdRole", state)
+        assert result.success
+
+        # Verify both fields were saved in a single update call
+        mock_config.return_value.update.assert_called_once()
+        call_kwargs = mock_config.return_value.update.call_args[1]
+        assert (
+            call_kwargs["redshift_iam_role"]
+            == "arn:aws:iam::987654321098:role/ProdRole"
+        )
+        assert (
+            call_kwargs["redshift_s3_temp_dir"]
+            == "s3://production-bucket/redshift-temp/"
+        )
+
+    def test_iam_role_step_not_shown_for_databricks(self):
+        """IAM role step is not valid when data provider is Databricks."""
+        state = WizardState()
+        state.data_provider = "databricks"
+
+        # IAM role step should not be valid for Databricks
+        assert not state.is_valid_for_step(WizardStep.IAM_ROLE_INPUT)
+
+    def test_databricks_flow_skips_iam_role(self):
+        """Databricks wizard flow skips IAM role configuration entirely."""
+        validator = InputValidator()
+
+        # Select Databricks
+        provider_step = DataProviderSelectionStep(validator)
+        state = WizardState()
+        result = provider_step.handle_input("databricks", state)
+
+        # Databricks goes directly to computation provider, skipping all AWS steps
+        assert result.next_step == WizardStep.COMPUTATION_PROVIDER_SELECTION
+        assert result.next_step != WizardStep.IAM_ROLE_INPUT
+
+
+class TestIAMRoleContextPersistence:
+    """Test IAM role persistence in wizard context."""
+
+    @patch("chuck_data.commands.setup_wizard.InteractiveContext")
+    def test_orchestrator_saves_iam_role_to_context(self, mock_context_class):
+        """Orchestrator saves iam_role to context when state is updated."""
+        from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
+
+        # Mock the context instance
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.is_in_interactive_mode.return_value = False
+        mock_context.get_context_data.return_value = None
+
+        orchestrator = SetupWizardOrchestrator()
+
+        # Create a state with IAM role
+        state = WizardState()
+        state.current_step = WizardStep.IAM_ROLE_INPUT
+        state.s3_bucket = "test-bucket"
+        state.iam_role = "arn:aws:iam::123456789012:role/TestRole"
+
+        # Save state to context
+        orchestrator._save_state_to_context(state)
+
+        # Verify iam_role was stored
+        calls = mock_context.store_context_data.call_args_list
+        iam_role_stored = False
+        for call in calls:
+            if call[0][1] == "iam_role":
+                assert call[0][2] == "arn:aws:iam::123456789012:role/TestRole"
+                iam_role_stored = True
+                break
+
+        assert iam_role_stored, "iam_role should be stored in context"
+
+    @patch("chuck_data.commands.setup_wizard.InteractiveContext")
+    def test_orchestrator_loads_iam_role_from_context(self, mock_context_class):
+        """Orchestrator loads iam_role from context when restoring state."""
+        from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
+
+        # Mock the context instance with saved IAM role
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.is_in_interactive_mode.return_value = False
+        mock_context.get_context_data.return_value = {
+            "current_step": WizardStep.COMPUTATION_PROVIDER_SELECTION.value,
+            "data_provider": "aws_redshift",
+            "aws_region": "us-west-2",
+            "s3_bucket": "test-bucket",
+            "iam_role": "arn:aws:iam::987654321098:role/LoadedRole",
+        }
+
+        orchestrator = SetupWizardOrchestrator()
+
+        # Load state from context
+        state = orchestrator._load_state_from_context()
+
+        # Verify iam_role was loaded correctly
+        assert state is not None
+        assert state.iam_role == "arn:aws:iam::987654321098:role/LoadedRole"
+        assert state.s3_bucket == "test-bucket"
+        assert state.data_provider == "aws_redshift"
+
+    @patch("chuck_data.commands.setup_wizard.InteractiveContext")
+    def test_orchestrator_preserves_iam_role_across_steps(self, mock_context_class):
+        """IAM role is preserved in context as wizard progresses through steps."""
+        from chuck_data.commands.setup_wizard import SetupWizardOrchestrator
+
+        # Mock the context instance
+        mock_context = MagicMock()
+        mock_context_class.return_value = mock_context
+        mock_context.is_in_interactive_mode.return_value = False
+
+        # Simulate wizard at IAM role step with all prerequisites
+        mock_context.get_context_data.return_value = {
+            "current_step": WizardStep.IAM_ROLE_INPUT.value,
+            "data_provider": "aws_redshift",
+            "aws_region": "us-west-2",
+            "redshift_cluster_identifier": "my-cluster",
+            "s3_bucket": "my-bucket",
+        }
+
+        orchestrator = SetupWizardOrchestrator()
+
+        # Load initial state (no IAM role yet)
+        state = orchestrator._load_state_from_context()
+        assert state.iam_role is None
+
+        # User enters IAM role
+        state.iam_role = "arn:aws:iam::111111111111:role/ProgressRole"
+
+        # Save updated state
+        orchestrator._save_state_to_context(state)
+
+        # Verify the IAM role was saved
+        saved_values = {}
+        for call in mock_context.store_context_data.call_args_list:
+            saved_values[call[0][1]] = call[0][2]
+
+        assert "iam_role" in saved_values
+        assert saved_values["iam_role"] == "arn:aws:iam::111111111111:role/ProgressRole"

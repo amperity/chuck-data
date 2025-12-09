@@ -229,11 +229,22 @@ class AgentManager:
                                 },
                             }
                         )
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": response_message.content,
-                    "tool_calls": tool_calls_list,
-                }
+                # Ensure content is not empty when tool_calls are present
+                # Anthropic API requires non-empty text content blocks
+                content = response_message.content
+                if not content:
+                    # If content is None or empty, omit it from the message
+                    # Tool calls can exist without content
+                    assistant_msg = {
+                        "role": "assistant",
+                        "tool_calls": tool_calls_list,
+                    }
+                else:
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": tool_calls_list,
+                    }
                 self.conversation_history.append(assistant_msg)
 
                 # Execute each tool call
