@@ -577,9 +577,12 @@ class DatabricksAPIClient:
         """
         Submit a one-time Databricks job run using the /runs/submit endpoint.
 
+        Uses generic_main entry point which auto-detects backend (Unity Catalog/Redshift)
+        from the manifest configuration.
+
         Args:
-            config_path: Path to the configuration file for the job in the Volume
-            init_script_path: Path to the initialization script
+            config_path: Path to the configuration/manifest file (Volume or S3)
+            init_script_path: Path to the initialization script (Volume or S3)
             run_name: Optional name for the run. If None, a default name will be generated.
             policy_id: Optional cluster policy ID to use for the job run.
 
@@ -636,7 +639,7 @@ class DatabricksAPIClient:
                     "spark_jar_task": {
                         "jar_uri": "",
                         "main_class_name": os.environ.get(
-                            "MAIN_CLASS", "amperity.stitch_standalone.chuck_main"
+                            "MAIN_CLASS", "amperity.stitch_standalone.generic_main"
                         ),
                         "parameters": [
                             "",
