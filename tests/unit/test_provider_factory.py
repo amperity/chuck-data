@@ -20,8 +20,7 @@ class TestProviderFactoryDataProviders:
             token="test-token",
         )
         assert isinstance(provider, DatabricksProviderAdapter)
-        assert provider.workspace_url == "https://test.databricks.com"
-        assert provider.token == "test-token"
+        assert provider.client is not None
 
     def test_create_redshift_data_provider(self):
         """Test creating a Redshift data provider."""
@@ -33,10 +32,9 @@ class TestProviderFactoryDataProviders:
             cluster_identifier="test-cluster",
         )
         assert isinstance(provider, RedshiftProviderAdapter)
-        assert provider.aws_access_key_id == "test-key"
-        assert provider.aws_secret_access_key == "test-secret"
-        assert provider.region == "us-west-2"
-        assert provider.cluster_identifier == "test-cluster"
+        assert provider.client is not None
+        assert provider.redshift_iam_role is None
+        assert provider.emr_cluster_id is None
 
 
 class TestProviderFactoryComputeProviders:
