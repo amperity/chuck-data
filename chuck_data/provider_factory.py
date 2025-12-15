@@ -2,9 +2,8 @@
 
 This factory creates instances of:
 - Data Providers (where data lives): Databricks, Redshift
-  Note: Data providers also handle uploading artifacts (manifests, init scripts)
-        to their appropriate storage (Volumes for Databricks, S3 for Redshift)
 - Compute Providers (where Stitch runs): Databricks, EMR
+- Storage Providers (where artifacts are uploaded): Databricks Volumes, S3
 """
 
 from typing import Dict, Any, Optional
@@ -16,6 +15,11 @@ from chuck_data.compute_providers import (
     EMRComputeProvider,
 )
 from chuck_data.data_providers import DataProvider, DataProviderFactory
+from chuck_data.storage_providers import (
+    StorageProvider,
+    DatabricksVolumeStorage,
+    S3Storage,
+)
 
 
 class ProviderFactory:
@@ -121,4 +125,75 @@ class ProviderFactory:
             raise ValueError(
                 f"Unknown compute provider: {provider_type}. "
                 f"Supported providers: databricks, aws_emr"
+            )
+
+    @staticmethod
+    def create_storage_provider(
+        provider_type: str, config: Optional[Dict[str, Any]] = None
+    ) -> StorageProvider:
+        """Create a storage provider (where artifacts are uploaded).
+
+        Storage providers handle uploading job artifacts (manifests, init scripts)
+        to their respective storage backends.
+
+        Args:
+            provider_type: Type of storage provider:
+                - "databricks": Databricks Unity Catalog Volumes
+                - "s3": Amazon S3
+            config: Provider configuration dictionary
+
+        Returns:
+            StorageProvider instance
+
+        Raises:
+            ValueError: If provider_type is not supported or required config is missing
+
+        Examples:
+            >>> # Databricks Volume storage
+            >>> provider = ProviderFactory.create_storage_provider(
+            ...     "databricks",
+            ...     {"workspace_url": "https://...", "token": "..."}
+            ... )
+
+            >>> # S3 storage with AWS profile
+            >>> provider = ProviderFactory.create_storage_provider(
+            ...     "s3",
+            ...     {"region": "us-west-2", "aws_profile": "production"}
+            ... )
+        """
+        if config is None:
+            config = {}
+
+        if provider_type == "databricks":
+            workspace_url = config.get("workspace_url") or os.getenv(
+                "DATABRICKS_WORKSPACE_URL"
+            )
+            token = config.get("token") or os.getenv("DATABRICKS_TOKEN")
+
+            if not workspace_url or not token:
+                raise ValueError(
+                    "Databricks storage provider requires 'workspace_url' and 'token' "
+                    "in config or DATABRICKS_WORKSPACE_URL and DATABRICKS_TOKEN env vars"
+                )
+
+            return DatabricksVolumeStorage(
+                workspace_url=workspace_url,
+                token=token,
+                client=config.get("client"),  # Optional: reuse existing client
+            )
+
+        elif provider_type == "s3":
+            region = config.get("region") or os.getenv("AWS_REGION", "us-east-1")
+
+            return S3Storage(
+                region=region,
+                aws_profile=config.get("aws_profile") or os.getenv("AWS_PROFILE"),
+                aws_access_key_id=config.get("aws_access_key_id"),
+                aws_secret_access_key=config.get("aws_secret_access_key"),
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown storage provider: {provider_type}. "
+                f"Supported providers: databricks, s3"
             )

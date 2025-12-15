@@ -6,7 +6,7 @@ Runs Stitch jobs on Databricks clusters.
 import datetime
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.commands.cluster_init_tools import _helper_upload_cluster_init_logic
@@ -43,18 +43,36 @@ class DatabricksComputeProvider:
     - AWS Redshift (via Spark-Redshift connector)
     """
 
-    def __init__(self, workspace_url: str, token: str, **kwargs):
+    def __init__(
+        self,
+        workspace_url: str,
+        token: str,
+        storage_provider: Optional[Any] = None,
+        **kwargs,
+    ):
         """Initialize Databricks compute provider.
 
         Args:
             workspace_url: Databricks workspace URL
             token: Authentication token
+            storage_provider: Optional StorageProvider for uploading artifacts.
+                            If not provided, will use client.upload_file() directly.
             **kwargs: Additional configuration options
         """
         self.workspace_url = workspace_url
         self.token = token
         self.config = kwargs
         self.client = DatabricksAPIClient(workspace_url=workspace_url, token=token)
+
+        # Use provided storage provider or create default one
+        if storage_provider is None:
+            from chuck_data.storage_providers import DatabricksVolumeStorage
+
+            self.storage_provider = DatabricksVolumeStorage(
+                workspace_url=workspace_url, token=token, client=self.client
+            )
+        else:
+            self.storage_provider = storage_provider
 
     def prepare_stitch_job(
         self,
@@ -307,10 +325,10 @@ class DatabricksComputeProvider:
             pii_scan_output = metadata["pii_scan_output"]
             unsupported_columns = metadata["unsupported_columns"]
 
-            # Write final config file to volume
+            # Write final config file to volume using storage provider
             config_content_json = json.dumps(stitch_config, indent=2)
             try:
-                upload_success = self.client.upload_file(
+                upload_success = self.storage_provider.upload_file(
                     path=config_file_path, content=config_content_json, overwrite=True
                 )
                 if not upload_success:
@@ -323,9 +341,9 @@ class DatabricksComputeProvider:
                     "error": f"Failed to write Stitch config '{config_file_path}': {str(e)}"
                 }
 
-            # Write init script to volume
+            # Write init script to volume using storage provider
             try:
-                upload_init_success = self.client.upload_file(
+                upload_init_success = self.storage_provider.upload_file(
                     path=init_script_path, content=init_script_content, overwrite=True
                 )
                 if not upload_init_success:

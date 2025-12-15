@@ -52,6 +52,7 @@ class EMRComputeProvider:
         cluster_id: Optional[str] = None,
         aws_profile: Optional[str] = None,
         s3_bucket: Optional[str] = None,
+        storage_provider: Optional[Any] = None,
         **kwargs,
     ):
         """Initialize EMR compute provider.
@@ -64,6 +65,8 @@ class EMRComputeProvider:
                         If None, uses default boto3 credential chain
             s3_bucket: S3 bucket for storing job artifacts (manifests, logs, init scripts)
                       Required for job execution
+            storage_provider: Optional StorageProvider for uploading artifacts to S3.
+                            If not provided, will create S3Storage with the given credentials.
             **kwargs: Additional configuration options:
                 - instance_type: EC2 instance type for workers (default: 'm5.xlarge')
                 - instance_count: Number of worker nodes (default: 3)
@@ -107,6 +110,17 @@ class EMRComputeProvider:
         self.aws_profile = aws_profile
         self.s3_bucket = s3_bucket
         self.config = kwargs
+
+        # Use provided storage provider or create default S3Storage
+        if storage_provider is None:
+            from chuck_data.storage_providers import S3Storage
+
+            self.storage_provider = S3Storage(
+                region=region,
+                aws_profile=aws_profile,
+            )
+        else:
+            self.storage_provider = storage_provider
 
         # Future: Initialize EMR client
         # self.emr_client = EMRAPIClient(

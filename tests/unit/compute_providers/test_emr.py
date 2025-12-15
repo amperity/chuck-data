@@ -1,6 +1,7 @@
 """Unit tests for EMRComputeProvider."""
 
 import pytest
+from unittest.mock import patch, Mock
 from chuck_data.compute_providers.emr import EMRComputeProvider
 
 
@@ -247,8 +248,7 @@ class TestEMRComputeProviderInterface:
         databricks_methods = {
             name
             for name in dir(databricks_provider)
-            if not name.startswith("_")
-            and callable(getattr(databricks_provider, name))
+            if not name.startswith("_") and callable(getattr(databricks_provider, name))
         }
 
         # Core compute provider methods should match
@@ -260,3 +260,13 @@ class TestEMRComputeProviderInterface:
         }
         assert core_methods.issubset(emr_methods)
         assert core_methods.issubset(databricks_methods)
+
+
+# Fixtures
+@pytest.fixture(autouse=True)
+def mock_boto3_session():
+    """Mock boto3.Session for all EMR tests to avoid requiring real AWS credentials."""
+    with patch("chuck_data.storage_providers.s3.boto3") as mock_boto3:
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+        yield mock_boto3
