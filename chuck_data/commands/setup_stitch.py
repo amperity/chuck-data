@@ -6,6 +6,7 @@ for PII columns and creating a configuration file.
 """
 
 import logging
+import os
 from typing import Optional, List
 
 from chuck_data.clients.databricks import DatabricksAPIClient
@@ -129,9 +130,26 @@ def handle_command(
 
     # Handle auto-confirm mode
     if auto_confirm:
-        return _handle_legacy_setup(
-            client, catalog_name_arg, schema_name_arg, policy_id
+        # Check if we should use the new compute provider path (PR 3)
+        use_compute_provider = (
+            os.getenv("USE_COMPUTE_PROVIDER", "false").lower() == "true"
         )
+
+        if use_compute_provider:
+            logging.info("Using new DatabricksComputeProvider code path")
+            return _handle_compute_provider_setup(
+                client,
+                catalog_name_arg,
+                schema_name_arg,
+                targets_arg,
+                output_catalog_arg,
+                policy_id,
+            )
+        else:
+            logging.info("Using legacy stitch_tools code path")
+            return _handle_legacy_setup(
+                client, catalog_name_arg, schema_name_arg, policy_id
+            )
 
     # Interactive mode - use context management
     context = InteractiveContext()
@@ -179,13 +197,183 @@ def handle_command(
         )
 
 
+def _handle_compute_provider_setup(
+    client: DatabricksAPIClient,
+    catalog_name_arg: Optional[str],
+    schema_name_arg: Optional[str],
+    targets_arg: Optional[List[str]] = None,
+    output_catalog_arg: Optional[str] = None,
+    policy_id: Optional[str] = None,
+) -> CommandResult:
+    """Handle setup using the new DatabricksComputeProvider (PR 3 implementation).
+
+    This is the new code path that uses the compute provider abstraction.
+    Enabled via USE_COMPUTE_PROVIDER=true environment variable.
+
+    Supports both single-target and multi-target Stitch configurations.
+    """
+    try:
+        from chuck_data.compute_providers.databricks import DatabricksComputeProvider
+
+        # Create LLM provider
+        llm_client = LLMProviderFactory.create()
+
+        # Multi-target mode
+        if targets_arg:
+            target_locations = []
+            for target in targets_arg:
+                parts = target.split(".")
+                if len(parts) != 2:
+                    return CommandResult(
+                        False,
+                        message=f"Invalid target format: '{target}'. Expected 'catalog.schema'",
+                    )
+                target_locations.append({"catalog": parts[0], "schema": parts[1]})
+
+            output_catalog = output_catalog_arg or target_locations[0]["catalog"]
+
+            logging.info(
+                f"Preparing Stitch configuration for {len(target_locations)} locations..."
+            )
+            for loc in target_locations:
+                logging.info(f"  • {loc['catalog']}.{loc['schema']}")
+
+            # Use the existing helper function for multi-target preparation
+            prep_result = _helper_prepare_stitch_config(
+                client,
+                llm_client,
+                target_locations=target_locations,
+                output_catalog=output_catalog,
+            )
+        else:
+            # Single target mode (backward compatible)
+            target_catalog = catalog_name_arg or get_active_catalog()
+            target_schema = schema_name_arg or get_active_schema()
+
+            if not target_catalog or not target_schema:
+                return CommandResult(
+                    False,
+                    message="Target catalog and schema must be specified or active for Stitch setup.",
+                )
+
+            logging.info(
+                f"Preparing Stitch configuration for {target_catalog}.{target_schema}..."
+            )
+
+            # Use the existing helper function for single-target preparation
+            prep_result = _helper_prepare_stitch_config(
+                client, llm_client, target_catalog, target_schema
+            )
+
+        # Get metrics collector early for all tracking
+        metrics_collector = get_metrics_collector()
+
+        # For tracking purposes, extract target info
+        if targets_arg:
+            tracking_target_info = f"multi-target: {len(target_locations)} locations"
+        else:
+            tracking_target_info = f"{target_catalog}.{target_schema}"
+
+        if prep_result.get("error"):
+            # Track error event
+            metrics_collector.track_event(
+                prompt="setup-stitch command",
+                tools=[
+                    {
+                        "name": "setup_stitch",
+                        "arguments": {"targets": tracking_target_info},
+                    }
+                ],
+                error=prep_result.get("error"),
+                additional_data={
+                    "event_context": "compute_provider_stitch_command",
+                    "status": "error",
+                    "code_path": "new",
+                },
+            )
+            return CommandResult(False, message=prep_result["error"], data=prep_result)
+
+        # Add policy_id to metadata if provided
+        if policy_id:
+            prep_result["metadata"]["policy_id"] = policy_id
+
+        # Create compute provider and launch the job
+        compute_provider = DatabricksComputeProvider(
+            workspace_url=client.workspace_url, token=client.token
+        )
+        launch_result = compute_provider.launch_stitch_job(prep_result)
+
+        if launch_result.get("error"):
+            # Track error event for launch failure
+            metrics_collector.track_event(
+                prompt="setup_stitch command",
+                tools=[
+                    {
+                        "name": "setup_stitch",
+                        "arguments": {"targets": tracking_target_info},
+                    }
+                ],
+                error=launch_result.get("error"),
+                additional_data={
+                    "event_context": "compute_provider_stitch_command",
+                    "status": "launch_error",
+                    "code_path": "new",
+                },
+            )
+            return CommandResult(
+                False, message=launch_result["error"], data=launch_result
+            )
+
+        # Track successful stitch setup event
+        metrics_collector.track_event(
+            prompt="setup-stitch command",
+            tools=[
+                {
+                    "name": "setup_stitch",
+                    "arguments": {"targets": tracking_target_info},
+                }
+            ],
+            additional_data={
+                "event_context": "compute_provider_stitch_command",
+                "status": "success",
+                "code_path": "new",
+                **{k: v for k, v in launch_result.items() if k != "message"},
+            },
+        )
+
+        # Show detailed summary
+        console = get_console()
+        _display_detailed_summary(console, launch_result)
+
+        # Create the user guidance message
+        result_message = _build_post_launch_guidance_message(
+            launch_result, prep_result["metadata"], client
+        )
+
+        return CommandResult(
+            True,
+            data=launch_result,
+            message=result_message,
+        )
+    except Exception as e:
+        logging.error(f"Compute provider stitch setup error: {e}", exc_info=True)
+        return CommandResult(
+            False,
+            error=e,
+            message=f"Error setting up Stitch (compute provider): {str(e)}",
+        )
+
+
 def _handle_legacy_setup(
     client: DatabricksAPIClient,
     catalog_name_arg: Optional[str],
     schema_name_arg: Optional[str],
     policy_id: Optional[str] = None,
 ) -> CommandResult:
-    """Handle auto-confirm mode using the legacy direct setup approach."""
+    """Handle auto-confirm mode using the legacy direct setup approach.
+
+    This is the existing code path that will be kept for comparison during PR 3.
+    """
     try:
         target_catalog = catalog_name_arg or get_active_catalog()
         target_schema = schema_name_arg or get_active_schema()
