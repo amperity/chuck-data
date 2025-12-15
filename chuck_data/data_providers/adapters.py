@@ -1,21 +1,15 @@
 """Data Provider Adapters.
 
-These adapters will wrap API clients (to be implemented in PR 2) to conform
-to the DataProvider protocol.
-
-Note: This is a stub implementation for PR 1.
-Full implementation will come in PR 2 after the clients are implemented.
+These adapters wrap existing clients to conform to the DataProvider protocol.
 """
 
 from typing import List, Dict, Optional, Any
+from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.redshift import RedshiftAPIClient
 
 
 class DatabricksProviderAdapter:
-    """Adapter for DatabricksAPIClient to conform to DataProvider protocol.
-
-    Note: This is a stub implementation for PR 1.
-    Full implementation will come in PR 2 when DatabricksAPIClient is implemented.
-    """
+    """Adapter for DatabricksAPIClient to conform to DataProvider protocol."""
 
     def __init__(self, workspace_url: str, token: str):
         """Initialize Databricks provider adapter.
@@ -24,32 +18,24 @@ class DatabricksProviderAdapter:
             workspace_url: Databricks workspace URL
             token: Authentication token
         """
-        self.workspace_url = workspace_url
-        self.token = token
+        self.client = DatabricksAPIClient(workspace_url=workspace_url, token=token)
 
     def validate_connection(self) -> bool:
-        """Validate connection by attempting to list catalogs.
-
-        Raises:
-            NotImplementedError: Stub implementation
-        """
-        raise NotImplementedError(
-            "DatabricksProviderAdapter.validate_connection() "
-            "will be implemented in PR 2"
-        )
+        """Validate connection by attempting to list catalogs."""
+        try:
+            self.client.list_catalogs()
+            return True
+        except Exception:
+            return False
 
     def list_databases(self) -> List[str]:
         """List Unity Catalog catalogs.
 
         Returns:
             List of catalog names
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "DatabricksProviderAdapter.list_catalogs() " "will be implemented in PR 2"
-        )
+        catalogs = self.client.list_catalogs()
+        return [catalog["name"] for catalog in catalogs.get("catalogs", [])]
 
     def list_schemas(self, catalog: Optional[str] = None) -> List[str]:
         """List schemas in a catalog.
@@ -59,13 +45,12 @@ class DatabricksProviderAdapter:
 
         Returns:
             List of schema names
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "DatabricksProviderAdapter.list_schemas() " "will be implemented in PR 2"
-        )
+        if not catalog:
+            raise ValueError("Databricks provider requires 'catalog' parameter")
+
+        schemas = self.client.list_schemas(catalog_name=catalog)
+        return [schema["name"] for schema in schemas.get("schemas", [])]
 
     def list_tables(
         self, catalog: Optional[str] = None, schema: Optional[str] = None, **kwargs: Any
@@ -79,13 +64,14 @@ class DatabricksProviderAdapter:
 
         Returns:
             List of table metadata dictionaries
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "DatabricksProviderAdapter.list_tables() " "will be implemented in PR 2"
-        )
+        if not catalog or not schema:
+            raise ValueError(
+                "Databricks provider requires 'catalog' and 'schema' parameters"
+            )
+
+        tables = self.client.list_tables(catalog_name=catalog, schema_name=schema)
+        return tables.get("tables", [])
 
     def get_table(
         self,
@@ -102,38 +88,51 @@ class DatabricksProviderAdapter:
 
         Returns:
             Table metadata dictionary
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "DatabricksProviderAdapter.get_table() " "will be implemented in PR 2"
-        )
+        if not catalog or not schema or not table:
+            raise ValueError(
+                "Databricks provider requires 'catalog', 'schema', and 'table' parameters"
+            )
+
+        full_name = f"{catalog}.{schema}.{table}"
+        return self.client.get_table(full_name=full_name)
 
     def execute_query(
         self, query: str, catalog: Optional[str] = None, **kwargs: Any
     ) -> Dict:
-        """Execute SQL query.
+        """Execute SQL query using Databricks SQL warehouse.
 
         Args:
-            query: SQL query
-            catalog: Catalog name
-            **kwargs: Additional parameters
+            query: SQL query to execute
+            catalog: Catalog name (optional)
+            **kwargs: Additional parameters including:
+                - warehouse_id (required): SQL warehouse ID
+                - wait_timeout: How long to wait for query completion (default "30s")
+                - on_wait_timeout: What to do on timeout ("CONTINUE" or "CANCEL")
+
+        Returns:
+            Dictionary containing query results
 
         Raises:
-            NotImplementedError: Stub implementation
+            ValueError: If warehouse_id is not provided
         """
-        raise NotImplementedError(
-            "DatabricksProviderAdapter.execute_query() " "will be implemented in PR 2"
+        warehouse_id = kwargs.get("warehouse_id")
+        if not warehouse_id:
+            raise ValueError(
+                "Databricks query execution requires 'warehouse_id' parameter"
+            )
+
+        return self.client.submit_sql_statement(
+            sql_text=query,
+            warehouse_id=warehouse_id,
+            catalog=catalog,
+            wait_timeout=kwargs.get("wait_timeout", "30s"),
+            on_wait_timeout=kwargs.get("on_wait_timeout", "CONTINUE"),
         )
 
 
 class RedshiftProviderAdapter:
-    """Adapter for RedshiftAPIClient to conform to DataProvider protocol.
-
-    Note: This is a stub implementation for PR 1.
-    Full implementation will come in PR 2 when RedshiftAPIClient is implemented.
-    """
+    """Adapter for RedshiftAPIClient to conform to DataProvider protocol."""
 
     def __init__(
         self,
@@ -160,13 +159,16 @@ class RedshiftProviderAdapter:
             redshift_iam_role: IAM role ARN for Redshift COPY/UNLOAD operations
             emr_cluster_id: EMR cluster ID (optional)
         """
-        self.aws_access_key_id = aws_access_key_id
-        self.aws_secret_access_key = aws_secret_access_key
-        self.region = region
-        self.cluster_identifier = cluster_identifier
-        self.workgroup_name = workgroup_name
-        self.database = database
-        self.s3_bucket = s3_bucket
+        self.client = RedshiftAPIClient(
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region=region,
+            cluster_identifier=cluster_identifier,
+            workgroup_name=workgroup_name,
+            database=database,
+            s3_bucket=s3_bucket,
+        )
+        # Store additional config not needed by client
         self.redshift_iam_role = redshift_iam_role
         self.emr_cluster_id = emr_cluster_id
 
@@ -175,27 +177,16 @@ class RedshiftProviderAdapter:
 
         Returns:
             True if connection is valid, False otherwise
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "RedshiftProviderAdapter.validate_connection() "
-            "will be implemented in PR 2"
-        )
+        return self.client.validate_connection()
 
     def list_databases(self) -> List[str]:
         """List Redshift databases.
 
         Returns:
             List of database names
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "RedshiftProviderAdapter.list_databases() " "will be implemented in PR 2"
-        )
+        return self.client.list_databases()
 
     def list_schemas(self, catalog: Optional[str] = None) -> List[str]:
         """List schemas in a database.
@@ -205,13 +196,8 @@ class RedshiftProviderAdapter:
 
         Returns:
             List of schema names
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "RedshiftProviderAdapter.list_schemas() " "will be implemented in PR 2"
-        )
+        return self.client.list_schemas(database=catalog)
 
     def list_tables(
         self, catalog: Optional[str] = None, schema: Optional[str] = None, **kwargs: Any
@@ -225,13 +211,12 @@ class RedshiftProviderAdapter:
 
         Returns:
             List of table metadata dictionaries
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "RedshiftProviderAdapter.list_tables() " "will be implemented in PR 2"
+        result = self.client.list_tables(
+            database=catalog, schema_pattern=schema, **kwargs
         )
+        # Extract tables from response dictionary
+        return result.get("tables", [])
 
     def get_table(
         self,
@@ -248,13 +233,8 @@ class RedshiftProviderAdapter:
 
         Returns:
             Table metadata dictionary
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "RedshiftProviderAdapter.get_table() " "will be implemented in PR 2"
-        )
+        return self.client.describe_table(database=catalog, schema=schema, table=table)
 
     def execute_query(
         self, query: str, catalog: Optional[str] = None, **kwargs: Any
@@ -268,10 +248,5 @@ class RedshiftProviderAdapter:
 
         Returns:
             Dictionary containing query results
-
-        Raises:
-            NotImplementedError: Stub implementation
         """
-        raise NotImplementedError(
-            "RedshiftProviderAdapter.execute_query() " "will be implemented in PR 2"
-        )
+        return self.client.execute_sql(sql=query, database=catalog, **kwargs)
