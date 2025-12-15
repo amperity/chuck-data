@@ -1,0 +1,108 @@
+"""Unit tests for ProviderFactory."""
+
+import pytest
+from chuck_data.provider_factory import ProviderFactory
+from chuck_data.compute_providers import DatabricksComputeProvider, EMRComputeProvider
+from chuck_data.data_providers.adapters import (
+    DatabricksProviderAdapter,
+    RedshiftProviderAdapter,
+)
+
+
+class TestProviderFactoryDataProviders:
+    """Tests for ProviderFactory data provider creation."""
+
+    def test_create_databricks_data_provider(self):
+        """Test creating a Databricks data provider."""
+        provider = ProviderFactory.create_data_provider(
+            "databricks",
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+        )
+        assert isinstance(provider, DatabricksProviderAdapter)
+        assert provider.workspace_url == "https://test.databricks.com"
+        assert provider.token == "test-token"
+
+    def test_create_redshift_data_provider(self):
+        """Test creating a Redshift data provider."""
+        provider = ProviderFactory.create_data_provider(
+            "aws_redshift",
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+        )
+        assert isinstance(provider, RedshiftProviderAdapter)
+        assert provider.aws_access_key_id == "test-key"
+        assert provider.aws_secret_access_key == "test-secret"
+        assert provider.region == "us-west-2"
+        assert provider.cluster_identifier == "test-cluster"
+
+
+class TestProviderFactoryComputeProviders:
+    """Tests for ProviderFactory compute provider creation."""
+
+    def test_create_databricks_compute_provider(self):
+        """Test creating a Databricks compute provider."""
+        provider = ProviderFactory.create_compute_provider(
+            "databricks",
+            {"workspace_url": "https://test.databricks.com", "token": "test-token"},
+        )
+        assert isinstance(provider, DatabricksComputeProvider)
+        assert provider.workspace_url == "https://test.databricks.com"
+        assert provider.token == "test-token"
+
+    def test_create_emr_compute_provider(self):
+        """Test creating an EMR compute provider."""
+        provider = ProviderFactory.create_compute_provider(
+            "aws_emr", {"region": "us-west-2", "aws_profile": "test-profile"}
+        )
+        assert isinstance(provider, EMRComputeProvider)
+        assert provider.region == "us-west-2"
+        assert provider.aws_profile == "test-profile"
+
+    def test_create_emr_compute_provider_defaults(self, monkeypatch):
+        """Test creating EMR compute provider with minimal config."""
+        # Clear AWS_REGION to test the default
+        monkeypatch.delenv("AWS_REGION", raising=False)
+
+        provider = ProviderFactory.create_compute_provider("aws_emr", {})
+        assert isinstance(provider, EMRComputeProvider)
+        assert provider.region == "us-east-1"  # Default region
+
+    def test_create_compute_provider_unknown_type(self):
+        """Test that unknown provider type raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            ProviderFactory.create_compute_provider("unknown", {})
+
+        assert "Unknown compute provider: unknown" in str(exc_info.value)
+        assert "databricks, aws_emr" in str(exc_info.value)
+
+    def test_create_databricks_compute_missing_config(self):
+        """Test that missing required config raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            ProviderFactory.create_compute_provider("databricks", {})
+
+        assert "workspace_url" in str(exc_info.value)
+        assert "token" in str(exc_info.value)
+
+    def test_create_compute_provider_with_env_vars(self, monkeypatch):
+        """Test that provider can be created from environment variables."""
+        monkeypatch.setenv("DATABRICKS_WORKSPACE_URL", "https://env.databricks.com")
+        monkeypatch.setenv("DATABRICKS_TOKEN", "env-token")
+
+        provider = ProviderFactory.create_compute_provider("databricks")
+        assert provider.workspace_url == "https://env.databricks.com"
+        assert provider.token == "env-token"
+
+    def test_create_compute_provider_config_overrides_env(self, monkeypatch):
+        """Test that config takes precedence over environment variables."""
+        monkeypatch.setenv("DATABRICKS_WORKSPACE_URL", "https://env.databricks.com")
+        monkeypatch.setenv("DATABRICKS_TOKEN", "env-token")
+
+        provider = ProviderFactory.create_compute_provider(
+            "databricks",
+            {"workspace_url": "https://config.databricks.com", "token": "config-token"},
+        )
+        assert provider.workspace_url == "https://config.databricks.com"
+        assert provider.token == "config-token"
