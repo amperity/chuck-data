@@ -109,10 +109,11 @@ class ProviderFactory:
                 region=region,
                 cluster_id=config.get("cluster_id"),
                 aws_profile=config.get("aws_profile") or os.getenv("AWS_PROFILE"),
+                s3_bucket=config.get("s3_bucket"),
                 **{
                     k: v
                     for k, v in config.items()
-                    if k not in ["region", "cluster_id", "aws_profile"]
+                    if k not in ["region", "cluster_id", "aws_profile", "s3_bucket"]
                 },
             )
 
