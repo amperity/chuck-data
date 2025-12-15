@@ -344,8 +344,12 @@ class TestLaunchStitchJob:
         )
         provider.client = mock_databricks_client
 
+        # Mock storage provider
+        mock_storage = Mock()
+        mock_storage.upload_file.return_value = True
+        provider.storage_provider = mock_storage
+
         # Mock client methods
-        mock_databricks_client.upload_file.return_value = True
         mock_databricks_client.submit_job_run.return_value = {"run_id": 12345}
         mock_databricks_client.create_stitch_notebook.return_value = {
             "notebook_path": "/Workspace/Users/test/notebook"
@@ -392,7 +396,10 @@ class TestLaunchStitchJob:
         )
         provider.client = mock_databricks_client
 
-        mock_databricks_client.upload_file.return_value = False
+        # Mock storage provider to return False
+        mock_storage = Mock()
+        mock_storage.upload_file.return_value = False
+        provider.storage_provider = mock_storage
 
         preparation = {
             "success": True,
@@ -426,7 +433,11 @@ class TestLaunchStitchJob:
         )
         provider.client = mock_databricks_client
 
-        mock_databricks_client.upload_file.return_value = True
+        # Mock storage provider
+        mock_storage = Mock()
+        mock_storage.upload_file.return_value = True
+        provider.storage_provider = mock_storage
+
         mock_databricks_client.submit_job_run.return_value = {"run_id": 12345}
         mock_databricks_client.create_stitch_notebook.return_value = {
             "notebook_path": "/Workspace/test"
