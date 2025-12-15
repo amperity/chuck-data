@@ -17,6 +17,10 @@ from chuck_data.metrics_collector import get_metrics_collector
 from chuck_data.interactive_context import InteractiveContext
 from chuck_data.ui.theme import SUCCESS_STYLE, ERROR_STYLE, INFO_STYLE, WARNING
 from chuck_data.ui.tui import get_console
+from chuck_data.commands.validation import (
+    validate_single_target_params,
+    validate_multi_target_params,
+)
 from .base import CommandResult
 from .stitch_tools import (
     _helper_setup_stitch_logic,
@@ -220,17 +224,13 @@ def _handle_compute_provider_setup(
 
         # Multi-target mode
         if targets_arg:
-            target_locations = []
-            for target in targets_arg:
-                parts = target.split(".")
-                if len(parts) != 2:
-                    return CommandResult(
-                        False,
-                        message=f"Invalid target format: '{target}'. Expected 'catalog.schema'",
-                    )
-                target_locations.append({"catalog": parts[0], "schema": parts[1]})
+            # Validate multi-target parameters using validation module
+            validation = validate_multi_target_params(targets_arg, output_catalog_arg)
+            if not validation["valid"]:
+                return CommandResult(False, message=validation["error"])
 
-            output_catalog = output_catalog_arg or target_locations[0]["catalog"]
+            target_locations = validation["target_locations"]
+            output_catalog = validation["output_catalog"]
 
             logging.info(
                 f"Preparing Stitch configuration for {len(target_locations)} locations..."
@@ -250,11 +250,10 @@ def _handle_compute_provider_setup(
             target_catalog = catalog_name_arg or get_active_catalog()
             target_schema = schema_name_arg or get_active_schema()
 
-            if not target_catalog or not target_schema:
-                return CommandResult(
-                    False,
-                    message="Target catalog and schema must be specified or active for Stitch setup.",
-                )
+            # Validate single target parameters using validation module
+            validation = validate_single_target_params(target_catalog, target_schema)
+            if not validation["valid"]:
+                return CommandResult(False, message=validation["error"])
 
             logging.info(
                 f"Preparing Stitch configuration for {target_catalog}.{target_schema}..."
@@ -378,11 +377,10 @@ def _handle_legacy_setup(
         target_catalog = catalog_name_arg or get_active_catalog()
         target_schema = schema_name_arg or get_active_schema()
 
-        if not target_catalog or not target_schema:
-            return CommandResult(
-                False,
-                message="Target catalog and schema must be specified or active for Stitch setup.",
-            )
+        # Validate single target parameters using validation module
+        validation = validate_single_target_params(target_catalog, target_schema)
+        if not validation["valid"]:
+            return CommandResult(False, message=validation["error"])
 
         # Create a LLM provider instance using factory to pass to the helper
         llm_client = LLMProviderFactory.create()
@@ -505,18 +503,14 @@ def _phase_1_prepare_config(
 
     # Multi-target mode
     if targets_arg:
-        target_locations = []
-        for target in targets_arg:
-            parts = target.split(".")
-            if len(parts) != 2:
-                context.clear_active_context("setup_stitch")
-                return CommandResult(
-                    False,
-                    message=f"Invalid target format: '{target}'. Expected 'catalog.schema'",
-                )
-            target_locations.append({"catalog": parts[0], "schema": parts[1]})
+        # Validate multi-target parameters using validation module
+        validation = validate_multi_target_params(targets_arg, output_catalog_arg)
+        if not validation["valid"]:
+            context.clear_active_context("setup_stitch")
+            return CommandResult(False, message=validation["error"])
 
-        output_catalog = output_catalog_arg or target_locations[0]["catalog"]
+        target_locations = validation["target_locations"]
+        output_catalog = validation["output_catalog"]
 
         console.print(
             f"\n[{INFO_STYLE}]Preparing Stitch configuration for {len(target_locations)} locations...[/{INFO_STYLE}]"
@@ -535,12 +529,11 @@ def _phase_1_prepare_config(
         target_catalog = catalog_name_arg or get_active_catalog()
         target_schema = schema_name_arg or get_active_schema()
 
-        if not target_catalog or not target_schema:
+        # Validate single target parameters using validation module
+        validation = validate_single_target_params(target_catalog, target_schema)
+        if not validation["valid"]:
             context.clear_active_context("setup_stitch")
-            return CommandResult(
-                False,
-                message="Target catalog and schema must be specified or active for Stitch setup.",
-            )
+            return CommandResult(False, message=validation["error"])
 
         console.print(
             f"\n[{INFO_STYLE}]Preparing Stitch configuration for {target_catalog}.{target_schema}...[/{INFO_STYLE}]"

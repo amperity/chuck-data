@@ -131,7 +131,8 @@ def test_missing_params(databricks_client_stub, llm_client_stub):
         databricks_client_stub, llm_client_stub, "", "test_schema"
     )
     assert "error" in result
-    assert "Target catalog and schema are required" in result["error"]
+    # Updated error message matches validation module
+    assert "catalog and schema must be specified" in result["error"]
 
 
 def test_pii_scan_error(databricks_client_stub, llm_client_stub):
