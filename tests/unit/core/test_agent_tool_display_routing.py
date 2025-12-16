@@ -216,37 +216,65 @@ def test_agent_display_setting_validation(tui):
 
     register_all_commands()
 
-    # Get all agent-visible commands
-    agent_commands = get_agent_commands()
+    # Get all agent-visible commands (provider-agnostic only)
+    agent_commands_no_provider = get_agent_commands(provider=None)
+
+    # Get Databricks-specific commands
+    databricks_commands = get_agent_commands(provider="databricks")
+
+    # Get Redshift-specific commands
+    redshift_commands = get_agent_commands(provider="aws_redshift")
 
     # Find all list_* commands (using underscore convention internally)
-    list_commands = [name for name in agent_commands.keys() if name.startswith("list_")]
+    list_commands_no_provider = [name for name in agent_commands_no_provider.keys() if name.startswith("list_")]
+    list_commands_databricks = [name for name in databricks_commands.keys() if name.startswith("list_")]
+    list_commands_redshift = [name for name in redshift_commands.keys() if name.startswith("list_")]
 
-    # Ensure we have the expected list commands
-    expected_list_commands = {
+    # Provider-agnostic list commands
+    expected_list_commands_no_provider = {
         "list_schemas",
-        "list_catalogs",
         "list_tables",
         "list_warehouses",
         "list_volumes",
         "list_models",
     }
 
-    found_commands = set(list_commands)
-    assert (
-        found_commands == expected_list_commands
-    ), f"Expected list commands changed. Found: {found_commands}, Expected: {expected_list_commands}"
+    # Databricks should have catalogs but not databases
+    expected_list_commands_databricks = expected_list_commands_no_provider | {"list_catalogs"}
 
-    # Verify each has agent_display="full" (except list_warehouses, list_catalogs, list_schemas, and list_tables which use conditional display)
-    for cmd_name in list_commands:
+    # Redshift should have databases but not catalogs
+    expected_list_commands_redshift = expected_list_commands_no_provider | {"list_databases"}
+
+    found_commands_no_provider = set(list_commands_no_provider)
+    found_commands_databricks = set(list_commands_databricks)
+    found_commands_redshift = set(list_commands_redshift)
+
+    assert (
+        found_commands_no_provider == expected_list_commands_no_provider
+    ), f"Provider-agnostic list commands changed. Found: {found_commands_no_provider}, Expected: {expected_list_commands_no_provider}"
+
+    assert (
+        found_commands_databricks == expected_list_commands_databricks
+    ), f"Databricks list commands changed. Found: {found_commands_databricks}, Expected: {expected_list_commands_databricks}"
+
+    assert (
+        found_commands_redshift == expected_list_commands_redshift
+    ), f"Redshift list commands changed. Found: {found_commands_redshift}, Expected: {expected_list_commands_redshift}"
+
+    # Verify each command has proper agent_display setting
+    # Check all unique list commands across all providers
+    all_list_commands = set(list_commands_no_provider + list_commands_databricks + list_commands_redshift)
+
+    for cmd_name in all_list_commands:
         cmd_def = get_command(cmd_name)
         if cmd_name in [
             "list_warehouses",
             "list_catalogs",
+            "list_databases",
             "list_schemas",
             "list_tables",
         ]:
-            # list_warehouses, list_catalogs, list_schemas, and list_tables use conditional display with display parameter
+            # These commands use conditional display with display parameter
             assert (
                 cmd_def.agent_display == "conditional"
             ), f"Command {cmd_name} should use conditional display with display parameter control"

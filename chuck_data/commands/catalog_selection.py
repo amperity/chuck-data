@@ -175,4 +175,5 @@ DEFINITION = CommandDefinition(
     agent_display="condensed",
     condensed_action="Setting catalog:",
     usage_hint="Usage: /select-catalog <catalog_name>",
+    provider="databricks",  # Databricks-specific command
 )

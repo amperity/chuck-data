@@ -335,6 +335,48 @@ def set_databricks_token(token):
     return _config_manager.update(databricks_token=token)
 
 
+def get_active_database():
+    """Get the active Redshift database from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "redshift_database", None)
+
+
+def set_active_database(database_name):
+    """Set the active Redshift database in config."""
+    return _config_manager.update(redshift_database=database_name)
+
+
+def get_redshift_region():
+    """Get AWS region for Redshift from config."""
+    return getattr(_config_manager.get_config(), "aws_region", None)
+
+
+def get_redshift_cluster_identifier():
+    """Get Redshift cluster identifier from config."""
+    return getattr(_config_manager.get_config(), "redshift_cluster_identifier", None)
+
+
+def get_redshift_workgroup_name():
+    """Get Redshift Serverless workgroup name from config."""
+    return getattr(_config_manager.get_config(), "redshift_workgroup_name", None)
+
+
+def get_redshift_iam_role():
+    """Get Redshift IAM role ARN from config."""
+    return getattr(_config_manager.get_config(), "redshift_iam_role", None)
+
+
+def get_redshift_s3_temp_dir():
+    """Get S3 temp directory for Redshift operations from config."""
+    return getattr(_config_manager.get_config(), "redshift_s3_temp_dir", None)
+
+
+def get_data_provider():
+    """Get the data provider from config (databricks, aws_redshift, etc.)."""
+    config = _config_manager.get_config()
+    return getattr(config, "data_provider", None)
+
+
 # For direct access to config manager
 def get_config_manager():
     """Get the global config manager instance"""

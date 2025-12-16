@@ -8,10 +8,11 @@ from chuck_data.config import (
     get_active_schema,
     get_warehouse_id,
     get_workspace_url,
+    get_data_provider,
 )
 
 from .prompts import (
-    DEFAULT_SYSTEM_MESSAGE,
+    get_default_system_message,
     PII_AGENT_SYSTEM_MESSAGE,
     BULK_PII_AGENT_SYSTEM_MESSAGE,
     STITCH_AGENT_SYSTEM_MESSAGE,
@@ -25,9 +26,12 @@ class AgentManager:
         self.llm_client = llm_client or LLMProviderFactory.create()
         self.model = model
         self.tool_output_callback = tool_output_callback
-        self.conversation_history = [
-            {"role": "system", "content": DEFAULT_SYSTEM_MESSAGE}
-        ]
+
+        # Get provider-aware system message
+        provider = get_data_provider()
+        system_message = get_default_system_message(provider or "databricks")
+
+        self.conversation_history = [{"role": "system", "content": system_message}]
 
     def add_user_message(self, content):
         self.conversation_history.append({"role": "user", "content": content})
@@ -162,6 +166,26 @@ class AgentManager:
             # Prepare a temporary history copy for this specific LLM call
             current_history = deepcopy(self.conversation_history)
 
+            # Sanitize messages to ensure content is never empty string for non-tool roles
+            # Some LLM APIs reject messages with empty content, but allow None for tool_calls
+            for msg in current_history:
+                if msg["role"] in ["user", "system"]:
+                    # user and system messages MUST have non-empty content
+                    if not msg.get("content"):
+                        msg["content"] = " "  # Use single space as minimum content
+                        logging.warning(
+                            f"Empty content in {msg['role']} message, replacing with space"
+                        )
+                elif msg["role"] == "assistant":
+                    # assistant messages can have None content if they have tool_calls
+                    if "tool_calls" not in msg or not msg["tool_calls"]:
+                        # No tool calls, so content must be non-empty
+                        if not msg.get("content"):
+                            msg["content"] = " "
+                            logging.warning(
+                                "Empty content in assistant message without tool_calls, replacing with space"
+                            )
+
             # Get current configuration state
             active_catalog = get_active_catalog() or "Not set"
             active_schema = get_active_schema() or "Not set"
@@ -189,6 +213,10 @@ class AgentManager:
                     original_system_message_content + config_state_info
                 )
             # else: log warning or handle case where system message wasn't found initially
+
+            logging.debug(
+                f"Iteration {iteration_count}: Sending {len(current_history)} messages to LLM"
+            )
 
             # Get the LLM response using the temporary, updated history
             response = self.llm_client.chat(
@@ -224,9 +252,23 @@ class AgentManager:
                                 },
                             }
                         )
+
+                # Ensure content is not None or empty (required by some LLM APIs)
+                # When making tool calls, content can be None, but we need to provide at least an empty string
+                # or a placeholder to avoid "text content blocks must be non-empty" errors
+                content = response_message.content
+                if content is None or (
+                    isinstance(content, str) and not content.strip()
+                ):
+                    content = None  # Use None for tool calls (OpenAI spec allows this)
+
+                logging.debug(
+                    f"Assistant tool call response - content: {repr(content)}, tool_calls: {len(tool_calls_list)}"
+                )
+
                 assistant_msg = {
                     "role": "assistant",
-                    "content": response_message.content,
+                    "content": content,
                     "tool_calls": tool_calls_list,
                 }
                 self.conversation_history.append(assistant_msg)
@@ -309,7 +351,7 @@ class AgentManager:
         Returns:
             Final response from the LLM
         """
-        # If no system message exists, add the default one
+        # If no system message exists, add the provider-aware one
         has_system = False
         for msg in self.conversation_history:
             if msg["role"] == "system":
@@ -317,7 +359,9 @@ class AgentManager:
                 break
 
         if not has_system:
-            self.add_system_message(DEFAULT_SYSTEM_MESSAGE)
+            provider = get_data_provider()
+            system_message = get_default_system_message(provider or "databricks")
+            self.add_system_message(system_message)
 
         # Add user message to history
         self.add_user_message(query)

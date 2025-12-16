@@ -43,7 +43,9 @@ from .add_stitch_report import DEFINITION as add_stitch_report_definition
 
 # Import catalog/schema/table commands
 from .list_catalogs import DEFINITION as list_catalogs_definition
+from .list_databases import DEFINITION as list_databases_definition
 from .catalog import DEFINITION as catalog_definition
+from .database_selection import DEFINITION as database_selection_definition
 from .list_schemas import DEFINITION as list_schemas_definition
 from .schema import DEFINITION as schema_definition
 from .table import DEFINITION as table_definition
@@ -71,8 +73,10 @@ ALL_COMMAND_DEFINITIONS = [
     model_selection_definition,
     # Catalog & Schema commands
     catalog_selection_definition,
+    database_selection_definition,
     schema_selection_definition,
     list_catalogs_definition,
+    list_databases_definition,
     catalog_definition,
     list_schemas_definition,
     schema_definition,
