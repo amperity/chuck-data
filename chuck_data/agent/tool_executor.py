@@ -23,6 +23,7 @@ from chuck_data.commands.base import (
 from chuck_data.clients.databricks import (
     DatabricksAPIClient,
 )  # For type hinting api_client
+from chuck_data.config import get_data_provider
 from typing import Dict, Any, Optional, List, Callable
 from jsonschema.exceptions import ValidationError
 
@@ -41,7 +42,8 @@ from jsonschema.exceptions import ValidationError
 
 def get_tool_schemas() -> List[Dict[str, Any]]:
     """Get all command schemas in agent tool format from the command registry."""
-    return get_command_registry_tool_schemas()
+    provider = get_data_provider()
+    return get_command_registry_tool_schemas(provider)
 
 
 def execute_tool(

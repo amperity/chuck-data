@@ -141,4 +141,5 @@ DEFINITION = CommandDefinition(
     ),  # Show full table only when display=True
     condensed_action="Listing catalogs",  # Friendly name for condensed display
     usage_hint="Usage: /list-catalogs [--display true|false] [--include_browse true|false] [--max_results <number>] [--page_token <token>]",
+    provider="databricks",  # Databricks-specific command
 )
