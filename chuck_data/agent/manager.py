@@ -12,7 +12,6 @@ from chuck_data.config import (
 )
 
 from .prompts import (
-    DEFAULT_SYSTEM_MESSAGE,
     get_default_system_message,
     PII_AGENT_SYSTEM_MESSAGE,
     BULK_PII_AGENT_SYSTEM_MESSAGE,
@@ -30,11 +29,9 @@ class AgentManager:
 
         # Get provider-aware system message
         provider = get_data_provider()
-        system_message = get_default_system_message(provider)
+        system_message = get_default_system_message(provider or "databricks")
 
-        self.conversation_history = [
-            {"role": "system", "content": system_message}
-        ]
+        self.conversation_history = [{"role": "system", "content": system_message}]
 
     def add_user_message(self, content):
         self.conversation_history.append({"role": "user", "content": content})
@@ -176,14 +173,18 @@ class AgentManager:
                     # user and system messages MUST have non-empty content
                     if not msg.get("content"):
                         msg["content"] = " "  # Use single space as minimum content
-                        logging.warning(f"Empty content in {msg['role']} message, replacing with space")
+                        logging.warning(
+                            f"Empty content in {msg['role']} message, replacing with space"
+                        )
                 elif msg["role"] == "assistant":
                     # assistant messages can have None content if they have tool_calls
                     if "tool_calls" not in msg or not msg["tool_calls"]:
                         # No tool calls, so content must be non-empty
                         if not msg.get("content"):
                             msg["content"] = " "
-                            logging.warning("Empty content in assistant message without tool_calls, replacing with space")
+                            logging.warning(
+                                "Empty content in assistant message without tool_calls, replacing with space"
+                            )
 
             # Get current configuration state
             active_catalog = get_active_catalog() or "Not set"
@@ -213,7 +214,9 @@ class AgentManager:
                 )
             # else: log warning or handle case where system message wasn't found initially
 
-            logging.debug(f"Iteration {iteration_count}: Sending {len(current_history)} messages to LLM")
+            logging.debug(
+                f"Iteration {iteration_count}: Sending {len(current_history)} messages to LLM"
+            )
 
             # Get the LLM response using the temporary, updated history
             response = self.llm_client.chat(
@@ -254,10 +257,14 @@ class AgentManager:
                 # When making tool calls, content can be None, but we need to provide at least an empty string
                 # or a placeholder to avoid "text content blocks must be non-empty" errors
                 content = response_message.content
-                if content is None or (isinstance(content, str) and not content.strip()):
+                if content is None or (
+                    isinstance(content, str) and not content.strip()
+                ):
                     content = None  # Use None for tool calls (OpenAI spec allows this)
 
-                logging.debug(f"Assistant tool call response - content: {repr(content)}, tool_calls: {len(tool_calls_list)}")
+                logging.debug(
+                    f"Assistant tool call response - content: {repr(content)}, tool_calls: {len(tool_calls_list)}"
+                )
 
                 assistant_msg = {
                     "role": "assistant",
@@ -353,7 +360,7 @@ class AgentManager:
 
         if not has_system:
             provider = get_data_provider()
-            system_message = get_default_system_message(provider)
+            system_message = get_default_system_message(provider or "databricks")
             self.add_system_message(system_message)
 
         # Add user message to history
