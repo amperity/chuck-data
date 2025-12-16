@@ -8,6 +8,8 @@ class ConnectionStubMixin:
         self.connection_status = "connected"
         self.permissions = {}
         self.token_validation_result = True
+        self.workspace_url = "https://test.databricks.com"
+        self.token = "test-token"
 
     def test_connection(self):
         """Test the connection."""

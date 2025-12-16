@@ -193,6 +193,15 @@ def test_auto_confirm_mode_passes_policy_id(databricks_client_stub, llm_client_s
     # Setup test data for successful operation
     setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
+    # Mock DatabricksComputeProvider to avoid real network calls
+    mock_compute_provider = MagicMock()
+    mock_compute_provider.launch_stitch_job.return_value = {
+        "success": True,
+        "run_id": "test-run-id-123",
+        "notebook_result": {"success": True, "notebook_path": "/test/notebook"},
+        "message": "Job launched successfully",
+    }
+
     with patch(
         "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
         return_value=llm_client_stub,
@@ -205,22 +214,27 @@ def test_auto_confirm_mode_passes_policy_id(databricks_client_stub, llm_client_s
                 "chuck_data.commands.setup_stitch.get_metrics_collector",
                 return_value=MagicMock(),
             ):
-                # Call with auto_confirm=True and policy_id
-                result = handle_command(
-                    databricks_client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
-                    auto_confirm=True,
-                    policy_id="000F957411D99C1F",
-                )
+                with patch(
+                    "chuck_data.commands.setup_stitch.DatabricksComputeProvider",
+                    return_value=mock_compute_provider,
+                ):
+                    # Call with auto_confirm=True and policy_id
+                    result = handle_command(
+                        databricks_client_stub,
+                        catalog_name="test_catalog",
+                        schema_name="test_schema",
+                        auto_confirm=True,
+                        policy_id="000F957411D99C1F",
+                    )
 
     # Verify success
     assert result.success
 
-    # Verify policy_id was passed to submit_job_run
-    assert len(databricks_client_stub.submit_job_run_calls) == 1
-    call_args = databricks_client_stub.submit_job_run_calls[0]
-    assert call_args["policy_id"] == "000F957411D99C1F"
+    # Verify policy_id was passed to DatabricksComputeProvider
+    # The policy_id should be in metadata passed to launch_stitch_job
+    assert mock_compute_provider.launch_stitch_job.called
+    launch_call_args = mock_compute_provider.launch_stitch_job.call_args[0][0]
+    assert launch_call_args["metadata"]["policy_id"] == "000F957411D99C1F"
 
 
 def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_stub):
@@ -228,6 +242,15 @@ def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_
     # Setup test data for successful operation
     setup_successful_stitch_test_data(databricks_client_stub, llm_client_stub)
 
+    # Mock DatabricksComputeProvider to avoid real network calls
+    mock_compute_provider = MagicMock()
+    mock_compute_provider.launch_stitch_job.return_value = {
+        "success": True,
+        "run_id": "test-run-id-456",
+        "notebook_result": {"success": True, "notebook_path": "/test/notebook"},
+        "message": "Job launched successfully",
+    }
+
     with patch(
         "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
         return_value=llm_client_stub,
@@ -240,21 +263,29 @@ def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_
                 "chuck_data.commands.setup_stitch.get_metrics_collector",
                 return_value=MagicMock(),
             ):
-                # Call with auto_confirm=True but no policy_id
-                result = handle_command(
-                    databricks_client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
-                    auto_confirm=True,
-                )
+                with patch(
+                    "chuck_data.commands.setup_stitch.DatabricksComputeProvider",
+                    return_value=mock_compute_provider,
+                ):
+                    # Call with auto_confirm=True but no policy_id
+                    result = handle_command(
+                        databricks_client_stub,
+                        catalog_name="test_catalog",
+                        schema_name="test_schema",
+                        auto_confirm=True,
+                    )
 
     # Verify success
     assert result.success
 
-    # Verify policy_id was passed as None
-    assert len(databricks_client_stub.submit_job_run_calls) == 1
-    call_args = databricks_client_stub.submit_job_run_calls[0]
-    assert call_args["policy_id"] is None
+    # Verify policy_id was not set in metadata (or is None)
+    assert mock_compute_provider.launch_stitch_job.called
+    launch_call_args = mock_compute_provider.launch_stitch_job.call_args[0][0]
+    # Policy ID should not be in metadata when not provided
+    assert (
+        "policy_id" not in launch_call_args["metadata"]
+        or launch_call_args["metadata"]["policy_id"] is None
+    )
 
 
 # Interactive mode tests

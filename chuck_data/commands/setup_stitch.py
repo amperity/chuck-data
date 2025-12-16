@@ -6,10 +6,10 @@ for PII columns and creating a configuration file.
 """
 
 import logging
-import os
 from typing import Optional, List
 
 from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.compute_providers.databricks import DatabricksComputeProvider
 from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.config import get_active_catalog, get_active_schema
@@ -23,7 +23,6 @@ from chuck_data.commands.validation import (
 )
 from .base import CommandResult
 from .stitch_tools import (
-    _helper_setup_stitch_logic,
     _helper_prepare_stitch_config,
     _helper_modify_stitch_config,
     _helper_launch_stitch_job,
@@ -134,26 +133,14 @@ def handle_command(
 
     # Handle auto-confirm mode
     if auto_confirm:
-        # Check if we should use the new compute provider path (PR 3)
-        use_compute_provider = (
-            os.getenv("USE_COMPUTE_PROVIDER", "false").lower() == "true"
+        return _handle_auto_confirm_setup(
+            client,
+            catalog_name_arg,
+            schema_name_arg,
+            targets_arg,
+            output_catalog_arg,
+            policy_id,
         )
-
-        if use_compute_provider:
-            logging.info("Using new DatabricksComputeProvider code path")
-            return _handle_compute_provider_setup(
-                client,
-                catalog_name_arg,
-                schema_name_arg,
-                targets_arg,
-                output_catalog_arg,
-                policy_id,
-            )
-        else:
-            logging.info("Using legacy stitch_tools code path")
-            return _handle_legacy_setup(
-                client, catalog_name_arg, schema_name_arg, policy_id
-            )
 
     # Interactive mode - use context management
     context = InteractiveContext()
@@ -201,7 +188,7 @@ def handle_command(
         )
 
 
-def _handle_compute_provider_setup(
+def _handle_auto_confirm_setup(
     client: DatabricksAPIClient,
     catalog_name_arg: Optional[str],
     schema_name_arg: Optional[str],
@@ -209,15 +196,11 @@ def _handle_compute_provider_setup(
     output_catalog_arg: Optional[str] = None,
     policy_id: Optional[str] = None,
 ) -> CommandResult:
-    """Handle setup using the new DatabricksComputeProvider (PR 3 implementation).
-
-    This is the new code path that uses the compute provider abstraction.
-    Enabled via USE_COMPUTE_PROVIDER=true environment variable.
+    """Handle auto-confirm mode setup using compute provider abstraction.
 
     Supports both single-target and multi-target Stitch configurations.
     """
     try:
-        from chuck_data.compute_providers.databricks import DatabricksComputeProvider
 
         # Create LLM provider
         llm_client = LLMProviderFactory.create()
@@ -285,9 +268,8 @@ def _handle_compute_provider_setup(
                 ],
                 error=prep_result.get("error"),
                 additional_data={
-                    "event_context": "compute_provider_stitch_command",
+                    "event_context": "setup_stitch_command",
                     "status": "error",
-                    "code_path": "new",
                 },
             )
             return CommandResult(False, message=prep_result["error"], data=prep_result)
@@ -314,9 +296,8 @@ def _handle_compute_provider_setup(
                 ],
                 error=launch_result.get("error"),
                 additional_data={
-                    "event_context": "compute_provider_stitch_command",
+                    "event_context": "setup_stitch_command",
                     "status": "launch_error",
-                    "code_path": "new",
                 },
             )
             return CommandResult(
@@ -333,9 +314,8 @@ def _handle_compute_provider_setup(
                 }
             ],
             additional_data={
-                "event_context": "compute_provider_stitch_command",
+                "event_context": "setup_stitch_command",
                 "status": "success",
-                "code_path": "new",
                 **{k: v for k, v in launch_result.items() if k != "message"},
             },
         )
@@ -355,131 +335,11 @@ def _handle_compute_provider_setup(
             message=result_message,
         )
     except Exception as e:
-        logging.error(f"Compute provider stitch setup error: {e}", exc_info=True)
+        logging.error(f"Stitch setup error: {e}", exc_info=True)
         return CommandResult(
             False,
             error=e,
-            message=f"Error setting up Stitch (compute provider): {str(e)}",
-        )
-
-
-def _handle_legacy_setup(
-    client: DatabricksAPIClient,
-    catalog_name_arg: Optional[str],
-    schema_name_arg: Optional[str],
-    policy_id: Optional[str] = None,
-) -> CommandResult:
-    """Handle auto-confirm mode using the legacy direct setup approach.
-
-    This is the existing code path that will be kept for comparison during PR 3.
-    """
-    try:
-        target_catalog = catalog_name_arg or get_active_catalog()
-        target_schema = schema_name_arg or get_active_schema()
-
-        # Validate single target parameters using validation module
-        validation = validate_single_target_params(target_catalog, target_schema)
-        if not validation["valid"]:
-            return CommandResult(False, message=validation["error"])
-
-        # Create a LLM provider instance using factory to pass to the helper
-        llm_client = LLMProviderFactory.create()
-
-        # Get metrics collector
-        metrics_collector = get_metrics_collector()
-
-        # Get the prepared configuration (doesn't launch job anymore)
-        prep_result = _helper_setup_stitch_logic(
-            client, llm_client, target_catalog, target_schema
-        )
-        if prep_result.get("error"):
-            # Track error event
-            metrics_collector.track_event(
-                prompt="setup-stitch command",
-                tools=[
-                    {
-                        "name": "setup_stitch",
-                        "arguments": {
-                            "catalog": target_catalog,
-                            "schema": target_schema,
-                        },
-                    }
-                ],
-                error=prep_result.get("error"),
-                additional_data={
-                    "event_context": "direct_stitch_command",
-                    "status": "error",
-                },
-            )
-
-            return CommandResult(False, message=prep_result["error"], data=prep_result)
-
-        # Add policy_id to metadata if provided
-        if policy_id:
-            prep_result["metadata"]["policy_id"] = policy_id
-
-        # Now we need to explicitly launch the job since _helper_setup_stitch_logic no longer does it
-        stitch_result_data = _helper_launch_stitch_job(
-            client, prep_result["stitch_config"], prep_result["metadata"]
-        )
-        if stitch_result_data.get("error"):
-            # Track error event for launch failure
-            metrics_collector.track_event(
-                prompt="setup_stitch command",
-                tools=[
-                    {
-                        "name": "setup_stitch",
-                        "arguments": {
-                            "catalog": target_catalog,
-                            "schema": target_schema,
-                        },
-                    }
-                ],
-                error=stitch_result_data.get("error"),
-                additional_data={
-                    "event_context": "direct_stitch_command",
-                    "status": "launch_error",
-                },
-            )
-
-            return CommandResult(
-                False, message=stitch_result_data["error"], data=stitch_result_data
-            )
-
-        # Track successful stitch setup event
-        metrics_collector.track_event(
-            prompt="setup-stitch command",
-            tools=[
-                {
-                    "name": "setup_stitch",
-                    "arguments": {"catalog": target_catalog, "schema": target_schema},
-                }
-            ],
-            additional_data={
-                "event_context": "direct_stitch_command",
-                "status": "success",
-                **{k: v for k, v in stitch_result_data.items() if k != "message"},
-            },
-        )
-
-        # Show detailed summary first as progress info for legacy mode too
-        console = get_console()
-        _display_detailed_summary(console, stitch_result_data)
-
-        # Create the user guidance as the main result message
-        result_message = _build_post_launch_guidance_message(
-            stitch_result_data, prep_result["metadata"], client
-        )
-
-        return CommandResult(
-            True,
-            data=stitch_result_data,
-            message=result_message,
-        )
-    except Exception as e:
-        logging.error(f"Legacy stitch setup error: {e}", exc_info=True)
-        return CommandResult(
-            False, error=e, message=f"Error setting up Stitch: {str(e)}"
+            message=f"Error setting up Stitch: {str(e)}",
         )
 
 
