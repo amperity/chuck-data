@@ -87,3 +87,33 @@ class DataProvider(Protocol):
             Dictionary containing query results
         """
         ...
+
+    def tag_columns(
+        self,
+        tags: List[Dict[str, str]],
+        catalog: Optional[str] = None,
+        schema: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict:
+        """Apply semantic tags to columns.
+
+        For Databricks: Uses ALTER TABLE ... SET TAGS SQL statements
+        For Redshift: Stores tags in chuck_metadata.semantic_tags table
+        (Redshift doesn't support native column tags)
+
+        Args:
+            tags: List of tag dictionaries with keys:
+                - table: Table name
+                - column: Column name
+                - semantic_type: Semantic type (e.g., 'pii/email', 'pii/phone')
+            catalog: Catalog/database name (uses default if not specified)
+            schema: Schema name (optional for Databricks, required for Redshift)
+            **kwargs: Provider-specific options (e.g., warehouse_id for Databricks)
+
+        Returns:
+            Dictionary containing results:
+                - success: bool
+                - tags_applied: int (number of tags successfully applied)
+                - errors: List[Dict] (any errors that occurred)
+        """
+        ...

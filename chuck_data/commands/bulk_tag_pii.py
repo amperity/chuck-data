@@ -5,6 +5,9 @@ Bulk PII tagging command with interactive confirmation.
 1. Scan: Use scan-pii logic to find PII columns
 2. Review: Show results, handle modifications/confirmations
 3. Tag: Execute bulk tag-pii operations
+
+For Databricks: Applies semantic tags using SQL ALTER TABLE statements
+For Redshift: Stores semantic tags in chuck_metadata.semantic_tags table
 """
 
 from chuck_data.interactive_context import InteractiveContext
@@ -15,6 +18,49 @@ from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.ui.tui import get_console
 from chuck_data.ui.theme import INFO_STYLE, ERROR_STYLE, SUCCESS_STYLE
 from chuck_data import config
+from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.data_providers.adapters import (
+    DatabricksProviderAdapter,
+    RedshiftProviderAdapter,
+)
+
+
+def _get_data_provider(client):
+    """
+    Create a data provider adapter from a client instance.
+
+    Args:
+        client: Either DatabricksAPIClient, RedshiftAPIClient, or their stubs/mocks
+
+    Returns:
+        DataProvider adapter (DatabricksProviderAdapter or RedshiftProviderAdapter)
+
+    Raises:
+        ValueError: If client type is not supported
+    """
+    # Check by isinstance first (for real clients)
+    if isinstance(client, DatabricksAPIClient):
+        adapter = DatabricksProviderAdapter.__new__(DatabricksProviderAdapter)
+        adapter.client = client
+        return adapter
+    elif isinstance(client, RedshiftAPIClient):
+        adapter = RedshiftProviderAdapter.__new__(RedshiftProviderAdapter)
+        adapter.client = client
+        return adapter
+
+    # Check by class name (for stubs/mocks in tests)
+    client_class_name = client.__class__.__name__
+    if "Databricks" in client_class_name or "databricks" in client_class_name.lower():
+        adapter = DatabricksProviderAdapter.__new__(DatabricksProviderAdapter)
+        adapter.client = client
+        return adapter
+    elif "Redshift" in client_class_name or "redshift" in client_class_name.lower():
+        adapter = RedshiftProviderAdapter.__new__(RedshiftProviderAdapter)
+        adapter.client = client
+        return adapter
+
+    raise ValueError(f"Unsupported client type: {type(client)}")
 
 
 def handle_bulk_tag_pii(client, **kwargs):
@@ -270,29 +316,49 @@ def _execute_directly(client, **kwargs):
 
 
 def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
-    """Execute bulk tagging based on scan results."""
-    tagging_results = []
+    """Execute bulk tagging based on scan results using data provider abstraction.
 
-    # Get warehouse ID for SQL execution
-    warehouse_id = config.get_warehouse_id()
-    if not warehouse_id:
-        return [
-            {"error": "No warehouse configured for SQL execution", "success": False}
-        ]
+    Args:
+        client: DatabricksAPIClient or RedshiftAPIClient
+        scan_summary_data: Scan results containing PII columns to tag
+        tool_output_callback: Optional callback for progress reporting
 
-    # Extract detailed results from scan summary
+    Returns:
+        List of tagging result dictionaries with success/error information
+    """
+    # Get data provider adapter
+    provider = _get_data_provider(client)
+    is_redshift = isinstance(client, RedshiftAPIClient)
+
+    # Determine catalog and schema from scan summary
     results_detail = scan_summary_data.get("results_detail", [])
+    if not results_detail:
+        return []
 
-    # Count tables with PII for progress tracking
-    tables_with_pii = [
-        r
-        for r in results_detail
-        if not r.get("error") and not r.get("skipped") and r.get("has_pii")
-    ]
-    current_table = 0
+    # Extract catalog/database and schema from first table (all tables in same schema)
+    first_table = next((r for r in results_detail if r.get("full_name")), None)
+    if not first_table:
+        return []
+
+    full_name = first_table.get("full_name", "")
+    parts = full_name.split(".")
+
+    # For Databricks: catalog.schema.table (3 parts)
+    # For Redshift: schema.table (2 parts, database from config)
+    if is_redshift:
+        catalog = config.get_active_database()
+        schema = parts[0] if len(parts) >= 2 else None
+    else:
+        catalog = parts[0] if len(parts) >= 3 else None
+        schema = parts[1] if len(parts) >= 3 else None
+
+    # Group PII columns by table for progress reporting
+    # For Databricks: use fully qualified table name (catalog.schema.table)
+    # For Redshift: use just table name (table metadata stored separately)
+    tables_with_pii = []
+    all_tagging_results = []
 
     for table_result in results_detail:
-        # Skip tables with errors or no PII
         if (
             table_result.get("error")
             or table_result.get("skipped")
@@ -300,108 +366,128 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
         ):
             continue
 
-        current_table += 1
-        table_name = table_result.get("full_name")
+        table_name = table_result.get("table_name")  # Just the table name
+        full_table_name = table_result.get("full_name")  # Fully qualified name
         pii_columns = table_result.get("pii_columns", [])
 
-        if not table_name or not pii_columns:
-            continue
+        # Use table_name for Redshift, full_table_name for Databricks
+        tag_table_ref = table_name if is_redshift else full_table_name
 
-        # Progress report for each table with position
-        table_short_name = table_name.split(".")[-1] if table_name else "unknown"
-        _report_progress(
-            f"Tagging {len(pii_columns)} PII columns in {table_short_name} ({current_table}/{len(tables_with_pii)})",
-            tool_output_callback,
-        )
-
-        # Apply tags to each PII column in this table
+        # Prepare tags for this table
+        table_tags = []
         for column in pii_columns:
             column_name = column.get("name")
             semantic_type = column.get("semantic")
 
-            if not column_name or not semantic_type:
-                tagging_results.append(
+            if column_name and semantic_type:
+                table_tags.append(
                     {
-                        "table": table_name,
-                        "column": column_name or "unknown",
-                        "success": False,
-                        "error": "Missing column name or semantic type",
-                    }
-                )
-                continue
-
-            # Construct and execute the SQL ALTER TABLE statement
-            sql = f"""
-            ALTER TABLE {table_name} 
-            ALTER COLUMN {column_name} 
-            SET TAGS ('semantic' = '{semantic_type}')
-            """
-
-            try:
-                result = client.submit_sql_statement(
-                    sql_text=sql, warehouse_id=warehouse_id, wait_timeout="30s"
-                )
-
-                if result.get("status", {}).get("state") == "SUCCEEDED":
-                    tagging_results.append(
-                        {
-                            "table": table_name,
-                            "column": column_name,
-                            "semantic_type": semantic_type,
-                            "success": True,
-                        }
-                    )
-                else:
-                    # Extract detailed error information
-                    status = result.get("status", {})
-                    error_info = status.get("error", {})
-
-                    if isinstance(error_info, dict):
-                        error_message = error_info.get("message", "Unknown SQL error")
-                        error_type = error_info.get("error_code", "UNKNOWN_ERROR")
-                    else:
-                        error_message = (
-                            str(error_info) if error_info else "Unknown SQL error"
-                        )
-                        error_type = "UNKNOWN_ERROR"
-
-                    tagging_results.append(
-                        {
-                            "table": table_name,
-                            "column": column_name,
-                            "semantic_type": semantic_type,
-                            "success": False,
-                            "error": error_message,
-                            "error_type": error_type,
-                        }
-                    )
-            except Exception as e:
-                # Categorize common errors for better user feedback
-                error_message = str(e)
-                if "warehouse" in error_message.lower():
-                    error_type = "WAREHOUSE_ERROR"
-                elif (
-                    "permission" in error_message.lower()
-                    or "access" in error_message.lower()
-                ):
-                    error_type = "PERMISSION_ERROR"
-                elif "timeout" in error_message.lower():
-                    error_type = "TIMEOUT_ERROR"
-                else:
-                    error_type = "EXECUTION_ERROR"
-
-                tagging_results.append(
-                    {
-                        "table": table_name,
+                        "table": tag_table_ref,
                         "column": column_name,
                         "semantic_type": semantic_type,
-                        "success": False,
-                        "error": error_message,
-                        "error_type": error_type,
                     }
                 )
 
-    return tagging_results
+        if table_tags:
+            tables_with_pii.append(
+                {
+                    "table_name": table_name,
+                    "tag_table_ref": tag_table_ref,
+                    "tags": table_tags,
+                }
+            )
+
+    if not tables_with_pii:
+        return []
+
+    # Prepare provider-specific parameters
+    tag_kwargs = {}
+    if not is_redshift:
+        # Databricks requires warehouse_id
+        warehouse_id = config.get_warehouse_id()
+        if not warehouse_id:
+            return [
+                {"error": "No warehouse configured for SQL execution", "success": False}
+            ]
+        tag_kwargs["warehouse_id"] = warehouse_id
+
+    # Execute tagging table by table with progress reporting
+    try:
+        current_table = 0
+        for table_info in tables_with_pii:
+            current_table += 1
+            table_tags = table_info["tags"]
+            table_short_name = table_info["table_name"]
+
+            # Report progress for this table
+            _report_progress(
+                f"Tagging {len(table_tags)} PII columns in {table_short_name} ({current_table}/{len(tables_with_pii)})",
+                tool_output_callback,
+            )
+
+            # Call provider's tag_columns method for this table
+            result = provider.tag_columns(
+                tags=table_tags, catalog=catalog, schema=schema, **tag_kwargs
+            )
+
+            # Convert provider result to tagging_results format
+            tags_applied = result.get("tags_applied", 0)
+            errors = result.get("errors", [])
+
+            # Create success entries for applied tags
+            if tags_applied > 0:
+                # Match successful tags (first N tags that weren't in errors)
+                error_keys = {(e.get("table"), e.get("column")) for e in errors}
+                for tag in table_tags:
+                    tag_key = (tag["table"], tag["column"])
+                    if tag_key not in error_keys:
+                        all_tagging_results.append(
+                            {
+                                "table": tag["table"],
+                                "column": tag["column"],
+                                "semantic_type": tag["semantic_type"],
+                                "success": True,
+                            }
+                        )
+                        if (
+                            len(
+                                [
+                                    r
+                                    for r in all_tagging_results
+                                    if r.get("success")
+                                    and r.get("table") == tag["table"]
+                                ]
+                            )
+                            >= tags_applied
+                        ):
+                            break
+
+            # Add error entries
+            for error in errors:
+                all_tagging_results.append(
+                    {
+                        "table": error.get("table", "unknown"),
+                        "column": error.get("column", "unknown"),
+                        "semantic_type": error.get("semantic_type", ""),
+                        "success": False,
+                        "error": error.get("error", "Unknown error"),
+                        "error_type": "EXECUTION_ERROR",
+                    }
+                )
+
+        return all_tagging_results
+
+    except Exception as e:
+        # Return error for all tags
+        error_message = str(e)
+        if "warehouse" in error_message.lower():
+            error_type = "WAREHOUSE_ERROR"
+        elif "permission" in error_message.lower() or "access" in error_message.lower():
+            error_type = "PERMISSION_ERROR"
+        else:
+            error_type = "EXECUTION_ERROR"
+
+        return [{"error": error_message, "error_type": error_type, "success": False}]
 
 
 def _summarize_failures(tagging_results):
