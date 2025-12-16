@@ -346,6 +346,15 @@ def test_interactive_command_parses_auto_confirm_and_policy_id(
     # Setup test data
     _setup_stitch_test_data(databricks_client_stub, llm_client_stub)
 
+    # Mock DatabricksComputeProvider to avoid real network calls
+    mock_compute_provider = MagicMock()
+    mock_compute_provider.launch_stitch_job.return_value = {
+        "success": True,
+        "run_id": "test-run-id-789",
+        "notebook_result": {"success": True, "notebook_path": "/test/notebook"},
+        "message": "Job launched successfully",
+    }
+
     with patch("chuck_data.config._config_manager", temp_config):
         with patch(
             "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
@@ -359,24 +368,31 @@ def test_interactive_command_parses_auto_confirm_and_policy_id(
                     "chuck_data.commands.setup_stitch.get_metrics_collector",
                     return_value=MagicMock(),
                 ):
-                    service = ChuckService(client=databricks_client_stub)
+                    with patch(
+                        "chuck_data.commands.setup_stitch.DatabricksComputeProvider",
+                        return_value=mock_compute_provider,
+                    ):
+                        service = ChuckService(client=databricks_client_stub)
 
-                    # Test combined --auto-confirm and --policy_id flags
-                    result = service.execute_command(
-                        "/setup-stitch",
-                        "--auto-confirm",
-                        "--policy_id=COMBINED_POLICY_456",
-                        "catalog_name=test_catalog",
-                        "schema_name=test_schema",
-                    )
+                        # Test combined --auto-confirm and --policy_id flags
+                        result = service.execute_command(
+                            "/setup-stitch",
+                            "--auto-confirm",
+                            "--policy_id=COMBINED_POLICY_456",
+                            "catalog_name=test_catalog",
+                            "schema_name=test_schema",
+                        )
 
-                    # Should parse correctly and execute
-                    assert isinstance(result, CommandResult)
-                    assert result.success
+                        # Should parse correctly and execute
+                        assert isinstance(result, CommandResult)
+                        assert result.success
 
-                    # Verify policy_id was passed to submit_job_run
-                    assert len(databricks_client_stub.submit_job_run_calls) == 1
-                    call_args = databricks_client_stub.submit_job_run_calls[0]
+                        # Verify policy_id was passed to DatabricksComputeProvider
+                        assert mock_compute_provider.launch_stitch_job.called
+                        launch_call_args = (
+                            mock_compute_provider.launch_stitch_job.call_args[0][0]
+                        )
+                        call_args = launch_call_args["metadata"]
                     assert call_args["policy_id"] == "COMBINED_POLICY_456"
 
 

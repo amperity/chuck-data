@@ -90,29 +90,6 @@ def validate_multi_location_access(
     return results
 
 
-def _helper_setup_stitch_logic(
-    client: DatabricksAPIClient,
-    llm_client_instance: LLMProvider,
-    target_catalog: str,
-    target_schema: str,
-) -> Dict[str, Any]:
-    """Legacy function for backward compatibility. Calls prepare phase only.
-
-    IMPORTANT: This has been modified to only run the preparation phase and not
-    automatically launch the job, which is now handled by the interactive flow.
-    """
-    # Phase 1: Prepare config only
-    prep_result = _helper_prepare_stitch_config(
-        client, llm_client_instance, target_catalog, target_schema
-    )
-    if prep_result.get("error"):
-        return prep_result
-
-    # Return the prepared config for further processing
-    # No longer automatically launching the job
-    return prep_result
-
-
 def _helper_prepare_stitch_config(
     client: DatabricksAPIClient,
     llm_client_instance: LLMProvider,

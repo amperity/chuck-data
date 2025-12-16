@@ -8,7 +8,6 @@ import pytest
 from unittest.mock import Mock, patch
 
 from chuck_data.commands.stitch_tools import (
-    _helper_setup_stitch_logic,
     _helper_prepare_stitch_config,
     _helper_prepare_multi_location_stitch_config,
     validate_multi_location_access,
@@ -127,7 +126,7 @@ def mock_pii_scan_results_with_unsupported():
 
 def test_missing_params(databricks_client_stub, llm_client_stub):
     """Test handling when parameters are missing."""
-    result = _helper_setup_stitch_logic(
+    result = _helper_prepare_stitch_config(
         databricks_client_stub, llm_client_stub, "", "test_schema"
     )
     assert "error" in result
@@ -144,7 +143,7 @@ def test_pii_scan_error(databricks_client_stub, llm_client_stub):
     databricks_client_stub.set_list_tables_error(Exception("Failed to access tables"))
 
     # Call function - real PII scan logic will fail and return error
-    result = _helper_setup_stitch_logic(
+    result = _helper_prepare_stitch_config(
         databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
@@ -187,7 +186,7 @@ def test_volume_list_error(
     databricks_client_stub.set_list_volumes_error(Exception("API Error"))
 
     # Call function - real business logic will handle the volume error
-    result = _helper_setup_stitch_logic(
+    result = _helper_prepare_stitch_config(
         databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
@@ -218,7 +217,7 @@ def test_volume_create_error(
     databricks_client_stub.set_create_volume_failure(True)
 
     # Call function - real business logic will try to create volume and fail
-    result = _helper_setup_stitch_logic(
+    result = _helper_prepare_stitch_config(
         databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
@@ -248,7 +247,7 @@ def test_no_tables_with_pii(
     databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
     # Call function - real PII scan will find no PII
-    result = _helper_setup_stitch_logic(
+    result = _helper_prepare_stitch_config(
         databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
     )
 
@@ -292,7 +291,7 @@ def test_missing_amperity_token(
             # Don't set any amperity token (should be None by default)
 
             # Call function - real config logic will detect missing token
-            result = _helper_setup_stitch_logic(
+            result = _helper_prepare_stitch_config(
                 databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
             )
 
@@ -339,7 +338,7 @@ def test_amperity_init_script_error(
             databricks_client_stub.set_fetch_amperity_error(Exception("API Error"))
 
             # Call function - real business logic will handle fetch error
-            result = _helper_setup_stitch_logic(
+            result = _helper_prepare_stitch_config(
                 databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
             )
 
@@ -401,7 +400,7 @@ def test_versioned_init_script_upload_error(
                     }
 
                     # Call function
-                    result = _helper_setup_stitch_logic(
+                    result = _helper_prepare_stitch_config(
                         databricks_client_stub,
                         llm_client_stub,
                         "test_catalog",
@@ -495,7 +494,7 @@ def test_successful_setup(
                     }
 
                     # Call function - should succeed with real business logic
-                    result = _helper_setup_stitch_logic(
+                    result = _helper_prepare_stitch_config(
                         databricks_client_stub,
                         llm_client_stub,
                         "test_catalog",
@@ -606,7 +605,7 @@ def test_unsupported_types_filtered(
                     }
 
                     # Call function - real business logic should filter unsupported types
-                    result = _helper_setup_stitch_logic(
+                    result = _helper_prepare_stitch_config(
                         databricks_client_stub,
                         llm_client_stub,
                         "test_catalog",
@@ -703,7 +702,7 @@ def test_all_columns_unsupported_types(databricks_client_stub, llm_client_stub):
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
             # Call function - real business logic will filter out all unsupported types
-            result = _helper_setup_stitch_logic(
+            result = _helper_prepare_stitch_config(
                 databricks_client_stub, llm_client_stub, "test_catalog", "test_schema"
             )
 
