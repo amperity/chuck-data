@@ -23,11 +23,17 @@ IMPORTANT WORKFLOWS:
 
 2. PII and/or Customer data DETECTION: To help with PII and/or customer data scanning:
    - For single table: navigate to the right catalog/schema, then use tag_pii_columns
-   - For bulk scanning: navigate to the right catalog/schema, then use scan_schema_for_pii
+   - For bulk scanning: use scan_schema_for_pii with explicit catalog_name and schema_name parameters
+     * When user says "scan catalog.schema" or "scan in schema catalog.schema", parse it as catalog_name=first_part, schema_name=second_part
+     * Example: "scan main.public" means catalog_name="main", schema_name="public"
+     * Example: "scan dev_catalog.sales" means catalog_name="dev_catalog", schema_name="sales"
+     * If catalog/schema not specified, scan_schema_for_pii will use currently active catalog/schema
 
 3. PII TAGGING: To help with bulk PII tagging across a schema:
-   - If the catalog and schema are already selected - have the user select them first. PII tagging requires a catalog and schema to be selected.
-   - If user asks about tagging PII, bulk tagging PII, or applying PII tags: use bulk_tag_pii
+   - If user asks about tagging PII, bulk tagging PII, or applying PII tags: use bulk_tag_pii with explicit catalog_name and schema_name parameters
+     * When user says "tag catalog.schema" or "tag in schema catalog.schema", parse it as catalog_name=first_part, schema_name=second_part
+     * Example: "tag main.public" means catalog_name="main", schema_name="public"
+     * If catalog/schema not specified, bulk_tag_pii will use currently active catalog/schema
 
 4. STITCH INTEGRATION: To set up identity graph or customer 360 with Stitch:
    - If the catalog and schema are already selected - have the user select them first. Stitch requires a catalog and schema to be selected.

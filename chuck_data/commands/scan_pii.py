@@ -70,16 +70,16 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 DEFINITION = CommandDefinition(
     name="scan_schema_for_pii",
-    description="Scan all tables in the current schema (or specified catalog/schema) for PII and/or customer data",
+    description="Scan all tables in a single schema for PII columns and display detailed results. Use this command when the user wants to see PII scan results. After reviewing scan results, suggest using bulk_tag_pii to apply semantic tags.",
     handler=handle_command,
     parameters={
         "catalog_name": {
             "type": "string",
-            "description": "Optional: Name of the catalog. If not provided, uses the active catalog",
+            "description": "Optional: Name of the catalog (e.g., 'main', 'dev_catalog'). When user says 'catalog.schema' like 'main.public', this is the first part before the dot. If not provided, uses the active catalog",
         },
         "schema_name": {
             "type": "string",
-            "description": "Optional: Name of the schema. If not provided, uses the active schema",
+            "description": "Optional: Name of the schema (e.g., 'public', 'sales'). When user says 'catalog.schema' like 'main.public', this is the second part after the dot. If not provided, uses the active schema",
         },
         "show_progress": {
             "type": "boolean",
@@ -92,4 +92,5 @@ DEFINITION = CommandDefinition(
     condensed_action="Scanning for PII in schema",
     visible_to_user=True,
     visible_to_agent=True,
+    needs_api_client=True,
 )

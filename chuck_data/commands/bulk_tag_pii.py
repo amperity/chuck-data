@@ -1287,16 +1287,16 @@ If you cannot understand the request, set action to "unknown".
 
 DEFINITION = CommandDefinition(
     name="bulk_tag_pii",
-    description="Scan schema for PII columns and bulk tag them with semantic tags after interactive confirmation",
+    description="Apply semantic tags to PII columns in a schema with interactive confirmation. This command scans for PII, shows a preview, and allows the user to confirm/modify before applying tags. Only use this when the user explicitly wants to TAG pii columns, not just scan for them.",
     handler=handle_bulk_tag_pii,
     parameters={
         "catalog_name": {
             "type": "string",
-            "description": "Optional: Name of the catalog. If not provided, uses the active catalog",
+            "description": "Optional: Name of the catalog (e.g., 'main', 'dev_catalog'). When user says 'catalog.schema' like 'main.public', this is the first part before the dot. If not provided, uses the active catalog",
         },
         "schema_name": {
             "type": "string",
-            "description": "Optional: Name of the schema. If not provided, uses the active schema",
+            "description": "Optional: Name of the schema (e.g., 'public', 'sales'). When user says 'catalog.schema' like 'main.public', this is the second part after the dot. If not provided, uses the active schema",
         },
         "auto_confirm": {
             "type": "boolean",
