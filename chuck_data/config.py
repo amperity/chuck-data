@@ -371,6 +371,12 @@ def get_redshift_s3_temp_dir():
     return getattr(_config_manager.get_config(), "redshift_s3_temp_dir", None)
 
 
+def get_data_provider():
+    """Get the data provider from config (databricks, aws_redshift, etc.)."""
+    config = _config_manager.get_config()
+    return getattr(config, "data_provider", None)
+
+
 # For direct access to config manager
 def get_config_manager():
     """Get the global config manager instance"""

@@ -8,10 +8,12 @@ from chuck_data.config import (
     get_active_schema,
     get_warehouse_id,
     get_workspace_url,
+    get_data_provider,
 )
 
 from .prompts import (
     DEFAULT_SYSTEM_MESSAGE,
+    get_default_system_message,
     PII_AGENT_SYSTEM_MESSAGE,
     BULK_PII_AGENT_SYSTEM_MESSAGE,
     STITCH_AGENT_SYSTEM_MESSAGE,
@@ -25,8 +27,13 @@ class AgentManager:
         self.llm_client = llm_client or LLMProviderFactory.create()
         self.model = model
         self.tool_output_callback = tool_output_callback
+
+        # Get provider-aware system message
+        provider = get_data_provider()
+        system_message = get_default_system_message(provider)
+
         self.conversation_history = [
-            {"role": "system", "content": DEFAULT_SYSTEM_MESSAGE}
+            {"role": "system", "content": system_message}
         ]
 
     def add_user_message(self, content):
@@ -337,7 +344,7 @@ class AgentManager:
         Returns:
             Final response from the LLM
         """
-        # If no system message exists, add the default one
+        # If no system message exists, add the provider-aware one
         has_system = False
         for msg in self.conversation_history:
             if msg["role"] == "system":
@@ -345,7 +352,9 @@ class AgentManager:
                 break
 
         if not has_system:
-            self.add_system_message(DEFAULT_SYSTEM_MESSAGE)
+            provider = get_data_provider()
+            system_message = get_default_system_message(provider)
+            self.add_system_message(system_message)
 
         # Add user message to history
         self.add_user_message(query)
