@@ -84,4 +84,5 @@ DEFINITION = CommandDefinition(
         "display", False
     ),  # Show full status only when display=True
     condensed_action="Getting status",  # Friendly name for condensed display
+    provider="databricks",  # Databricks-specific status command
 )

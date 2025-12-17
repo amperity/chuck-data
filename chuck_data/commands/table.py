@@ -150,4 +150,5 @@ DEFINITION = CommandDefinition(
     visible_to_agent=True,
     agent_display="full",  # Show full table details to agents
     usage_hint="Usage: /table --name <table_name> [--schema_name <schema_name>] [--catalog_name <catalog_name>] [--include_delta_metadata true|false]",
+    provider="databricks",  # Databricks Unity Catalog-specific command
 )

@@ -156,4 +156,5 @@ DEFINITION = CommandDefinition(
     ),  # Show full table only when display=True
     condensed_action="Listing schemas",  # Friendly name for condensed display
     usage_hint="Usage: /list-schemas [--display true|false] [--catalog_name <catalog>]",
+    provider="databricks",  # Databricks Unity Catalog-specific command
 )
