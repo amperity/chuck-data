@@ -6,10 +6,20 @@ from chuck_data.data_providers.adapters import (
     RedshiftProviderAdapter,
 )
 from chuck_data.data_providers.factory import DataProviderFactory
+from chuck_data.data_providers.utils import (
+    get_provider_name_from_client,
+    is_redshift_client,
+    is_databricks_client,
+    get_provider_adapter,
+)
 
 __all__ = [
     "DataProvider",
     "DatabricksProviderAdapter",
     "RedshiftProviderAdapter",
     "DataProviderFactory",
+    "get_provider_name_from_client",
+    "is_redshift_client",
+    "is_databricks_client",
+    "get_provider_adapter",
 ]
