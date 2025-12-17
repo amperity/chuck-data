@@ -422,3 +422,10 @@ def set_usage_tracking_consent(consent: bool):
         True if successful, False otherwise
     """
     return _config_manager.update(usage_tracking_consent=consent)
+
+
+def get_s3_bucket():
+    """Get the S3 bucket from config."""
+    config = _config_manager.get_config()
+    # Access via __dict__ since s3_bucket is not in the Pydantic schema but allowed via "extra": "allow"
+    return getattr(config, "s3_bucket", None)
