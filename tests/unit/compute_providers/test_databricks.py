@@ -79,10 +79,6 @@ class TestPrepareStitchJob:
         # Mock client methods
         mock_databricks_client.list_volumes.return_value = {"volumes": []}
         mock_databricks_client.create_volume.return_value = {"name": "chuck"}
-        mock_databricks_client.fetch_amperity_job_init.return_value = {
-            "cluster-init": "#!/bin/bash\necho 'init'",
-            "job-id": "test-job-123",
-        }
 
         config = {
             "target_catalog": "test_cat",
@@ -95,9 +91,17 @@ class TestPrepareStitchJob:
         ) as mock_scan:
             mock_scan.return_value = pii_scan_result
 
-            result = provider.prepare_stitch_job(
-                manifest={}, data_provider=None, config=config
-            )
+            with patch(
+                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init"
+            ) as mock_fetch_init:
+                mock_fetch_init.return_value = {
+                    "cluster-init": "#!/bin/bash\necho 'init'",
+                    "job-id": "test-job-123",
+                }
+
+                result = provider.prepare_stitch_job(
+                    manifest={}, data_provider=None, config=config
+                )
 
         # Assertions
         assert result["success"] is True
@@ -287,10 +291,6 @@ class TestPrepareStitchJob:
         mock_databricks_client.list_volumes.return_value = {
             "volumes": [{"name": "chuck"}]
         }
-        mock_databricks_client.fetch_amperity_job_init.return_value = {
-            "cluster-init": "#!/bin/bash",
-            "job-id": "test-job-123",
-        }
 
         config = {
             "target_catalog": "test_cat",
@@ -303,9 +303,17 @@ class TestPrepareStitchJob:
         ) as mock_scan:
             mock_scan.return_value = pii_scan_result
 
-            result = provider.prepare_stitch_job(
-                manifest={}, data_provider=None, config=config
-            )
+            with patch(
+                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init"
+            ) as mock_fetch_init:
+                mock_fetch_init.return_value = {
+                    "cluster-init": "#!/bin/bash",
+                    "job-id": "test-job-123",
+                }
+
+                result = provider.prepare_stitch_job(
+                    manifest={}, data_provider=None, config=config
+                )
 
         # Only email should be included (STRING type)
         assert len(result["stitch_config"]["tables"][0]["fields"]) == 1
