@@ -9,8 +9,10 @@ allowing customers to leverage their existing AWS infrastructure for data proces
 import logging
 from typing import Dict, Any, Optional
 
+from chuck_data.compute_providers.provider import ComputeProvider
 
-class EMRComputeProvider:
+
+class EMRComputeProvider(ComputeProvider):
     """Run Stitch jobs on Amazon EMR clusters.
 
     This compute provider can process data from:

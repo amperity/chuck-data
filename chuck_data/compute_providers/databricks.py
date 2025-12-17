@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.commands.cluster_init_tools import _helper_upload_cluster_init_logic
 from chuck_data.config import get_amperity_token
+from chuck_data.compute_providers.provider import ComputeProvider
 
 
 # Unsupported column types for Stitch (from stitch_tools.py)
@@ -35,12 +36,14 @@ NUMERIC_TYPES = [
 ]
 
 
-class DatabricksComputeProvider:
+class DatabricksComputeProvider(ComputeProvider):
     """Run Stitch jobs on Databricks clusters.
 
     This compute provider can process data from:
     - Databricks Unity Catalog (direct access)
     - AWS Redshift (via Spark-Redshift connector)
+
+    Implements the ComputeProvider protocol.
     """
 
     def __init__(
@@ -48,6 +51,7 @@ class DatabricksComputeProvider:
         workspace_url: str,
         token: str,
         storage_provider: Optional[Any] = None,
+        data_provider_type: Optional[str] = None,
         **kwargs,
     ):
         """Initialize Databricks compute provider.
@@ -56,21 +60,35 @@ class DatabricksComputeProvider:
             workspace_url: Databricks workspace URL
             token: Authentication token
             storage_provider: Optional StorageProvider for uploading artifacts.
-                            If not provided, will use client.upload_file() directly.
+                            If not provided, will be auto-selected based on data_provider_type.
+            data_provider_type: Type of data provider ('databricks' or 'redshift').
+                              Used to auto-select storage provider if storage_provider is None.
             **kwargs: Additional configuration options
         """
         self.workspace_url = workspace_url
         self.token = token
         self.config = kwargs
+        self.data_provider_type = data_provider_type
         self.client = DatabricksAPIClient(workspace_url=workspace_url, token=token)
 
-        # Use provided storage provider or create default one
+        # Use provided storage provider or auto-select based on data provider
         if storage_provider is None:
-            from chuck_data.storage_providers import DatabricksVolumeStorage
+            if data_provider_type == "redshift":
+                # Redshift data → use S3 for manifest and init script storage
+                from chuck_data.storage_providers import S3Storage
 
-            self.storage_provider = DatabricksVolumeStorage(
-                workspace_url=workspace_url, token=token, client=self.client
-            )
+                # S3Storage needs AWS credentials from kwargs or environment
+                self.storage_provider = S3Storage(
+                    region=kwargs.get("aws_region", "us-east-1"),
+                    aws_profile=kwargs.get("aws_profile"),
+                )
+            else:
+                # Databricks data (or default) → use Databricks Volumes
+                from chuck_data.storage_providers import DatabricksVolumeStorage
+
+                self.storage_provider = DatabricksVolumeStorage(
+                    workspace_url=workspace_url, token=token, client=self.client
+                )
         else:
             self.storage_provider = storage_provider
 
@@ -235,7 +253,10 @@ class DatabricksComputeProvider:
 
         # Fetch init script content and job-id from Amperity API
         try:
-            init_script_data = self.client.fetch_amperity_job_init(amperity_token)
+            from chuck_data.clients.amperity import AmperityAPIClient
+
+            amperity_client = AmperityAPIClient()
+            init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
             init_script_content = init_script_data.get("cluster-init")
             job_id = init_script_data.get("job-id")
 
