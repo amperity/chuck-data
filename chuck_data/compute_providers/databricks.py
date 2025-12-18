@@ -50,8 +50,7 @@ class DatabricksComputeProvider(ComputeProvider):
         self,
         workspace_url: str,
         token: str,
-        storage_provider: Optional[Any] = None,
-        data_provider_type: Optional[str] = None,
+        storage_provider: Any,
         **kwargs,
     ):
         """Initialize Databricks compute provider.
@@ -59,38 +58,21 @@ class DatabricksComputeProvider(ComputeProvider):
         Args:
             workspace_url: Databricks workspace URL
             token: Authentication token
-            storage_provider: Optional StorageProvider for uploading artifacts.
-                            If not provided, will be auto-selected based on data_provider_type.
-            data_provider_type: Type of data provider ('databricks' or 'redshift').
-                              Used to auto-select storage provider if storage_provider is None.
+            storage_provider: StorageProvider instance for uploading artifacts.
+                            Must be provided - use ProviderFactory.create_storage_provider()
             **kwargs: Additional configuration options
         """
+        if storage_provider is None:
+            raise ValueError(
+                "storage_provider is required. Use ProviderFactory.create_storage_provider() "
+                "to create the appropriate storage provider instance."
+            )
+
         self.workspace_url = workspace_url
         self.token = token
         self.config = kwargs
-        self.data_provider_type = data_provider_type
         self.client = DatabricksAPIClient(workspace_url=workspace_url, token=token)
-
-        # Use provided storage provider or auto-select based on data provider
-        if storage_provider is None:
-            if data_provider_type == "redshift":
-                # Redshift data → use S3 for manifest and init script storage
-                from chuck_data.storage_providers import S3Storage
-
-                # S3Storage needs AWS credentials from kwargs or environment
-                self.storage_provider = S3Storage(
-                    region=kwargs.get("aws_region", "us-east-1"),
-                    aws_profile=kwargs.get("aws_profile"),
-                )
-            else:
-                # Databricks data (or default) → use Databricks Volumes
-                from chuck_data.storage_providers import DatabricksVolumeStorage
-
-                self.storage_provider = DatabricksVolumeStorage(
-                    workspace_url=workspace_url, token=token, client=self.client
-                )
-        else:
-            self.storage_provider = storage_provider
+        self.storage_provider = storage_provider
 
     def prepare_stitch_job(
         self,
