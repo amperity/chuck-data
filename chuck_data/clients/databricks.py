@@ -656,7 +656,7 @@ class DatabricksAPIClient:
                     "spark_jar_task": {
                         "jar_uri": "",
                         "main_class_name": os.environ.get(
-                            "MAIN_CLASS", "amperity.stitch_standalone.chuck_main"
+                            "MAIN_CLASS", "amperity.stitch_standalone.generic_main"
                         ),
                         "parameters": [
                             "",

@@ -185,12 +185,20 @@ def _helper_prepare_stitch_config(
     # Step 3: Generate Stitch configuration
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     stitch_job_name = f"stitch-{current_datetime}"
+
+    # Get provider values from config
+    from chuck_data.config import get_data_provider, get_compute_provider
+    data_provider = get_data_provider() or "databricks"  # Default to databricks if not set
+    compute_provider = get_compute_provider() or "databricks"  # Default to databricks if not set
+
     stitch_config = {
         "name": stitch_job_name,
         "tables": [],
         "settings": {
             "output_catalog_name": target_catalog,
             "output_schema_name": "stitch_outputs",
+            "data_provider": data_provider,
+            "compute_provider": compute_provider,
         },
     }
 
@@ -396,12 +404,19 @@ def _helper_prepare_multi_location_stitch_config(
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     stitch_job_name = f"stitch-multi-{current_datetime}"
 
+    # Get provider values from config
+    from chuck_data.config import get_data_provider, get_compute_provider
+    data_provider = get_data_provider() or "databricks"  # Default to databricks if not set
+    compute_provider = get_compute_provider() or "databricks"  # Default to databricks if not set
+
     stitch_config = {
         "name": stitch_job_name,
         "tables": [],
         "settings": {
             "output_catalog_name": output_catalog,
             "output_schema_name": "stitch_outputs",
+            "data_provider": data_provider,
+            "compute_provider": compute_provider,
         },
     }
 

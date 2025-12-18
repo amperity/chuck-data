@@ -50,6 +50,10 @@ class ChuckConfig(BaseModel):
         default=None,
         description="Data provider type (databricks, aws_redshift)",
     )
+    compute_provider: Optional[str] = Field(
+        default=None,
+        description="Compute provider type (databricks, emr)",
+    )
 
     # No validator - use defaults instead of failing
 
@@ -445,6 +449,21 @@ def set_data_provider(provider: str):
         )
 
     return _config_manager.update(**updates)
+
+
+def get_compute_provider():
+    """Get the compute provider from config (databricks, emr, etc.)."""
+    config = _config_manager.get_config()
+    return getattr(config, "compute_provider", None)
+
+
+def set_compute_provider(provider: str):
+    """Set the compute provider in config.
+
+    Args:
+        provider: Compute provider type ("databricks", "emr")
+    """
+    return _config_manager.update(compute_provider=provider)
 
 
 # For direct access to config manager
