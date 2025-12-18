@@ -17,6 +17,7 @@ class WizardStep(Enum):
     # AWS Redshift-specific steps
     AWS_PROFILE_INPUT = "aws_profile_input"
     AWS_REGION_INPUT = "aws_region_input"
+    AWS_ACCOUNT_ID_INPUT = "aws_account_id_input"
     REDSHIFT_CLUSTER_SELECTION = "redshift_cluster_selection"
     S3_BUCKET_INPUT = "s3_bucket_input"
     IAM_ROLE_INPUT = "iam_role_input"
@@ -55,6 +56,7 @@ class WizardState:
     # AWS-specific fields
     aws_profile: Optional[str] = None
     aws_region: Optional[str] = None
+    aws_account_id: Optional[str] = None
     redshift_cluster_identifier: Optional[str] = None
     redshift_workgroup_name: Optional[str] = None
     s3_bucket: Optional[str] = None
@@ -78,8 +80,12 @@ class WizardState:
             return self.data_provider == "aws_redshift"
         elif step == WizardStep.AWS_REGION_INPUT:
             return self.data_provider == "aws_redshift" and self.aws_profile is not None
-        elif step == WizardStep.REDSHIFT_CLUSTER_SELECTION:
+        elif step == WizardStep.AWS_ACCOUNT_ID_INPUT:
             return self.data_provider == "aws_redshift" and self.aws_region is not None
+        elif step == WizardStep.REDSHIFT_CLUSTER_SELECTION:
+            return (
+                self.data_provider == "aws_redshift" and self.aws_account_id is not None
+            )
         elif step == WizardStep.S3_BUCKET_INPUT:
             return self.data_provider == "aws_redshift" and (
                 self.redshift_cluster_identifier is not None
@@ -147,14 +153,19 @@ class WizardStateMachine:
                 WizardStep.DATA_PROVIDER_SELECTION,
             ],
             WizardStep.AWS_REGION_INPUT: [
-                WizardStep.REDSHIFT_CLUSTER_SELECTION,
+                WizardStep.AWS_ACCOUNT_ID_INPUT,
                 WizardStep.AWS_REGION_INPUT,
                 WizardStep.AWS_PROFILE_INPUT,
+            ],
+            WizardStep.AWS_ACCOUNT_ID_INPUT: [
+                WizardStep.REDSHIFT_CLUSTER_SELECTION,
+                WizardStep.AWS_ACCOUNT_ID_INPUT,
+                WizardStep.AWS_REGION_INPUT,
             ],
             WizardStep.REDSHIFT_CLUSTER_SELECTION: [
                 WizardStep.S3_BUCKET_INPUT,
                 WizardStep.REDSHIFT_CLUSTER_SELECTION,
-                WizardStep.AWS_REGION_INPUT,
+                WizardStep.AWS_ACCOUNT_ID_INPUT,
             ],
             WizardStep.S3_BUCKET_INPUT: [
                 WizardStep.IAM_ROLE_INPUT,
@@ -266,6 +277,8 @@ class WizardStateMachine:
         elif current_step == WizardStep.AWS_PROFILE_INPUT:
             return WizardStep.AWS_REGION_INPUT
         elif current_step == WizardStep.AWS_REGION_INPUT:
+            return WizardStep.AWS_ACCOUNT_ID_INPUT
+        elif current_step == WizardStep.AWS_ACCOUNT_ID_INPUT:
             return WizardStep.REDSHIFT_CLUSTER_SELECTION
         elif current_step == WizardStep.REDSHIFT_CLUSTER_SELECTION:
             return WizardStep.S3_BUCKET_INPUT

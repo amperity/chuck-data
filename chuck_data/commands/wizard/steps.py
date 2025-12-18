@@ -759,8 +759,8 @@ class AWSRegionInputStep(SetupStep):
             )
             return StepResult(
                 success=True,
-                message=f"AWS region '{region}' configured. Proceeding to cluster selection.",
-                next_step=WizardStep.REDSHIFT_CLUSTER_SELECTION,
+                message=f"AWS region '{region}' configured. Proceeding to AWS account ID input.",
+                next_step=WizardStep.AWS_ACCOUNT_ID_INPUT,
                 action=WizardAction.CONTINUE,
                 data={"aws_region": region},
             )
@@ -770,6 +770,70 @@ class AWSRegionInputStep(SetupStep):
             return StepResult(
                 success=False,
                 message=f"Error saving AWS region: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class AWSAccountIdInputStep(SetupStep):
+    """Handle AWS Account ID input for Redshift JDBC URL construction."""
+
+    def get_step_title(self) -> str:
+        return "AWS Account ID Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please enter your AWS Account ID (12-digit number):\n"
+            "(This is required to construct the Redshift JDBC URL)\n"
+            "(You can find this in the AWS Console under your account settings)"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle AWS Account ID input."""
+        account_id = input_text.strip()
+
+        if not account_id:
+            return StepResult(
+                success=False,
+                message="AWS Account ID cannot be empty. Please enter a 12-digit account ID.",
+                action=WizardAction.RETRY,
+            )
+
+        # Validate account ID format (should be 12 digits)
+        if not account_id.isdigit() or len(account_id) != 12:
+            return StepResult(
+                success=False,
+                message="Invalid AWS Account ID format. Must be exactly 12 digits.",
+                action=WizardAction.RETRY,
+            )
+
+        # Save account ID to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(aws_account_id=account_id)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save AWS Account ID. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            logging.info(
+                f"AWS Account ID '{account_id}' saved to config and will be added to state"
+            )
+            return StepResult(
+                success=True,
+                message=f"AWS Account ID configured. Proceeding to cluster selection.",
+                next_step=WizardStep.REDSHIFT_CLUSTER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"aws_account_id": account_id},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving AWS Account ID: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving AWS Account ID: {str(e)}",
                 action=WizardAction.RETRY,
             )
 
@@ -1190,6 +1254,7 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
         WizardStep.MODEL_SELECTION: ModelSelectionStep,
         WizardStep.AWS_PROFILE_INPUT: AWSProfileInputStep,
         WizardStep.AWS_REGION_INPUT: AWSRegionInputStep,
+        WizardStep.AWS_ACCOUNT_ID_INPUT: AWSAccountIdInputStep,
         WizardStep.REDSHIFT_CLUSTER_SELECTION: RedshiftClusterSelectionStep,
         WizardStep.S3_BUCKET_INPUT: S3BucketInputStep,
         WizardStep.IAM_ROLE_INPUT: IAMRoleInputStep,
