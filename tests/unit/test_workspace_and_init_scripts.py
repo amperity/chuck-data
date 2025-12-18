@@ -259,14 +259,20 @@ class TestProtocolImplementation:
 
     def test_databricks_compute_provider_implements_protocol(self):
         """Test DatabricksComputeProvider implements ComputeProvider protocol."""
+        from unittest.mock import Mock
         from chuck_data.compute_providers import (
             DatabricksComputeProvider,
             ComputeProvider,
         )
 
+        # Create mock storage provider
+        mock_storage = Mock()
+
         # Create instance
         provider = DatabricksComputeProvider(
-            workspace_url="test-workspace", token="test-token"
+            workspace_url="test-workspace",
+            token="test-token",
+            storage_provider=mock_storage,
         )
 
         # Verify it's recognized as implementing the protocol
@@ -274,11 +280,18 @@ class TestProtocolImplementation:
 
     def test_emr_compute_provider_implements_protocol(self):
         """Test EMRComputeProvider implements ComputeProvider protocol."""
+        from unittest.mock import Mock
         from chuck_data.compute_providers import EMRComputeProvider, ComputeProvider
+
+        # Create mock storage provider
+        mock_storage = Mock()
 
         # Create instance
         provider = EMRComputeProvider(
-            aws_access_key_id="key", aws_secret_access_key="secret", region="us-west-2"
+            region="us-west-2",
+            storage_provider=mock_storage,
+            aws_access_key_id="key",
+            aws_secret_access_key="secret",
         )
 
         # Verify it's recognized as implementing the protocol
@@ -311,14 +324,14 @@ class TestProtocolImplementation:
 class TestDependencyInjection:
     """Tests for dependency injection pattern in setup_stitch."""
 
-    @patch("chuck_data.compute_providers.DatabricksComputeProvider")
+    @patch("chuck_data.provider_factory.ProviderFactory.create_compute_provider")
     @patch("chuck_data.config.get_workspace_url")
     @patch("chuck_data.config.get_databricks_token")
     @patch("chuck_data.data_providers.is_redshift_client")
     def test_compute_provider_created_once_in_handle_command(
-        self, mock_is_redshift, mock_get_token, mock_get_url, mock_provider_class
+        self, mock_is_redshift, mock_get_token, mock_get_url, mock_factory
     ):
-        """Test compute provider is created once in handle_command and passed down."""
+        """Test compute provider uses factory pattern instead of direct instantiation."""
         from chuck_data.commands.setup_stitch import handle_command
         from chuck_data.clients.databricks import DatabricksAPIClient
 
@@ -328,7 +341,7 @@ class TestDependencyInjection:
         mock_is_redshift.return_value = False
 
         mock_provider_instance = MagicMock()
-        mock_provider_class.return_value = mock_provider_instance
+        mock_factory.return_value = mock_provider_instance
 
         client = MagicMock(spec=DatabricksAPIClient)
 
@@ -339,8 +352,17 @@ class TestDependencyInjection:
             mock_handler.return_value = MagicMock()
             handle_command(client, auto_confirm=True)
 
-        # Verify provider was created exactly once
-        assert mock_provider_class.call_count == 1
+        # Verify factory was called exactly once
+        assert mock_factory.call_count == 1
+        # Verify factory was called with correct parameters
+        mock_factory.assert_called_once_with(
+            "databricks",
+            {
+                "workspace_url": "https://workspace.databricks.com",
+                "token": "test-token",
+                "data_provider_type": "databricks",
+            },
+        )
 
         # Verify it was passed to the handler
         mock_handler.assert_called_once()
@@ -352,9 +374,9 @@ class TestRedshiftS3Upload:
     """Tests for Redshift init script S3 upload."""
 
     @patch("boto3.client")
-    @patch("chuck_data.config.get_redshift_region")
+    @patch("chuck_data.commands.setup_stitch.get_redshift_region")
     @patch("chuck_data.clients.amperity.AmperityAPIClient")
-    @patch("chuck_data.config.get_amperity_token")
+    @patch("chuck_data.commands.setup_stitch.get_amperity_token")
     def test_redshift_phase_2_uploads_init_script_to_s3(
         self, mock_get_token, mock_amperity_class, mock_get_region, mock_boto_client
     ):
@@ -395,15 +417,21 @@ class TestRedshiftS3Upload:
         client = MagicMock()
         console = get_console()
 
-        # Mock the submission function
-        with patch(
-            "chuck_data.commands.setup_stitch._submit_stitch_job_to_databricks"
-        ) as mock_submit:
+        # Mock the submission function and guidance message builder
+        with (
+            patch(
+                "chuck_data.commands.setup_stitch._submit_stitch_job_to_databricks"
+            ) as mock_submit,
+            patch(
+                "chuck_data.commands.setup_stitch._build_post_launch_guidance_message"
+            ) as mock_guidance,
+        ):
             mock_submit.return_value = {
                 "success": True,
                 "run_id": 123,
                 "databricks_client": MagicMock(),
             }
+            mock_guidance.return_value = "Mock guidance message"
 
             # Call the function
             result = _redshift_phase_2_confirm(
