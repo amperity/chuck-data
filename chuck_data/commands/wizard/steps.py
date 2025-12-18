@@ -153,9 +153,9 @@ class DataProviderSelectionStep(SetupStep):
 
         # Save provider to config
         try:
-            from chuck_data.config import get_config_manager
+            from chuck_data.config import set_data_provider
 
-            success = get_config_manager().update(data_provider=provider)
+            success = set_data_provider(provider)
             if not success:
                 return StepResult(
                     success=False,
