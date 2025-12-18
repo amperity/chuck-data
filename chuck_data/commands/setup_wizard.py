@@ -160,6 +160,7 @@ class SetupWizardOrchestrator:
             "token": state.token,
             "aws_profile": state.aws_profile,
             "aws_region": state.aws_region,
+            "aws_account_id": state.aws_account_id,
             "redshift_cluster_identifier": state.redshift_cluster_identifier,
             "redshift_workgroup_name": state.redshift_workgroup_name,
             "s3_bucket": state.s3_bucket,
@@ -210,6 +211,7 @@ class SetupWizardOrchestrator:
                 token=context_data.get("token"),
                 aws_profile=context_data.get("aws_profile"),
                 aws_region=context_data.get("aws_region"),
+                aws_account_id=context_data.get("aws_account_id"),
                 redshift_cluster_identifier=context_data.get(
                     "redshift_cluster_identifier"
                 ),
@@ -250,6 +252,7 @@ class SetupWizardOrchestrator:
             WizardStep.DATA_PROVIDER_SELECTION,
             WizardStep.AWS_PROFILE_INPUT,
             WizardStep.AWS_REGION_INPUT,
+            WizardStep.AWS_ACCOUNT_ID_INPUT,
             WizardStep.REDSHIFT_CLUSTER_SELECTION,
             WizardStep.S3_BUCKET_INPUT,
             WizardStep.IAM_ROLE_INPUT,
