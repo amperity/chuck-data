@@ -124,7 +124,7 @@ class TestAWSRegionInputStep:
             result = step.handle_input("us-west-2", state)
 
             assert result.success is True
-            assert result.next_step == WizardStep.REDSHIFT_CLUSTER_SELECTION
+            assert result.next_step == WizardStep.AWS_ACCOUNT_ID_INPUT
             assert result.data == {"aws_region": "us-west-2"}
 
     def test_handle_input_empty_region(self, validator):

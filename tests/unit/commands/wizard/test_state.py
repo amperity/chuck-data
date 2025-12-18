@@ -83,12 +83,14 @@ class TestWizardState:
         state.aws_profile = "default"
         assert state.is_valid_for_step(WizardStep.AWS_REGION_INPUT) is True
 
-    def test_is_valid_for_redshift_cluster_selection_requires_region(self):
-        """Test REDSHIFT_CLUSTER_SELECTION requires aws_region."""
-        state = WizardState(data_provider="aws_redshift", aws_profile="default")
+    def test_is_valid_for_redshift_cluster_selection_requires_account_id(self):
+        """Test REDSHIFT_CLUSTER_SELECTION requires aws_account_id."""
+        state = WizardState(
+            data_provider="aws_redshift", aws_profile="default", aws_region="us-west-2"
+        )
         assert state.is_valid_for_step(WizardStep.REDSHIFT_CLUSTER_SELECTION) is False
 
-        state.aws_region = "us-west-2"
+        state.aws_account_id = "123456789012"
         assert state.is_valid_for_step(WizardStep.REDSHIFT_CLUSTER_SELECTION) is True
 
     def test_is_valid_for_s3_bucket_input_requires_cluster(self):
@@ -220,7 +222,7 @@ class TestWizardStateMachine:
         )
         assert (
             machine.can_transition(
-                WizardStep.REDSHIFT_CLUSTER_SELECTION, WizardStep.AWS_REGION_INPUT
+                WizardStep.REDSHIFT_CLUSTER_SELECTION, WizardStep.AWS_ACCOUNT_ID_INPUT
             )
             is True
         )
@@ -300,6 +302,10 @@ class TestWizardStateMachine:
         )
         assert (
             machine.get_next_step(WizardStep.AWS_REGION_INPUT, state)
+            == WizardStep.AWS_ACCOUNT_ID_INPUT
+        )
+        assert (
+            machine.get_next_step(WizardStep.AWS_ACCOUNT_ID_INPUT, state)
             == WizardStep.REDSHIFT_CLUSTER_SELECTION
         )
         assert (
