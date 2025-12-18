@@ -188,8 +188,13 @@ def _helper_prepare_stitch_config(
 
     # Get provider values from config
     from chuck_data.config import get_data_provider, get_compute_provider
-    data_provider = get_data_provider() or "databricks"  # Default to databricks if not set
-    compute_provider = get_compute_provider() or "databricks"  # Default to databricks if not set
+
+    data_provider = (
+        get_data_provider() or "databricks"
+    )  # Default to databricks if not set
+    compute_provider = (
+        get_compute_provider() or "databricks"
+    )  # Default to databricks if not set
 
     stitch_config = {
         "name": stitch_job_name,
@@ -406,8 +411,13 @@ def _helper_prepare_multi_location_stitch_config(
 
     # Get provider values from config
     from chuck_data.config import get_data_provider, get_compute_provider
-    data_provider = get_data_provider() or "databricks"  # Default to databricks if not set
-    compute_provider = get_compute_provider() or "databricks"  # Default to databricks if not set
+
+    data_provider = (
+        get_data_provider() or "databricks"
+    )  # Default to databricks if not set
+    compute_provider = (
+        get_compute_provider() or "databricks"
+    )  # Default to databricks if not set
 
     stitch_config = {
         "name": stitch_job_name,
