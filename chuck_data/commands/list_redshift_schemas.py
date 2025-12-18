@@ -34,7 +34,7 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs: Any) -> Comman
     database = kwargs.get("database")
 
     # Get current schema and database for context
-    current_schema = get_active_schema()
+    current_schema = get_active_schema() or "not selected"
     current_database = get_active_database()
 
     # If database not provided, use active database

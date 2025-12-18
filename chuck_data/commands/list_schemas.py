@@ -43,7 +43,7 @@ def handle_command(
     page_token = kwargs.get("page_token")
 
     # Get current schema for highlighting
-    current_schema = get_active_schema()
+    current_schema = get_active_schema() or "not selected"
 
     # If catalog_name not provided, try to use active catalog
     if not catalog_name:
