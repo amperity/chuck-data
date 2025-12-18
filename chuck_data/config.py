@@ -355,6 +355,16 @@ def get_redshift_region():
     return getattr(_config_manager.get_config(), "aws_region", None)
 
 
+def get_aws_account_id():
+    """Get AWS Account ID from config."""
+    return getattr(_config_manager.get_config(), "aws_account_id", None)
+
+
+def set_aws_account_id(account_id):
+    """Set AWS Account ID in config."""
+    return _config_manager.update(aws_account_id=account_id)
+
+
 def get_redshift_cluster_identifier():
     """Get Redshift cluster identifier from config."""
     return getattr(_config_manager.get_config(), "redshift_cluster_identifier", None)
