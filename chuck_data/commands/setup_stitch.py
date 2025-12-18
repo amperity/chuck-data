@@ -287,7 +287,7 @@ def handle_command(
     is_redshift = is_redshift_client(client)
 
     # Create compute provider (currently only Databricks is supported)
-    from chuck_data.compute_providers import DatabricksComputeProvider
+    from chuck_data.provider_factory import ProviderFactory
     from chuck_data.config import get_workspace_url, get_databricks_token
 
     workspace_url = get_workspace_url()
@@ -299,10 +299,13 @@ def handle_command(
     # Determine data provider type for storage provider selection
     data_provider_type = "redshift" if is_redshift else "databricks"
 
-    compute_provider = DatabricksComputeProvider(
-        workspace_url=workspace_url,
-        token=databricks_token,
-        data_provider_type=data_provider_type,
+    compute_provider = ProviderFactory.create_compute_provider(
+        "databricks",
+        {
+            "workspace_url": workspace_url,
+            "token": databricks_token,
+            "data_provider_type": data_provider_type,
+        },
     )
 
     # Route to appropriate handler
