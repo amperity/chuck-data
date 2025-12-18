@@ -20,6 +20,8 @@ def generate_manifest_from_scan(
     scan_results: Dict[str, Any],
     redshift_config: Dict[str, str],
     s3_config: Dict[str, str],
+    data_provider: Optional[str] = None,
+    compute_provider: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate a stitch-standalone manifest from PII scan results.
@@ -65,6 +67,9 @@ def generate_manifest_from_scan(
                 "temp_dir": "s3://bucket/temp/",
                 "iam_role": "arn:aws:iam::123456789:role/RedshiftRole"
             }
+
+        data_provider: Data storage provider (e.g., "redshift", "unity-catalog")
+        compute_provider: Compute provider (e.g., "databricks", "emr")
 
     Returns:
         Manifest dictionary in stitch-standalone format
@@ -140,6 +145,12 @@ def generate_manifest_from_scan(
         manifest["settings"]["redshift_config"]["password"] = redshift_config[
             "password"
         ]
+
+    # Add explicit provider fields if specified
+    if data_provider:
+        manifest["settings"]["data_provider"] = data_provider
+    if compute_provider:
+        manifest["settings"]["compute_provider"] = compute_provider
 
     return manifest
 

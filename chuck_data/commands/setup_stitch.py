@@ -26,6 +26,7 @@ from chuck_data.config import (
     get_redshift_s3_temp_dir,
     get_s3_bucket,
     get_redshift_region,
+    get_aws_account_id,
     get_amperity_token,
 )
 from chuck_data.metrics_collector import get_metrics_collector
@@ -1065,8 +1066,18 @@ def _redshift_phase_1_prepare(
 
     # Step 3: Generate manifest
     console.print("\nStep 3: Generating manifest...")
+    # Get provider names from compute_provider object
+    compute_provider_name = (
+        compute_provider.value if hasattr(compute_provider, "value") else "databricks"
+    )
     manifest_result = _generate_redshift_manifest(
-        database, schema_name, tables, semantic_tags, client
+        database,
+        schema_name,
+        tables,
+        semantic_tags,
+        client,
+        data_provider="redshift",
+        compute_provider=compute_provider_name,
     )
 
     if not manifest_result["success"]:
@@ -1457,8 +1468,15 @@ def _handle_redshift_stitch_setup(
 
             # Step 3: Generate manifest
             console.print("\nStep 3: Generating manifest...")
+            # Default to databricks for auto-confirmed setup
             manifest_result = _generate_redshift_manifest(
-                database, schema_name, tables, semantic_tags, client
+                database,
+                schema_name,
+                tables,
+                semantic_tags,
+                client,
+                data_provider="redshift",
+                compute_provider="databricks",
             )
 
             if not manifest_result["success"]:
@@ -1716,7 +1734,13 @@ def _handle_redshift_stitch_setup(
 
 
 def _generate_redshift_manifest(
-    database: str, schema_name: str, tables: list, semantic_tags: list, client=None
+    database: str,
+    schema_name: str,
+    tables: list,
+    semantic_tags: list,
+    client=None,
+    data_provider: str = "redshift",
+    compute_provider: str = "databricks",
 ) -> Dict[str, Any]:
     """Generate manifest JSON from table schemas with semantic tags.
 
@@ -1789,6 +1813,11 @@ def _generate_redshift_manifest(
             if region:
                 redshift_config["region"] = region
 
+        # Add AWS account ID to redshift config
+        account_id = get_aws_account_id()
+        if account_id:
+            redshift_config["aws_account_id"] = account_id
+
         # Get S3 settings
         s3_temp_dir = get_redshift_s3_temp_dir()
         s3_bucket = get_s3_bucket()
@@ -1822,6 +1851,8 @@ def _generate_redshift_manifest(
                 "redshift_iam_role": iam_role,
                 "output_database_name": database,
                 "output_schema_name": "stitch_outputs",
+                "data_provider": data_provider,
+                "compute_provider": compute_provider,
             },
         }
 
