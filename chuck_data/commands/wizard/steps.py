@@ -265,20 +265,28 @@ class LLMProviderSelectionStep(SetupStep):
             # Fetch Databricks models
             try:
                 from chuck_data.llm.providers.databricks import DatabricksProvider
+                from chuck_data.clients.databricks import DatabricksAPIClient
 
+                # Only use the service client if it's a DatabricksAPIClient
+                # If the data provider is Redshift, we need to create a Databricks client for LLM
                 service = get_chuck_service()
-                if not service or not service.client:
+                databricks_client = None
+
+                if service and service.client and isinstance(service.client, DatabricksAPIClient):
+                    databricks_client = service.client
+
+                # For Databricks LLM provider, we need workspace_url and token
+                if not state.workspace_url or not state.token:
                     return StepResult(
                         success=False,
-                        message="Databricks connection not available. Please restart setup.",
-                        next_step=WizardStep.DATA_PROVIDER_SELECTION,
-                        action=WizardAction.CONTINUE,
+                        message="Databricks credentials not available. Please configure Databricks workspace and token first.",
+                        action=WizardAction.RETRY,
                     )
 
                 databricks_provider = DatabricksProvider(
                     workspace_url=state.workspace_url,
                     token=state.token,
-                    client=service.client,
+                    client=databricks_client,
                 )
                 models = databricks_provider.list_models()
                 logging.info(f"Found {len(models)} Databricks models")
@@ -589,6 +597,7 @@ class ModelSelectionStep(SetupStep):
             try:
                 if state.llm_provider == "databricks":
                     from chuck_data.llm.providers.databricks import DatabricksProvider
+                    from chuck_data.clients.databricks import DatabricksAPIClient
 
                     # Check if we have the required credentials
                     if not state.workspace_url or not state.token:
@@ -602,22 +611,18 @@ class ModelSelectionStep(SetupStep):
                             action=WizardAction.CONTINUE,
                         )
 
+                    # Only use the service client if it's a DatabricksAPIClient
+                    # If the data provider is Redshift, we need to create a Databricks client for LLM
                     service = get_chuck_service()
-                    if not service or not service.client:
-                        logging.error(
-                            f"Service not initialized - service: {service}, client: {service.client if service else 'N/A'}"
-                        )
-                        return StepResult(
-                            success=False,
-                            message="Data provider connection not available. Please restart the wizard.",
-                            next_step=WizardStep.DATA_PROVIDER_SELECTION,
-                            action=WizardAction.CONTINUE,
-                        )
+                    databricks_client = None
+
+                    if service and service.client and isinstance(service.client, DatabricksAPIClient):
+                        databricks_client = service.client
 
                     provider = DatabricksProvider(
                         workspace_url=state.workspace_url,
                         token=state.token,
-                        client=service.client,
+                        client=databricks_client,
                     )
                     state.models = provider.list_models()
                     logging.info(f"Found {len(state.models)} Databricks models")

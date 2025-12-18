@@ -225,9 +225,10 @@ class ConfigManager:
                 kwargs.pop("workspace_url")
 
         # Set values
+        # Note: We use setattr directly instead of checking hasattr because the model
+        # has extra="allow", which allows dynamic fields like aws_account_id, aws_region, etc.
         for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
+            setattr(config, key, value)
 
         return self.save()
 
