@@ -13,6 +13,8 @@ This module is responsible for:
 import logging
 import jsonschema  # Requires jsonschema to be installed
 
+from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.command_registry import get_command
 from chuck_data.command_registry import (
     get_agent_tool_schemas as get_command_registry_tool_schemas,
@@ -20,11 +22,8 @@ from chuck_data.command_registry import (
 from chuck_data.commands.base import (
     CommandResult,
 )  # For type hinting and checking handler result
-from chuck_data.clients.databricks import (
-    DatabricksAPIClient,
-)  # For type hinting api_client
 from chuck_data.config import get_data_provider
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Union
 from jsonschema.exceptions import ValidationError
 
 # The display_to_user utility and individual tool implementation functions
@@ -47,7 +46,7 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
 
 
 def execute_tool(
-    api_client: Optional[DatabricksAPIClient],
+    api_client: Optional[DatabricksAPIClient | RedshiftAPIClient],
     tool_name: str,
     tool_args: Dict[str, Any],
     output_callback: Optional[Callable[..., Any]] = None,
@@ -55,7 +54,7 @@ def execute_tool(
     """Execute a tool (command) by its name with the provided arguments.
 
     Args:
-        api_client: The Databricks API client, passed to the handler if needed.
+        api_client: The API client (DatabricksAPIClient or RedshiftAPIClient), passed to the handler if needed.
         tool_name: The name of the tool (command) to execute.
         tool_args: A dictionary of arguments for the tool, parsed from LLM JSON.
 
@@ -68,7 +67,12 @@ def execute_tool(
         f"Agent attempting to execute tool: {tool_name} with args: {tool_args}"
     )
 
-    command_def = get_command(tool_name)
+    # Detect provider from client to route to the correct command
+    from chuck_data.data_providers import get_provider_name_from_client
+
+    provider = get_provider_name_from_client(api_client)
+
+    command_def = get_command(tool_name, provider=provider)
 
     if not command_def:
         logging.error(f"Agent tool '{tool_name}' not found in command registry.")

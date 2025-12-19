@@ -11,41 +11,76 @@ import concurrent.futures
 from typing import Dict, Any, Optional
 
 from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.llm.provider import LLMProvider
 from chuck_data.ui.tui import get_console
+from chuck_data.data_providers import is_redshift_client
 
 
 def _helper_tag_pii_columns_logic(
-    databricks_client: DatabricksAPIClient,
+    client,
     llm_client_instance: LLMProvider,
     table_name_param: str,
-    catalog_name_context: Optional[str] = None,
+    catalog_or_database_context: Optional[str] = None,
     schema_name_context: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Internal logic for PII tagging of a single table."""
+    """Internal logic for PII tagging of a single table (provider-aware)."""
     response_content_for_error = ""
+    is_redshift = is_redshift_client(client)
+
     try:
         # Resolve full table name using APIs directly instead of handler
         resolved_table_name = table_name_param
-        if catalog_name_context and schema_name_context and "." not in table_name_param:
+        if (
+            catalog_or_database_context
+            and schema_name_context
+            and "." not in table_name_param
+        ):
             # Only a table name was provided, construct full name
-            resolved_table_name = (
-                f"{catalog_name_context}.{schema_name_context}.{table_name_param}"
-            )
+            resolved_table_name = f"{catalog_or_database_context}.{schema_name_context}.{table_name_param}"
 
         try:
-            # Use direct API call instead of handle_table
-            table_info = databricks_client.get_table(full_name=resolved_table_name)
-            if not table_info:
-                error_msg = f"Failed to retrieve table details for PII tagging: {table_name_param}"
-                return {
-                    "error": error_msg,
-                    "table_name_param": table_name_param,
-                    "skipped": True,
-                }
+            # Use direct API call - different for each provider
+            if is_redshift:
+                # Redshift: use describe_table
+                table_info = client.describe_table(
+                    database=catalog_or_database_context,
+                    schema=schema_name_context,
+                    table=table_name_param,
+                )
+                if not table_info:
+                    error_msg = f"Failed to retrieve table details for PII tagging: {table_name_param}"
+                    return {
+                        "error": error_msg,
+                        "table_name_param": table_name_param,
+                        "skipped": True,
+                    }
 
-            resolved_full_name = table_info.get("full_name", table_name_param)
-            columns = table_info.get("columns", [])
+                resolved_full_name = resolved_table_name
+                # Redshift returns ColumnList
+                columns_raw = table_info.get("ColumnList", [])
+                # Convert to format expected by the rest of the code
+                columns = [
+                    {
+                        "name": col.get("name"),
+                        "type": col.get("typeName", ""),
+                        "nullable": col.get("nullable", 1) == 1,
+                    }
+                    for col in columns_raw
+                ]
+            else:
+                # Databricks: use get_table
+                table_info = client.get_table(full_name=resolved_table_name)
+                if not table_info:
+                    error_msg = f"Failed to retrieve table details for PII tagging: {table_name_param}"
+                    return {
+                        "error": error_msg,
+                        "table_name_param": table_name_param,
+                        "skipped": True,
+                    }
+
+                resolved_full_name = table_info.get("full_name", table_name_param)
+                columns = table_info.get("columns", [])
         except Exception as e:
             error_msg = f"Failed to retrieve table details: {str(e)}"
             return {
@@ -77,8 +112,12 @@ def _helper_tag_pii_columns_logic(
             }
 
         # Use the LLM client instance passed to the function
+        # Handle both Databricks (type_name) and Redshift (type) column formats
         column_details_for_llm = [
-            {"name": col.get("name", ""), "type": col.get("type_name", "")}
+            {
+                "name": col.get("name", ""),
+                "type": col.get("type_name", col.get("type", "")),
+            }
             for col in columns
         ]
 
@@ -135,10 +174,12 @@ def _helper_tag_pii_columns_logic(
         tagged_columns_list = []
         for col in columns:
             col_name = col.get("name", "")
+            # Handle both Databricks (type_name) and Redshift (type) column formats
+            col_type = col.get("type_name", col.get("type", ""))
             tagged_columns_list.append(
                 {
                     "name": col_name,
-                    "type": col.get("type_name", ""),
+                    "type": col_type,
                     "semantic": semantic_map.get(col_name),
                 }
             )
@@ -171,25 +212,39 @@ def _helper_tag_pii_columns_logic(
 
 
 def _helper_scan_schema_for_pii_logic(
-    client: DatabricksAPIClient,
+    client,
     llm_client_instance: LLMProvider,
-    catalog_name: str,
+    catalog_or_database_name: str,
     schema_name: str,
     show_progress: bool = True,
 ) -> Dict[str, Any]:
-    """Internal logic for scanning all tables in a schema for PII."""
-    if not catalog_name or not schema_name:
-        return {"error": "Catalog and schema names are required for bulk PII scan."}
+    """Internal logic for scanning all tables in a schema for PII (provider-aware)."""
+    if not catalog_or_database_name or not schema_name:
+        return {
+            "error": "Catalog/database and schema names are required for bulk PII scan."
+        }
+
+    # Determine provider
+    is_redshift = is_redshift_client(client)
 
     # Use direct API call instead of handle_tables
     try:
-        tables_response = client.list_tables(
-            catalog_name=catalog_name, schema_name=schema_name, omit_columns=True
-        )
+        if is_redshift:
+            tables_response = client.list_tables(
+                database=catalog_or_database_name,
+                schema_pattern=schema_name,
+                omit_columns=True,
+            )
+        else:
+            tables_response = client.list_tables(
+                catalog_name=catalog_or_database_name,
+                schema_name=schema_name,
+                omit_columns=True,
+            )
         all_tables_in_schema = tables_response.get("tables", [])
     except Exception as e:
         return {
-            "error": f"Failed to list tables for {catalog_name}.{schema_name}: {str(e)}"
+            "error": f"Failed to list tables for {catalog_or_database_name}.{schema_name}: {str(e)}"
         }
 
     tables_to_scan_summaries = [
@@ -200,8 +255,8 @@ def _helper_scan_schema_for_pii_logic(
 
     if not tables_to_scan_summaries:
         return {
-            "message": f"No user tables (excluding _stitch*) found in {catalog_name}.{schema_name}.",
-            "catalog": catalog_name,
+            "message": f"No user tables (excluding _stitch*) found in {catalog_or_database_name}.{schema_name}.",
+            "catalog": catalog_or_database_name,
             "schema": schema_name,
             "tables_scanned": 0,
             "tables_with_pii": 0,
@@ -210,7 +265,7 @@ def _helper_scan_schema_for_pii_logic(
         }
 
     logging.info(
-        f"Starting PII Scan for {len(tables_to_scan_summaries)} tables in {catalog_name}.{schema_name}."
+        f"Starting PII Scan for {len(tables_to_scan_summaries)} tables in {catalog_or_database_name}.{schema_name}."
     )
     scan_results_detail = []
     MAX_WORKERS = 5
@@ -224,7 +279,9 @@ def _helper_scan_schema_for_pii_logic(
             # Display progress before submitting task
             if show_progress:
                 console = get_console()
-                full_table_name = f"{catalog_name}.{schema_name}.{table_name_only}"
+                full_table_name = (
+                    f"{catalog_or_database_name}.{schema_name}.{table_name_only}"
+                )
                 console.print(f"[dim]Scanning {full_table_name}...[/dim]")
 
             # Pass client and context to the helper
@@ -234,10 +291,10 @@ def _helper_scan_schema_for_pii_logic(
                     client,
                     llm_client_instance,
                     table_name_only,
-                    catalog_name,
+                    catalog_or_database_name,
                     schema_name,
                 )
-            ] = f"{catalog_name}.{schema_name}.{table_name_only}"
+            ] = f"{catalog_or_database_name}.{schema_name}.{table_name_only}"
 
         for future in concurrent.futures.as_completed(futures_map):
             fq_table_name_processed = futures_map[future]
@@ -273,7 +330,7 @@ def _helper_scan_schema_for_pii_logic(
     )
 
     return {
-        "catalog": catalog_name,
+        "catalog": catalog_or_database_name,
         "schema": schema_name,
         "tables_scanned_attempted": len(tables_to_scan_summaries),
         "tables_successfully_processed": num_tables_successfully_processed,

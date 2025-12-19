@@ -7,7 +7,7 @@ browsing capabilities similar to DatabricksAPIClient for Unity Catalog.
 
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
@@ -455,3 +455,115 @@ class RedshiftAPIClient:
         except ClientError as e:
             logging.debug(f"Error listing S3 objects: {e}")
             raise ValueError(f"Error listing S3 objects: {e}")
+
+    def read_semantic_tags(self, database: str, schema_name: str) -> Dict[str, Any]:
+        """Read semantic tags from chuck_metadata.semantic_tags table.
+
+        Args:
+            database: Database name
+            schema_name: Schema name
+
+        Returns:
+            Dict with 'success': bool, 'tags': list of dicts or 'error': str
+        """
+        try:
+            query = f"""
+            SELECT table_name, column_name, semantic_type
+            FROM chuck_metadata.semantic_tags
+            WHERE database_name = '{database}'
+            AND schema_name = '{schema_name}'
+            ORDER BY table_name, column_name
+            """
+
+            result = self.execute_sql(query, database=database)
+
+            if not result.get("result"):
+                return {
+                    "success": False,
+                    "error": "No results returned from semantic_tags query",
+                }
+
+            rows = result["result"].get("Records", [])
+            tags = []
+            for row in rows:
+                tags.append(
+                    {
+                        "table": row[0]["stringValue"],
+                        "column": row[1]["stringValue"],
+                        "semantic": row[2]["stringValue"],
+                    }
+                )
+
+            return {"success": True, "tags": tags}
+
+        except Exception as e:
+            logging.error(f"Error reading semantic tags: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Failed to read semantic tags: {str(e)}",
+            }
+
+    def read_table_schemas(
+        self, database: str, schema_name: str, semantic_tags: list
+    ) -> Dict[str, Any]:
+        """Read table schemas from Redshift to get all column definitions.
+
+        Args:
+            database: Database name
+            schema_name: Schema name
+            semantic_tags: List of semantic tag dicts with 'table', 'column', 'semantic' keys
+
+        Returns:
+            Dict with 'success': bool, 'tables': list of table dicts or 'error': str
+        """
+        try:
+            table_names = list(set(tag["table"] for tag in semantic_tags))
+
+            tables = []
+            for table_name in table_names:
+                logging.debug(f"Reading schema for {table_name}...")
+
+                query = f"""
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = '{schema_name}'
+                AND table_name = '{table_name}'
+                ORDER BY ordinal_position
+                """
+
+                result = self.execute_sql(query, database=database)
+
+                if not result.get("result"):
+                    logging.warning(f"No columns found for {table_name}")
+                    continue
+
+                rows = result["result"].get("Records", [])
+                columns = []
+                for row in rows:
+                    col_name = row[0]["stringValue"]
+                    col_type = row[1]["stringValue"]
+
+                    semantic = None
+                    for tag in semantic_tags:
+                        if tag["table"] == table_name and tag["column"] == col_name:
+                            semantic = tag["semantic"]
+                            break
+
+                    columns.append(
+                        {
+                            "name": col_name,
+                            "type": col_type,
+                            "semantic": semantic,
+                        }
+                    )
+
+                tables.append({"table_name": table_name, "columns": columns})
+
+            return {"success": True, "tables": tables}
+
+        except Exception as e:
+            logging.error(f"Error reading table schemas: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Failed to read table schemas: {str(e)}",
+            }

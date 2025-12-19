@@ -9,8 +9,10 @@ allowing customers to leverage their existing AWS infrastructure for data proces
 import logging
 from typing import Dict, Any, Optional
 
+from chuck_data.compute_providers.provider import ComputeProvider
 
-class EMRComputeProvider:
+
+class EMRComputeProvider(ComputeProvider):
     """Run Stitch jobs on Amazon EMR clusters.
 
     This compute provider can process data from:
@@ -49,24 +51,24 @@ class EMRComputeProvider:
     def __init__(
         self,
         region: str,
+        storage_provider: Any,
         cluster_id: Optional[str] = None,
         aws_profile: Optional[str] = None,
         s3_bucket: Optional[str] = None,
-        storage_provider: Optional[Any] = None,
         **kwargs,
     ):
         """Initialize EMR compute provider.
 
         Args:
             region: AWS region (e.g., 'us-west-2')
+            storage_provider: StorageProvider instance for uploading artifacts to S3.
+                            Must be provided - use ProviderFactory.create_storage_provider('s3', config)
             cluster_id: EMR cluster ID (e.g., 'j-XXXXXXXXXXXXX')
                        If None, provider can create clusters on-demand (future)
             aws_profile: AWS profile name from ~/.aws/credentials
                         If None, uses default boto3 credential chain
             s3_bucket: S3 bucket for storing job artifacts (manifests, logs, init scripts)
                       Required for job execution
-            storage_provider: Optional StorageProvider for uploading artifacts to S3.
-                            If not provided, will create S3Storage with the given credentials.
             **kwargs: Additional configuration options:
                 - instance_type: EC2 instance type for workers (default: 'm5.xlarge')
                 - instance_count: Number of worker nodes (default: 3)
@@ -82,45 +84,41 @@ class EMRComputeProvider:
               See class docstring for credential resolution order.
 
         Examples:
-            >>> # Use existing cluster with default credentials
+            >>> # Use ProviderFactory to create EMR compute provider (recommended)
+            >>> from chuck_data.provider_factory import ProviderFactory
+            >>> provider = ProviderFactory.create_compute_provider(
+            ...     "aws_emr",
+            ...     {
+            ...         "region": "us-west-2",
+            ...         "cluster_id": "j-XXXXXXXXXXXXX",
+            ...         "s3_bucket": "my-stitch-bucket"
+            ...     }
+            ... )
+
+            >>> # Manual creation (not recommended - use factory instead)
+            >>> storage_provider = ProviderFactory.create_storage_provider("s3", {
+            ...     "region": "us-west-2",
+            ...     "aws_profile": "production"
+            ... })
             >>> provider = EMRComputeProvider(
             ...     region='us-west-2',
+            ...     storage_provider=storage_provider,
             ...     cluster_id='j-XXXXXXXXXXXXX',
             ...     s3_bucket='my-stitch-bucket'
             ... )
-
-            >>> # Use specific AWS profile
-            >>> provider = EMRComputeProvider(
-            ...     region='us-east-1',
-            ...     cluster_id='j-YYYYYYYYYYYYY',
-            ...     aws_profile='production',
-            ...     s3_bucket='prod-stitch-artifacts'
-            ... )
-
-            >>> # On-demand cluster with custom configuration
-            >>> provider = EMRComputeProvider(
-            ...     region='us-west-2',
-            ...     s3_bucket='my-bucket',
-            ...     instance_type='m5.2xlarge',
-            ...     instance_count=5
-            ... )
         """
+        if storage_provider is None:
+            raise ValueError(
+                "storage_provider is required. Use ProviderFactory.create_storage_provider('s3', config) "
+                "to create the appropriate S3 storage provider instance."
+            )
+
         self.region = region
         self.cluster_id = cluster_id
         self.aws_profile = aws_profile
         self.s3_bucket = s3_bucket
         self.config = kwargs
-
-        # Use provided storage provider or create default S3Storage
-        if storage_provider is None:
-            from chuck_data.storage_providers import S3Storage
-
-            self.storage_provider = S3Storage(
-                region=region,
-                aws_profile=aws_profile,
-            )
-        else:
-            self.storage_provider = storage_provider
+        self.storage_provider = storage_provider
 
         # Future: Initialize EMR client
         # self.emr_client = EMRAPIClient(
