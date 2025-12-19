@@ -593,16 +593,36 @@ class DatabricksAPIClient:
 
         # Define the task and cluster for the one-time run
         # Create base cluster configuration
-        cluster_config = {
-            "cluster_name": "",
-            "spark_version": "16.0.x-cpu-ml-scala2.12",
-            "init_scripts": [
+        # Detect init script location (S3 vs Volumes) and configure accordingly
+        if init_script_path.startswith("s3://"):
+            # S3 init script (for Redshift data source)
+            # Get region from config
+            from chuck_data.config import get_redshift_region
+
+            region = get_redshift_region() or "us-west-2"
+
+            init_scripts_config = [
+                {
+                    "s3": {
+                        "destination": init_script_path,
+                        "region": region,
+                    }
+                }
+            ]
+        else:
+            # Volumes init script (for Unity Catalog data source)
+            init_scripts_config = [
                 {
                     "volumes": {
                         "destination": init_script_path,
                     }
                 }
-            ],
+            ]
+
+        cluster_config = {
+            "cluster_name": "",
+            "spark_version": "16.0.x-cpu-ml-scala2.12",
+            "init_scripts": init_scripts_config,
             "node_type_id": self.get_compute_node_type(),
             "custom_tags": {
                 "stack": "aws-dev",
@@ -770,52 +790,6 @@ class DatabricksAPIClient:
         # Call DBFS API
         self.post("/api/2.0/dbfs/put", request_data)
         return True
-
-    #
-    # Amperity-specific methods
-    #
-
-    def fetch_amperity_job_init(self, token, api_url: str | None = None):
-        """
-        Fetch initialization script for Amperity jobs.
-
-        Args:
-            token: Amperity authentication token
-            api_url: Optional override for the job init endpoint
-
-        Returns:
-            Dict containing the initialization script data
-        """
-        try:
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            }
-
-            if not api_url:
-                api_url = f"https://{get_amperity_url()}/api/job/launch"
-
-            response = requests.post(api_url, headers=headers, json={})
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as e:
-            response = e.response
-            resp_text = response.text if response else ""
-            logging.debug(f"HTTP error: {e}, Response: {resp_text}")
-            if response is not None:
-                try:
-                    message = response.json().get("message", resp_text)
-                except ValueError:
-                    message = resp_text
-                raise ValueError(
-                    f"{response.status_code} Error: {message}. Please /logout and /login again"
-                )
-            raise ValueError(
-                f"HTTP error occurred: {e}. Please /logout and /login again"
-            )
-        except requests.RequestException as e:
-            logging.debug(f"Connection error: {e}")
-            raise ConnectionError(f"Connection error occurred: {e}")
 
     def get_current_user(self):
         """
@@ -1018,14 +992,12 @@ class DatabricksAPIClient:
             encoded_content = base64.b64encode(notebook_content_str.encode()).decode()
 
             # 9. Import the notebook to Databricks
-            import_data = {
-                "path": notebook_path,
-                "content": encoded_content,
-                "format": "JUPYTER",
-                "overwrite": True,
-            }
-
-            self.post("/api/2.0/workspace/import", import_data)
+            self.workspace_import(
+                path=notebook_path,
+                content=encoded_content,
+                format="JUPYTER",
+                overwrite=True,
+            )
 
             # 10. Log success and return the path
             # Notebook created successfully
@@ -1035,3 +1007,60 @@ class DatabricksAPIClient:
         except Exception as e:
             logging.debug(f"Error creating stitch notebook: {e}")
             raise
+
+    def workspace_mkdirs(self, path: str) -> dict:
+        """Create a directory in Databricks Workspace.
+
+        Creates a directory and any necessary parent directories in the Databricks
+        Workspace filesystem. If the directory already exists, this is a no-op.
+
+        Args:
+            path: Workspace path (e.g., "/Users/user@example.com/.chuck/init-scripts")
+                 Do not include /Workspace prefix - just the path starting with /Users
+
+        Returns:
+            Empty dict on success
+
+        Raises:
+            Exception: If the API call fails
+
+        Example:
+            client.workspace_mkdirs("/Users/user@example.com/.chuck/init-scripts")
+        """
+        mkdirs_data = {"path": path}
+        return self.post("/api/2.0/workspace/mkdirs", mkdirs_data)
+
+    def workspace_import(
+        self, path: str, content: str, format: str = "AUTO", overwrite: bool = True
+    ) -> dict:
+        """Import a file to Databricks Workspace.
+
+        Imports a file to the Databricks Workspace. The content must be base64-encoded.
+        The parent directory must exist (use workspace_mkdirs first if needed).
+
+        Args:
+            path: Workspace path (e.g., "/Users/user@example.com/.chuck/init-scripts/script.sh")
+                 Do not include /Workspace prefix - just the path starting with /Users
+            content: Base64-encoded file content
+            format: File format - "AUTO", "SOURCE", "JUPYTER", "HTML", "DBC"
+                   Use "AUTO" for shell scripts and most files
+            overwrite: Whether to overwrite if file exists (default: True)
+
+        Returns:
+            Empty dict on success
+
+        Raises:
+            Exception: If the API call fails (e.g., parent directory doesn't exist)
+
+        Example:
+            import base64
+            content = base64.b64encode(b"#!/bin/bash\\necho 'hello'").decode("utf-8")
+            client.workspace_import("/Users/user@example.com/script.sh", content)
+        """
+        import_data = {
+            "path": path,
+            "content": content,
+            "format": format,
+            "overwrite": overwrite,
+        }
+        return self.post("/api/2.0/workspace/import", import_data)

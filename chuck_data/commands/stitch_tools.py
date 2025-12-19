@@ -3,10 +3,6 @@ Stitch integration helper functions for command handlers.
 
 This module contains utilities for setting up Stitch integration
 with Databricks catalogs and schemas.
-
-TODO (Future PRs): Refactor to use DataProvider abstraction throughout.
-Currently uses DatabricksAPIClient directly. The validation module has been
-extracted to commands/validation.py as part of PR 6 cleanup.
 """
 
 import logging
@@ -17,11 +13,6 @@ from typing import Dict, Any, List, Optional
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.llm.provider import LLMProvider
 from chuck_data.config import get_amperity_token
-from chuck_data.commands.validation import (
-    validate_single_target_params,
-    validate_multi_target_params,
-    validate_amperity_token,
-)
 from .pii_tools import _helper_scan_schema_for_pii_logic
 from .cluster_init_tools import _helper_upload_cluster_init_logic
 
@@ -89,6 +80,29 @@ def validate_multi_location_access(
     return results
 
 
+def _helper_setup_stitch_logic(
+    client: DatabricksAPIClient,
+    llm_client_instance: LLMProvider,
+    target_catalog: str,
+    target_schema: str,
+) -> Dict[str, Any]:
+    """Legacy function for backward compatibility. Calls prepare phase only.
+
+    IMPORTANT: This has been modified to only run the preparation phase and not
+    automatically launch the job, which is now handled by the interactive flow.
+    """
+    # Phase 1: Prepare config only
+    prep_result = _helper_prepare_stitch_config(
+        client, llm_client_instance, target_catalog, target_schema
+    )
+    if prep_result.get("error"):
+        return prep_result
+
+    # Return the prepared config for further processing
+    # No longer automatically launching the job
+    return prep_result
+
+
 def _helper_prepare_stitch_config(
     client: DatabricksAPIClient,
     llm_client_instance: LLMProvider,
@@ -110,12 +124,6 @@ def _helper_prepare_stitch_config(
     Returns:
         Dictionary with success/error status, stitch_config, and metadata
     """
-    # Validate single target parameters if provided
-    if target_catalog or target_schema:
-        validation = validate_single_target_params(target_catalog, target_schema)
-        if not validation["valid"]:
-            return {"error": validation["error"]}
-
     # Backward compatibility: single catalog/schema
     if target_catalog and target_schema and not target_locations:
         target_locations = [{"catalog": target_catalog, "schema": target_schema}]
@@ -177,12 +185,25 @@ def _helper_prepare_stitch_config(
     # Step 3: Generate Stitch configuration
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     stitch_job_name = f"stitch-{current_datetime}"
+
+    # Get provider values from config
+    from chuck_data.config import get_data_provider, get_compute_provider
+
+    data_provider = (
+        get_data_provider() or "databricks"
+    )  # Default to databricks if not set
+    compute_provider = (
+        get_compute_provider() or "databricks"
+    )  # Default to databricks if not set
+
     stitch_config = {
         "name": stitch_job_name,
         "tables": [],
         "settings": {
             "output_catalog_name": target_catalog,
             "output_schema_name": "stitch_outputs",
+            "data_provider": data_provider,
+            "compute_provider": compute_provider,
         },
     }
 
@@ -246,15 +267,16 @@ def _helper_prepare_stitch_config(
         f"/Volumes/{target_catalog}/{target_schema}/{volume_name}/cluster_init.sh"
     )
 
-    # Validate Amperity token using validation module
     amperity_token = get_amperity_token()
-    token_validation = validate_amperity_token(amperity_token)
-    if not token_validation["valid"]:
-        return {"error": token_validation["error"]}
+    if not amperity_token:
+        return {"error": "Amperity token not found. Please run /amp_login first."}
 
     # Fetch init script content and job-id from Amperity API
     try:
-        init_script_data = client.fetch_amperity_job_init(amperity_token)
+        from chuck_data.clients.amperity import AmperityAPIClient
+
+        amperity_client = AmperityAPIClient()
+        init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
         init_script_content = init_script_data.get("cluster-init")
         job_id = init_script_data.get("job-id")
 
@@ -387,12 +409,24 @@ def _helper_prepare_multi_location_stitch_config(
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     stitch_job_name = f"stitch-multi-{current_datetime}"
 
+    # Get provider values from config
+    from chuck_data.config import get_data_provider, get_compute_provider
+
+    data_provider = (
+        get_data_provider() or "databricks"
+    )  # Default to databricks if not set
+    compute_provider = (
+        get_compute_provider() or "databricks"
+    )  # Default to databricks if not set
+
     stitch_config = {
         "name": stitch_job_name,
         "tables": [],
         "settings": {
             "output_catalog_name": output_catalog,
             "output_schema_name": "stitch_outputs",
+            "data_provider": data_provider,
+            "compute_provider": compute_provider,
         },
     }
 
@@ -471,15 +505,17 @@ def _helper_prepare_multi_location_stitch_config(
     # Prepare file paths
     config_file_path = f"/Volumes/{output_catalog}/{output_schema}/{volume_name}/{stitch_job_name}.json"
 
-    # Validate Amperity token using validation module
+    # Get Amperity token
     amperity_token = get_amperity_token()
-    token_validation = validate_amperity_token(amperity_token)
-    if not token_validation["valid"]:
-        return {"error": token_validation["error"]}
+    if not amperity_token:
+        return {"error": "Amperity token not found. Please run /amp_login first."}
 
     # Fetch init script content
     try:
-        init_script_data = client.fetch_amperity_job_init(amperity_token)
+        from chuck_data.clients.amperity import AmperityAPIClient
+
+        amperity_client = AmperityAPIClient()
+        init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
         init_script_content = init_script_data.get("cluster-init")
         job_id = init_script_data.get("job-id")
         if not init_script_content:
@@ -581,12 +617,37 @@ Important rules:
         except json.JSONDecodeError as e:
             return {"error": f"LLM returned invalid JSON: {str(e)}"}
 
-        # Validate modified config structure using validation module
-        from chuck_data.commands.validation import validate_stitch_config_structure
+        # Basic validation of the modified config
+        if not isinstance(modified_config, dict):
+            return {"error": "Modified config must be a JSON object"}
 
-        config_validation = validate_stitch_config_structure(modified_config)
-        if not config_validation["valid"]:
-            return {"error": config_validation["error"]}
+        required_keys = ["name", "tables", "settings"]
+        for key in required_keys:
+            if key not in modified_config:
+                return {"error": f"Modified config missing required key: {key}"}
+
+        if not isinstance(modified_config["tables"], list):
+            return {"error": "Modified config 'tables' must be an array"}
+
+        # Validate each table structure
+        for table in modified_config["tables"]:
+            if (
+                not isinstance(table, dict)
+                or "path" not in table
+                or "fields" not in table
+            ):
+                return {"error": "Each table must have 'path' and 'fields' properties"}
+
+            if not isinstance(table["fields"], list):
+                return {"error": "Table 'fields' must be an array"}
+
+            for field in table["fields"]:
+                if not isinstance(field, dict):
+                    return {"error": "Each field must be an object"}
+                required_field_keys = ["field-name", "type", "semantics"]
+                for fkey in required_field_keys:
+                    if fkey not in field:
+                        return {"error": f"Field missing required key: {fkey}"}
 
         return {
             "success": True,

@@ -77,7 +77,14 @@ def test_missing_context(databricks_client_stub):
         # Don't set active catalog or schema
 
         with patch("chuck_data.config._config_manager", config_manager):
-            result = handle_command(databricks_client_stub)
+            with patch(
+                "chuck_data.config.get_workspace_url",
+                return_value="https://test.databricks.com",
+            ):
+                with patch(
+                    "chuck_data.config.get_databricks_token", return_value="test-token"
+                ):
+                    result = handle_command(databricks_client_stub)
 
     # Verify results
     assert not result.success
@@ -195,6 +202,15 @@ def test_auto_confirm_mode_passes_policy_id(databricks_client_stub, llm_client_s
 
     # Mock DatabricksComputeProvider to avoid real network calls
     mock_compute_provider = MagicMock()
+    mock_compute_provider.prepare_stitch_job.return_value = {
+        "success": True,
+        "stitch_config": {"name": "test-job", "tables": []},
+        "metadata": {
+            "policy_id": "000F957411D99C1F",
+            "init_script_path": "/test/init.sh",
+            "job_id": "test-job-123",
+        },
+    }
     mock_compute_provider.launch_stitch_job.return_value = {
         "success": True,
         "run_id": "test-run-id-123",
@@ -215,26 +231,41 @@ def test_auto_confirm_mode_passes_policy_id(databricks_client_stub, llm_client_s
                 return_value=MagicMock(),
             ):
                 with patch(
-                    "chuck_data.commands.setup_stitch.DatabricksComputeProvider",
+                    "chuck_data.compute_providers.DatabricksComputeProvider",
                     return_value=mock_compute_provider,
                 ):
-                    # Call with auto_confirm=True and policy_id
-                    result = handle_command(
-                        databricks_client_stub,
-                        catalog_name="test_catalog",
-                        schema_name="test_schema",
-                        auto_confirm=True,
-                        policy_id="000F957411D99C1F",
-                    )
+                    with patch(
+                        "chuck_data.config.get_workspace_url",
+                        return_value="https://test.databricks.com",
+                    ):
+                        with patch(
+                            "chuck_data.config.get_databricks_token",
+                            return_value="test-token",
+                        ):
+                            with patch(
+                                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                                return_value={
+                                    "cluster-init": "#!/bin/bash\necho init",
+                                    "job-id": "test-job-setup-123",
+                                },
+                            ):
+                                # Call with auto_confirm=True and policy_id
+                                result = handle_command(
+                                    databricks_client_stub,
+                                    catalog_name="test_catalog",
+                                    schema_name="test_schema",
+                                    auto_confirm=True,
+                                    policy_id="000F957411D99C1F",
+                                )
 
     # Verify success
     assert result.success
 
-    # Verify policy_id was passed to DatabricksComputeProvider
-    # The policy_id should be in metadata passed to launch_stitch_job
-    assert mock_compute_provider.launch_stitch_job.called
-    launch_call_args = mock_compute_provider.launch_stitch_job.call_args[0][0]
-    assert launch_call_args["metadata"]["policy_id"] == "000F957411D99C1F"
+    # Verify policy_id was passed to submit_job_run
+    # Auto-confirm mode uses direct client API call, not compute provider
+    assert len(databricks_client_stub.submit_job_run_calls) > 0
+    submit_call = databricks_client_stub.submit_job_run_calls[0]
+    assert submit_call["policy_id"] == "000F957411D99C1F"
 
 
 def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_stub):
@@ -244,6 +275,14 @@ def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_
 
     # Mock DatabricksComputeProvider to avoid real network calls
     mock_compute_provider = MagicMock()
+    mock_compute_provider.prepare_stitch_job.return_value = {
+        "success": True,
+        "stitch_config": {"name": "test-job", "tables": []},
+        "metadata": {
+            "init_script_path": "/test/init.sh",
+            "job_id": "test-job-456",
+        },
+    }
     mock_compute_provider.launch_stitch_job.return_value = {
         "success": True,
         "run_id": "test-run-id-456",
@@ -264,28 +303,41 @@ def test_auto_confirm_mode_without_policy_id(databricks_client_stub, llm_client_
                 return_value=MagicMock(),
             ):
                 with patch(
-                    "chuck_data.commands.setup_stitch.DatabricksComputeProvider",
+                    "chuck_data.compute_providers.DatabricksComputeProvider",
                     return_value=mock_compute_provider,
                 ):
-                    # Call with auto_confirm=True but no policy_id
-                    result = handle_command(
-                        databricks_client_stub,
-                        catalog_name="test_catalog",
-                        schema_name="test_schema",
-                        auto_confirm=True,
-                    )
+                    with patch(
+                        "chuck_data.config.get_workspace_url",
+                        return_value="https://test.databricks.com",
+                    ):
+                        with patch(
+                            "chuck_data.config.get_databricks_token",
+                            return_value="test-token",
+                        ):
+                            with patch(
+                                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                                return_value={
+                                    "cluster-init": "#!/bin/bash\necho init",
+                                    "job-id": "test-job-setup-123",
+                                },
+                            ):
+                                # Call with auto_confirm=True but no policy_id
+                                result = handle_command(
+                                    databricks_client_stub,
+                                    catalog_name="test_catalog",
+                                    schema_name="test_schema",
+                                    auto_confirm=True,
+                                )
 
     # Verify success
     assert result.success
 
-    # Verify policy_id was not set in metadata (or is None)
-    assert mock_compute_provider.launch_stitch_job.called
-    launch_call_args = mock_compute_provider.launch_stitch_job.call_args[0][0]
-    # Policy ID should not be in metadata when not provided
-    assert (
-        "policy_id" not in launch_call_args["metadata"]
-        or launch_call_args["metadata"]["policy_id"] is None
-    )
+    # Verify policy_id was not set (or is None)
+    # Auto-confirm mode uses direct client API call, not compute provider
+    assert len(databricks_client_stub.submit_job_run_calls) > 0
+    submit_call = databricks_client_stub.submit_job_run_calls[0]
+    # Policy ID should be None when not provided
+    assert submit_call["policy_id"] is None
 
 
 # Interactive mode tests
@@ -302,12 +354,26 @@ def test_interactive_mode_phase_1_preparation(databricks_client_stub, llm_client
             "chuck_data.commands.stitch_tools.get_amperity_token",
             return_value="test_token",
         ):
-            # Call without auto_confirm to enter interactive mode
-            result = handle_command(
-                databricks_client_stub,
-                catalog_name="test_catalog",
-                schema_name="test_schema",
-            )
+            with patch(
+                "chuck_data.config.get_workspace_url",
+                return_value="https://test.databricks.com",
+            ):
+                with patch(
+                    "chuck_data.config.get_databricks_token", return_value="test-token"
+                ):
+                    with patch(
+                        "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                        return_value={
+                            "cluster-init": "#!/bin/bash\necho init",
+                            "job-id": "test-job-setup-123",
+                        },
+                    ):
+                        # Call without auto_confirm to enter interactive mode
+                        result = handle_command(
+                            databricks_client_stub,
+                            catalog_name="test_catalog",
+                            schema_name="test_schema",
+                        )
 
     # Verify Phase 1 behavior
     assert result.success
@@ -336,13 +402,27 @@ def test_interactive_mode_phase_1_stores_policy_id(
             "chuck_data.commands.stitch_tools.get_amperity_token",
             return_value="test_token",
         ):
-            # Call without auto_confirm to enter interactive mode, with policy_id
-            result = handle_command(
-                databricks_client_stub,
-                catalog_name="test_catalog",
-                schema_name="test_schema",
-                policy_id="INTERACTIVE_POLICY_123",
-            )
+            with patch(
+                "chuck_data.config.get_workspace_url",
+                return_value="https://test.databricks.com",
+            ):
+                with patch(
+                    "chuck_data.config.get_databricks_token", return_value="test-token"
+                ):
+                    with patch(
+                        "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                        return_value={
+                            "cluster-init": "#!/bin/bash\necho init",
+                            "job-id": "test-job-setup-123",
+                        },
+                    ):
+                        # Call without auto_confirm to enter interactive mode, with policy_id
+                        result = handle_command(
+                            databricks_client_stub,
+                            catalog_name="test_catalog",
+                            schema_name="test_schema",
+                            policy_id="INTERACTIVE_POLICY_123",
+                        )
 
     # Verify Phase 1 behavior
     assert result.success

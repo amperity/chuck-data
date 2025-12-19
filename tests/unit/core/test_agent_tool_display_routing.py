@@ -226,24 +226,35 @@ def test_agent_display_setting_validation(tui):
     redshift_commands = get_agent_commands(provider="aws_redshift")
 
     # Find all list_* commands (using underscore convention internally)
-    list_commands_no_provider = [name for name in agent_commands_no_provider.keys() if name.startswith("list_")]
-    list_commands_databricks = [name for name in databricks_commands.keys() if name.startswith("list_")]
-    list_commands_redshift = [name for name in redshift_commands.keys() if name.startswith("list_")]
+    list_commands_no_provider = [
+        name for name in agent_commands_no_provider.keys() if name.startswith("list_")
+    ]
+    list_commands_databricks = [
+        name for name in databricks_commands.keys() if name.startswith("list_")
+    ]
+    list_commands_redshift = [
+        name for name in redshift_commands.keys() if name.startswith("list_")
+    ]
 
     # Provider-agnostic list commands
     expected_list_commands_no_provider = {
-        "list_schemas",
         "list_tables",
         "list_warehouses",
         "list_volumes",
         "list_models",
     }
 
-    # Databricks should have catalogs but not databases
-    expected_list_commands_databricks = expected_list_commands_no_provider | {"list_catalogs"}
+    # Databricks should have catalogs and schemas
+    expected_list_commands_databricks = expected_list_commands_no_provider | {
+        "list_catalogs",
+        "list_schemas",
+    }
 
-    # Redshift should have databases but not catalogs
-    expected_list_commands_redshift = expected_list_commands_no_provider | {"list_databases"}
+    # Redshift should have databases and redshift_schemas
+    expected_list_commands_redshift = expected_list_commands_no_provider | {
+        "list_databases",
+        "list_redshift_schemas",
+    }
 
     found_commands_no_provider = set(list_commands_no_provider)
     found_commands_databricks = set(list_commands_databricks)
@@ -263,7 +274,9 @@ def test_agent_display_setting_validation(tui):
 
     # Verify each command has proper agent_display setting
     # Check all unique list commands across all providers
-    all_list_commands = set(list_commands_no_provider + list_commands_databricks + list_commands_redshift)
+    all_list_commands = set(
+        list_commands_no_provider + list_commands_databricks + list_commands_redshift
+    )
 
     for cmd_name in all_list_commands:
         cmd_def = get_command(cmd_name)
@@ -272,6 +285,7 @@ def test_agent_display_setting_validation(tui):
             "list_catalogs",
             "list_databases",
             "list_schemas",
+            "list_redshift_schemas",
             "list_tables",
         ]:
             # These commands use conditional display with display parameter
