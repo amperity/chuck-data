@@ -6,10 +6,14 @@ These adapters wrap existing clients to conform to the DataProvider protocol.
 from typing import List, Dict, Optional, Any
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.data_providers.provider import DataProvider
 
 
-class DatabricksProviderAdapter:
-    """Adapter for DatabricksAPIClient to conform to DataProvider protocol."""
+class DatabricksProviderAdapter(DataProvider):
+    """Adapter for DatabricksAPIClient to conform to DataProvider protocol.
+
+    Implements the DataProvider protocol.
+    """
 
     def __init__(self, workspace_url: str, token: str):
         """Initialize Databricks provider adapter.
@@ -224,8 +228,11 @@ class DatabricksProviderAdapter:
         }
 
 
-class RedshiftProviderAdapter:
-    """Adapter for RedshiftAPIClient to conform to DataProvider protocol."""
+class RedshiftProviderAdapter(DataProvider):
+    """Adapter for RedshiftAPIClient to conform to DataProvider protocol.
+
+    Implements the DataProvider protocol.
+    """
 
     def __init__(
         self,

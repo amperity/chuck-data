@@ -96,21 +96,62 @@ class ProviderFactory:
                     "in config or DATABRICKS_WORKSPACE_URL and DATABRICKS_TOKEN env vars"
                 )
 
+            # Determine appropriate storage provider based on data provider type
+            data_provider_type = config.get("data_provider_type", "databricks")
+
+            if data_provider_type == "redshift":
+                # Redshift data → use S3 for manifest and init script storage
+                storage_provider = ProviderFactory.create_storage_provider(
+                    "s3",
+                    {
+                        "region": config.get("aws_region", "us-east-1"),
+                        "aws_profile": config.get("aws_profile"),
+                    },
+                )
+            else:
+                # Databricks data (or default) → use Databricks Volumes
+                storage_provider = ProviderFactory.create_storage_provider(
+                    "databricks",
+                    {
+                        "workspace_url": workspace_url,
+                        "token": token,
+                    },
+                )
+
             return DatabricksComputeProvider(
                 workspace_url=workspace_url,
                 token=token,
+                storage_provider=storage_provider,
                 **{
                     k: v
                     for k, v in config.items()
-                    if k not in ["workspace_url", "token"]
+                    if k
+                    not in [
+                        "workspace_url",
+                        "token",
+                        "data_provider_type",
+                        "aws_region",
+                        "aws_profile",
+                    ]
                 },
             )
 
         elif provider_type == "aws_emr":
             region = config.get("region") or os.getenv("AWS_REGION", "us-east-1")
 
+            # Create S3 storage provider for EMR
+            storage_provider = ProviderFactory.create_storage_provider(
+                "s3",
+                {
+                    "region": region,
+                    "aws_profile": config.get("aws_profile")
+                    or os.getenv("AWS_PROFILE"),
+                },
+            )
+
             return EMRComputeProvider(
                 region=region,
+                storage_provider=storage_provider,
                 cluster_id=config.get("cluster_id"),
                 aws_profile=config.get("aws_profile") or os.getenv("AWS_PROFILE"),
                 s3_bucket=config.get("s3_bucket"),

@@ -14,7 +14,7 @@ def test_no_client():
     """Test handling when no client is provided."""
     result = handle_command(None)
     assert not result.success
-    assert "No Databricks client available" in result.message
+    assert "No API client available" in result.message
 
 
 def test_no_active_catalog(temp_config):

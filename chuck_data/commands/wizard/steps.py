@@ -128,7 +128,7 @@ class DataProviderSelectionStep(SetupStep):
         return "Data Provider Selection"
 
     def get_prompt_message(self, state: WizardState) -> str:
-        return "Please select your data provider:\n  1. Databricks (Unity Catalog)\nEnter the number or name of the provider:"
+        return "Please select your data provider:\n  1. Databricks (Unity Catalog)\n  2. AWS Redshift\nEnter the number or name of the provider:"
 
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle data provider selection input."""
@@ -138,20 +138,24 @@ class DataProviderSelectionStep(SetupStep):
         # Map inputs to provider names
         if input_normalized in ["1", "databricks"]:
             provider = "databricks"
-            next_step = WizardStep.WORKSPACE_URL
-            message = "Databricks selected. Please enter your workspace URL."
+            next_step = WizardStep.COMPUTE_PROVIDER_SELECTION
+            message = "Databricks selected. Please select your compute provider."
+        elif input_normalized in ["2", "aws_redshift", "aws redshift", "redshift"]:
+            provider = "aws_redshift"
+            next_step = WizardStep.AWS_PROFILE_INPUT
+            message = "AWS Redshift selected. Please configure AWS settings."
         else:
             return StepResult(
                 success=False,
-                message="Invalid selection. Please enter 1 (Databricks).",
+                message="Invalid selection. Please enter 1 (Databricks) or 2 (AWS Redshift).",
                 action=WizardAction.RETRY,
             )
 
         # Save provider to config
         try:
-            from chuck_data.config import get_config_manager
+            from chuck_data.config import set_data_provider
 
-            success = get_config_manager().update(data_provider=provider)
+            success = set_data_provider(provider)
             if not success:
                 return StepResult(
                     success=False,
@@ -172,6 +176,67 @@ class DataProviderSelectionStep(SetupStep):
             return StepResult(
                 success=False,
                 message=f"Error saving data provider selection: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class ComputeProviderSelectionStep(SetupStep):
+    """Handle compute provider selection."""
+
+    def get_step_title(self) -> str:
+        return "Compute Provider Selection"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please select your compute provider:\n"
+            "  1. Databricks (default)\n"
+            "Enter the number or name of the provider:"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle compute provider selection input."""
+        # Normalize input
+        input_normalized = input_text.strip().lower()
+
+        # Map inputs to provider names
+        if input_normalized in ["1", "databricks", ""]:
+            provider = "databricks"
+            next_step = WizardStep.WORKSPACE_URL
+            message = (
+                "Databricks selected for computation. Please enter your workspace URL."
+            )
+        else:
+            return StepResult(
+                success=False,
+                message="Invalid selection. Please enter 1 (Databricks).",
+                action=WizardAction.RETRY,
+            )
+
+        # Save provider to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(compute_provider=provider)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save compute provider selection. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=message,
+                next_step=next_step,
+                action=WizardAction.CONTINUE,
+                data={"compute_provider": provider},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving compute provider selection: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving compute provider selection: {str(e)}",
                 action=WizardAction.RETRY,
             )
 
@@ -200,20 +265,28 @@ class LLMProviderSelectionStep(SetupStep):
             # Fetch Databricks models
             try:
                 from chuck_data.llm.providers.databricks import DatabricksProvider
+                from chuck_data.clients.databricks import DatabricksAPIClient
 
+                # Only use the service client if it's a DatabricksAPIClient
+                # If the data provider is Redshift, we need to create a Databricks client for LLM
                 service = get_chuck_service()
-                if not service or not service.client:
+                databricks_client = None
+
+                if service and service.client and isinstance(service.client, DatabricksAPIClient):
+                    databricks_client = service.client
+
+                # For Databricks LLM provider, we need workspace_url and token
+                if not state.workspace_url or not state.token:
                     return StepResult(
                         success=False,
-                        message="Databricks connection not available. Please restart setup.",
-                        next_step=WizardStep.DATA_PROVIDER_SELECTION,
-                        action=WizardAction.CONTINUE,
+                        message="Databricks credentials not available. Please configure Databricks workspace and token first.",
+                        action=WizardAction.RETRY,
                     )
 
                 databricks_provider = DatabricksProvider(
                     workspace_url=state.workspace_url,
                     token=state.token,
-                    client=service.client,
+                    client=databricks_client,
                 )
                 models = databricks_provider.list_models()
                 logging.info(f"Found {len(models)} Databricks models")
@@ -444,6 +517,70 @@ class TokenInputStep(SetupStep):
             )
 
 
+class AWSProfileInputStep(SetupStep):
+    """Handle AWS profile input for Redshift configuration."""
+
+    def get_step_title(self) -> str:
+        return "AWS Profile Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        import os
+
+        current_profile = os.getenv("AWS_PROFILE", "default")
+        return (
+            f"Current AWS_PROFILE: {current_profile}\n\n"
+            "Please enter the AWS profile name to use for Redshift access\n"
+            "(Press Enter to use 'default', or specify a profile from your ~/.aws/config):"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle AWS profile input."""
+        profile = input_text.strip()
+
+        # Default to "default" if empty
+        if not profile:
+            profile = "default"
+
+        # Basic validation for profile name (alphanumeric, dash, underscore)
+        if not profile.replace("-", "").replace("_", "").isalnum():
+            return StepResult(
+                success=False,
+                message="Invalid profile name format. Please enter a valid AWS profile name.",
+                action=WizardAction.RETRY,
+            )
+
+        # Save profile to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(aws_profile=profile)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save AWS profile. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            logging.info(
+                f"AWS profile '{profile}' saved to config and will be added to state"
+            )
+            return StepResult(
+                success=True,
+                message=f"AWS profile '{profile}' configured. Proceeding to region selection.",
+                next_step=WizardStep.AWS_REGION_INPUT,
+                action=WizardAction.CONTINUE,
+                data={"aws_profile": profile},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving AWS profile: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving AWS profile: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
 class ModelSelectionStep(SetupStep):
     """Handle model selection."""
 
@@ -460,6 +597,7 @@ class ModelSelectionStep(SetupStep):
             try:
                 if state.llm_provider == "databricks":
                     from chuck_data.llm.providers.databricks import DatabricksProvider
+                    from chuck_data.clients.databricks import DatabricksAPIClient
 
                     # Check if we have the required credentials
                     if not state.workspace_url or not state.token:
@@ -473,22 +611,18 @@ class ModelSelectionStep(SetupStep):
                             action=WizardAction.CONTINUE,
                         )
 
+                    # Only use the service client if it's a DatabricksAPIClient
+                    # If the data provider is Redshift, we need to create a Databricks client for LLM
                     service = get_chuck_service()
-                    if not service or not service.client:
-                        logging.error(
-                            f"Service not initialized - service: {service}, client: {service.client if service else 'N/A'}"
-                        )
-                        return StepResult(
-                            success=False,
-                            message="Data provider connection not available. Please restart the wizard.",
-                            next_step=WizardStep.DATA_PROVIDER_SELECTION,
-                            action=WizardAction.CONTINUE,
-                        )
+                    databricks_client = None
+
+                    if service and service.client and isinstance(service.client, DatabricksAPIClient):
+                        databricks_client = service.client
 
                     provider = DatabricksProvider(
                         workspace_url=state.workspace_url,
                         token=state.token,
-                        client=service.client,
+                        client=databricks_client,
                     )
                     state.models = provider.list_models()
                     logging.info(f"Found {len(state.models)} Databricks models")
@@ -576,6 +710,487 @@ class ModelSelectionStep(SetupStep):
             )
 
 
+class AWSRegionInputStep(SetupStep):
+    """Handle AWS region input for Redshift configuration."""
+
+    def get_step_title(self) -> str:
+        return "AWS Region Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        import os
+
+        aws_profile = os.getenv("AWS_PROFILE", "not set")
+        aws_region = os.getenv("AWS_REGION", "not set")
+        return (
+            f"Current AWS_PROFILE: {aws_profile}\n"
+            f"Current AWS_REGION: {aws_region}\n\n"
+            "Please enter the AWS region where your Redshift cluster is located\n"
+            "(e.g., us-west-2, us-east-1, eu-west-1):"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle AWS region input."""
+        region = input_text.strip()
+
+        if not region:
+            return StepResult(
+                success=False,
+                message="Region cannot be empty. Please enter a valid AWS region.",
+                action=WizardAction.RETRY,
+            )
+
+        # Basic validation for AWS region format
+        if not region.replace("-", "").replace("_", "").isalnum():
+            return StepResult(
+                success=False,
+                message="Invalid region format. Please enter a valid AWS region (e.g., us-west-2).",
+                action=WizardAction.RETRY,
+            )
+
+        # Save region to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(aws_region=region)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save AWS region. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            logging.info(
+                f"AWS region '{region}' saved to config and will be added to state"
+            )
+            return StepResult(
+                success=True,
+                message=f"AWS region '{region}' configured. Proceeding to AWS account ID input.",
+                next_step=WizardStep.AWS_ACCOUNT_ID_INPUT,
+                action=WizardAction.CONTINUE,
+                data={"aws_region": region},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving AWS region: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving AWS region: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class AWSAccountIdInputStep(SetupStep):
+    """Handle AWS Account ID input for Redshift JDBC URL construction."""
+
+    def get_step_title(self) -> str:
+        return "AWS Account ID Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please enter your AWS Account ID (12-digit number):\n"
+            "(This is required to construct the Redshift JDBC URL)\n"
+            "(You can find this in the AWS Console under your account settings)"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle AWS Account ID input."""
+        account_id = input_text.strip()
+
+        if not account_id:
+            return StepResult(
+                success=False,
+                message="AWS Account ID cannot be empty. Please enter a 12-digit account ID.",
+                action=WizardAction.RETRY,
+            )
+
+        # Validate account ID format (should be 12 digits)
+        if not account_id.isdigit() or len(account_id) != 12:
+            return StepResult(
+                success=False,
+                message="Invalid AWS Account ID format. Must be exactly 12 digits.",
+                action=WizardAction.RETRY,
+            )
+
+        # Save account ID to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(aws_account_id=account_id)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save AWS Account ID. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            logging.info(
+                f"AWS Account ID '{account_id}' saved to config and will be added to state"
+            )
+            return StepResult(
+                success=True,
+                message=f"AWS Account ID configured. Proceeding to cluster selection.",
+                next_step=WizardStep.REDSHIFT_CLUSTER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"aws_account_id": account_id},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving AWS Account ID: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving AWS Account ID: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class RedshiftClusterSelectionStep(SetupStep):
+    """Handle Redshift cluster selection."""
+
+    def get_step_title(self) -> str:
+        return "Redshift Cluster Selection"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Enter your Redshift cluster identifier or workgroup name:\n"
+            "(For provisioned clusters: cluster-identifier)\n"
+            "(For Serverless: workgroup-name)"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle Redshift cluster/workgroup selection."""
+        identifier = input_text.strip()
+
+        if not identifier:
+            return StepResult(
+                success=False,
+                message="Cluster identifier/workgroup cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+
+        # Try both serverless workgroup and provisioned cluster
+        # We'll try serverless first (more common for new deployments)
+
+        # Get AWS credentials from environment (optional - boto3 will discover if not provided)
+        import os
+
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+        # Validate connection to Redshift
+        try:
+            from chuck_data.clients.redshift import RedshiftAPIClient
+
+            logging.info(
+                f"RedshiftClusterSelectionStep: state.aws_region = {state.aws_region}"
+            )
+
+            if not state.aws_region:
+                logging.error("aws_region is None in RedshiftClusterSelectionStep!")
+                return StepResult(
+                    success=False,
+                    message="AWS region not set. Please go back and enter the region.",
+                    next_step=WizardStep.AWS_REGION_INPUT,
+                    action=WizardAction.CONTINUE,
+                )
+
+            client_config = {
+                "region": state.aws_region,
+            }
+
+            # Add explicit credentials if provided
+            if aws_access_key and aws_secret_key:
+                client_config["aws_access_key_id"] = aws_access_key
+                client_config["aws_secret_access_key"] = aws_secret_key
+
+            # Try serverless workgroup first
+            is_serverless = None
+            connection_error = None
+
+            # Attempt 1: Try as serverless workgroup
+            try:
+                logging.info(
+                    f"Attempting to connect as serverless workgroup: {identifier}"
+                )
+                serverless_config = {**client_config, "workgroup_name": identifier}
+                client = RedshiftAPIClient(**serverless_config)
+                databases = client.list_databases()
+                logging.info(
+                    f"Successfully connected to Redshift Serverless workgroup. Found {len(databases)} databases."
+                )
+                is_serverless = True
+            except Exception as serverless_error:
+                logging.info(
+                    f"Failed to connect as serverless workgroup: {serverless_error}"
+                )
+                connection_error = serverless_error
+
+                # Attempt 2: Try as provisioned cluster
+                try:
+                    logging.info(
+                        f"Attempting to connect as provisioned cluster: {identifier}"
+                    )
+                    cluster_config = {**client_config, "cluster_identifier": identifier}
+                    client = RedshiftAPIClient(**cluster_config)
+                    databases = client.list_databases()
+                    logging.info(
+                        f"Successfully connected to Redshift provisioned cluster. Found {len(databases)} databases."
+                    )
+                    is_serverless = False
+                except Exception as cluster_error:
+                    logging.info(
+                        f"Failed to connect as provisioned cluster: {cluster_error}"
+                    )
+                    # Both attempts failed
+                    error_msg = str(connection_error)
+
+                    # Provide helpful error messages for common issues
+                    if "AccessDenied" in error_msg or "not authorized" in error_msg:
+                        helpful_msg = (
+                            f"Access denied to Redshift workgroup/cluster '{identifier}'.\n"
+                            "Possible causes:\n"
+                            "  1. AWS credentials don't have Redshift Data API permissions\n"
+                            "  2. The workgroup/cluster doesn't exist in this region\n"
+                            f"  3. Your IAM user/role needs 'redshift-data:*' and 'redshift:DescribeClusters' permissions\n\n"
+                            f"Detailed error: {error_msg}"
+                        )
+                    elif (
+                        "not found" in error_msg.lower()
+                        or "does not exist" in error_msg.lower()
+                    ):
+                        helpful_msg = (
+                            f"Redshift workgroup/cluster '{identifier}' not found.\n"
+                            f"Please verify:\n"
+                            f"  1. The workgroup/cluster name is correct\n"
+                            f"  2. It exists in region: {state.aws_region}\n"
+                            f"  3. You have permission to access it\n\n"
+                            f"Tried both serverless workgroup and provisioned cluster.\n"
+                            f"Detailed error: {error_msg}"
+                        )
+                    else:
+                        helpful_msg = f"Failed to connect to Redshift workgroup/cluster '{identifier}'.\n\nError: {error_msg}"
+
+                    return StepResult(
+                        success=False,
+                        message=helpful_msg,
+                        action=WizardAction.RETRY,
+                    )
+
+            # Save configuration
+            from chuck_data.config import get_config_manager
+
+            config_data = {}
+
+            # Only save explicit credentials if they were provided
+            if aws_access_key and aws_secret_key:
+                config_data["aws_access_key_id"] = aws_access_key
+                config_data["aws_secret_access_key"] = aws_secret_key
+
+            if is_serverless:
+                config_data["redshift_workgroup_name"] = identifier
+                success = get_config_manager().update(**config_data)
+                data = {"redshift_workgroup_name": identifier}
+                msg_type = "workgroup"
+            else:
+                config_data["redshift_cluster_identifier"] = identifier
+                success = get_config_manager().update(**config_data)
+                data = {"redshift_cluster_identifier": identifier}
+                msg_type = "cluster"
+
+            if not success:
+                return StepResult(
+                    success=False,
+                    message=f"Failed to save Redshift {msg_type} configuration. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=f"Redshift {msg_type} '{identifier}' connected successfully. Proceeding to S3 configuration.",
+                next_step=WizardStep.S3_BUCKET_INPUT,
+                action=WizardAction.CONTINUE,
+                data=data,
+            )
+
+        except Exception as e:
+            logging.error(f"Error connecting to Redshift: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error connecting to Redshift: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class S3BucketInputStep(SetupStep):
+    """Handle S3 bucket configuration for Redshift."""
+
+    def get_step_title(self) -> str:
+        return "S3 Bucket Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Enter the S3 bucket name for intermediate storage:\n"
+            "(Required for Spark-Redshift connector)\n"
+            "Example: my-redshift-temp-bucket"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle S3 bucket input."""
+        bucket = input_text.strip()
+
+        if not bucket:
+            return StepResult(
+                success=False,
+                message="S3 bucket name cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+
+        # Basic S3 bucket name validation
+        if not bucket.replace("-", "").replace(".", "").isalnum():
+            return StepResult(
+                success=False,
+                message="Invalid S3 bucket name format. Please enter a valid bucket name.",
+                action=WizardAction.RETRY,
+            )
+
+        # Verify bucket exists and is accessible
+        try:
+            import boto3
+            import os
+
+            # Build boto3 client kwargs (let boto3 discover credentials if not explicit)
+            s3_kwargs = {"region_name": state.aws_region}
+            aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            if aws_access_key and aws_secret_key:
+                s3_kwargs["aws_access_key_id"] = aws_access_key
+                s3_kwargs["aws_secret_access_key"] = aws_secret_key
+
+            s3 = boto3.client("s3", **s3_kwargs)
+
+            # Try to list objects (with max 1) to verify access
+            s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
+
+        except Exception as e:
+            return StepResult(
+                success=False,
+                message=f"Cannot access S3 bucket '{bucket}': {str(e)}\nPlease verify the bucket exists and you have access.",
+                action=WizardAction.RETRY,
+            )
+
+        # Save S3 bucket to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(s3_bucket=bucket)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save S3 bucket configuration. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            # Reinitialize the service client with Redshift configuration
+            service = get_chuck_service()
+            if service:
+                init_success = service.reinitialize_client()
+                if not init_success:
+                    logging.warning(
+                        "Failed to reinitialize Redshift client, but credentials were saved"
+                    )
+
+            return StepResult(
+                success=True,
+                message=f"S3 bucket '{bucket}' configured successfully. Proceeding to IAM role configuration.",
+                next_step=WizardStep.IAM_ROLE_INPUT,
+                action=WizardAction.CONTINUE,
+                data={"s3_bucket": bucket},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving S3 bucket: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving S3 bucket: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class IAMRoleInputStep(SetupStep):
+    """Handle IAM role ARN configuration for Redshift."""
+
+    def get_step_title(self) -> str:
+        return "IAM Role Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Enter the IAM role ARN for Redshift:\n"
+            "(Required for Databricks to access Redshift and S3)\n"
+            "Example: arn:aws:iam::123456789012:role/RedshiftRole"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle IAM role ARN input."""
+        iam_role = input_text.strip()
+
+        if not iam_role:
+            return StepResult(
+                success=False,
+                message="IAM role ARN cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+
+        # Basic IAM role ARN validation
+        if not iam_role.startswith("arn:aws:iam::"):
+            return StepResult(
+                success=False,
+                message="Invalid IAM role ARN format. Must start with 'arn:aws:iam::'",
+                action=WizardAction.RETRY,
+            )
+
+        # Check that the ARN contains :role/ (allows for path components like service-role/)
+        if ":role/" not in iam_role:
+            return StepResult(
+                success=False,
+                message="Invalid IAM role ARN format. Must contain ':role/' followed by role name",
+                action=WizardAction.RETRY,
+            )
+
+        # Save IAM role to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            # Construct S3 temp dir from bucket and default path
+            s3_temp_dir = f"s3://{state.s3_bucket}/redshift-temp/"
+
+            # Save both IAM role and construct S3 temp dir
+            success = get_config_manager().update(
+                redshift_iam_role=iam_role, redshift_s3_temp_dir=s3_temp_dir
+            )
+
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save IAM role configuration. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=f"IAM role configured successfully. Proceeding to compute provider selection.",
+                next_step=WizardStep.COMPUTE_PROVIDER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"iam_role": iam_role},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving IAM role: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving IAM role: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
 class UsageConsentStep(SetupStep):
     """Handle usage tracking consent."""
 
@@ -637,10 +1252,17 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
     step_map = {
         WizardStep.AMPERITY_AUTH: AmperityAuthStep,
         WizardStep.DATA_PROVIDER_SELECTION: DataProviderSelectionStep,
+        WizardStep.COMPUTE_PROVIDER_SELECTION: ComputeProviderSelectionStep,
         WizardStep.WORKSPACE_URL: WorkspaceUrlStep,
         WizardStep.TOKEN_INPUT: TokenInputStep,
         WizardStep.LLM_PROVIDER_SELECTION: LLMProviderSelectionStep,
         WizardStep.MODEL_SELECTION: ModelSelectionStep,
+        WizardStep.AWS_PROFILE_INPUT: AWSProfileInputStep,
+        WizardStep.AWS_REGION_INPUT: AWSRegionInputStep,
+        WizardStep.AWS_ACCOUNT_ID_INPUT: AWSAccountIdInputStep,
+        WizardStep.REDSHIFT_CLUSTER_SELECTION: RedshiftClusterSelectionStep,
+        WizardStep.S3_BUCKET_INPUT: S3BucketInputStep,
+        WizardStep.IAM_ROLE_INPUT: IAMRoleInputStep,
         WizardStep.USAGE_CONSENT: UsageConsentStep,
     }
 

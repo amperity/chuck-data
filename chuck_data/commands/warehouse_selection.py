@@ -167,4 +167,5 @@ DEFINITION = CommandDefinition(
     agent_display="condensed",  # Use condensed display to avoid pagination issues
     condensed_action="Setting warehouse:",
     usage_hint="Usage: /select-warehouse --warehouse <id_or_name>",
+    provider="databricks",  # Databricks-specific command for SQL warehouses
 )

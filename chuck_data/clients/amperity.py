@@ -264,6 +264,61 @@ class AmperityAPIClient:
             logging.error(f"Error getting job status: {e}")
             raise
 
+    def fetch_amperity_job_init(
+        self, token: str, api_url: Optional[str] = None
+    ) -> dict:
+        """Fetch initialization script for Amperity jobs.
+
+        This method calls the Amperity /api/job/launch endpoint to get both the
+        cluster init script and a job-id for tracking the Stitch job.
+
+        Args:
+            token: Amperity authentication token
+            api_url: Optional override for the job init endpoint (used in testing)
+
+        Returns:
+            Dict containing:
+                - 'cluster-init': The initialization script content
+                - 'job-id': Job identifier for tracking
+
+        Raises:
+            ValueError: If API returns an error or authentication fails
+            ConnectionError: If connection to Amperity API fails
+        """
+        try:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+
+            if not api_url:
+                api_url = f"https://{self.base_url}/api/job/launch"
+
+            response = requests.post(api_url, headers=headers, json={}, timeout=30)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.HTTPError as e:
+            response = e.response
+            resp_text = response.text if response else ""
+            logging.debug(f"HTTP error: {e}, Response: {resp_text}")
+
+            if response is not None:
+                try:
+                    message = response.json().get("message", resp_text)
+                except ValueError:
+                    message = resp_text
+                raise ValueError(
+                    f"{response.status_code} Error: {message}. Please /logout and /login again"
+                )
+            raise ValueError(
+                f"HTTP error occurred: {e}. Please /logout and /login again"
+            )
+
+        except requests.RequestException as e:
+            logging.debug(f"Connection error: {e}")
+            raise ConnectionError(f"Connection error occurred: {e}")
+
     def record_job_submission(
         self, databricks_run_id: str, token: str, job_id: str
     ) -> bool:

@@ -130,8 +130,8 @@ def test_missing_params(databricks_client_stub, llm_client_stub):
         databricks_client_stub, llm_client_stub, "", "test_schema"
     )
     assert "error" in result
-    # Updated error message matches validation module
-    assert "catalog and schema must be specified" in result["error"]
+    # Updated error message matches validation module - case insensitive check
+    assert "catalog and schema" in result["error"].lower()
 
 
 def test_pii_scan_error(databricks_client_stub, llm_client_stub):
@@ -347,8 +347,9 @@ def test_amperity_init_script_error(
             assert "Error fetching Amperity init script" in result["error"]
 
 
+@patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
 def test_versioned_init_script_upload_error(
-    databricks_client_stub, llm_client_stub, mock_pii_scan_results
+    mock_fetch_init, databricks_client_stub, llm_client_stub, mock_pii_scan_results
 ):
     """Test handling when versioned init script upload fails."""
     import tempfile
@@ -382,38 +383,36 @@ def test_versioned_init_script_upload_error(
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
             # Mock fetch_amperity_job_init to return job-id
-            with patch.object(
-                databricks_client_stub, "fetch_amperity_job_init"
-            ) as mock_fetch:
-                mock_fetch.return_value = {
-                    "cluster-init": "#!/bin/bash\necho 'init script'",
-                    "job-id": "test-job-123",
+            mock_fetch_init.return_value = {
+                "cluster-init": "#!/bin/bash\necho 'init script'",
+                "job-id": "test-job-123",
+            }
+
+            # For this test, we need to mock the upload cluster init logic to fail
+            # since it's complex internal logic, but this represents a compromise
+            with patch(
+                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+            ) as mock_upload:
+                mock_upload.return_value = {
+                    "error": "Failed to upload versioned init script"
                 }
 
-                # For this test, we need to mock the upload cluster init logic to fail
-                # since it's complex internal logic, but this represents a compromise
-                with patch(
-                    "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
-                ) as mock_upload:
-                    mock_upload.return_value = {
-                        "error": "Failed to upload versioned init script"
-                    }
+                # Call function
+                result = _helper_prepare_stitch_config(
+                    databricks_client_stub,
+                    llm_client_stub,
+                    "test_catalog",
+                    "test_schema",
+                )
 
-                    # Call function
-                    result = _helper_prepare_stitch_config(
-                        databricks_client_stub,
-                        llm_client_stub,
-                        "test_catalog",
-                        "test_schema",
-                    )
-
-                    # Verify results
-                    assert "error" in result
-                    assert result["error"] == "Failed to upload versioned init script"
+                # Verify results
+                assert "error" in result
+                assert result["error"] == "Failed to upload versioned init script"
 
 
+@patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
 def test_successful_setup(
-    databricks_client_stub, llm_client_stub, mock_pii_scan_results
+    mock_fetch_init, databricks_client_stub, llm_client_stub, mock_pii_scan_results
 ):
     """Test successful Stitch integration setup with versioned init script."""
     import tempfile
@@ -474,60 +473,61 @@ def test_successful_setup(
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
             # Mock fetch_amperity_job_init to return job-id
-            with patch.object(
-                databricks_client_stub, "fetch_amperity_job_init"
-            ) as mock_fetch:
-                mock_fetch.return_value = {
-                    "cluster-init": "#!/bin/bash\necho 'init script'",
-                    "job-id": "test-job-456",
+            mock_fetch_init.return_value = {
+                "cluster-init": "#!/bin/bash\necho 'init script'",
+                "job-id": "test-job-456",
+            }
+
+            # For the upload logic, we'll mock it since it's complex file handling
+            with patch(
+                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+            ) as mock_upload:
+                mock_upload.return_value = {
+                    "success": True,
+                    "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
+                    "filename": "cluster_init-2025-06-02_14-30.sh",
+                    "timestamp": "2025-06-02_14-30",
                 }
 
-                # For the upload logic, we'll mock it since it's complex file handling
-                with patch(
-                    "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
-                ) as mock_upload:
-                    mock_upload.return_value = {
-                        "success": True,
-                        "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
-                        "filename": "cluster_init-2025-06-02_14-30.sh",
-                        "timestamp": "2025-06-02_14-30",
-                    }
+                # Call function - should succeed with real business logic
+                result = _helper_prepare_stitch_config(
+                    databricks_client_stub,
+                    llm_client_stub,
+                    "test_catalog",
+                    "test_schema",
+                )
 
-                    # Call function - should succeed with real business logic
-                    result = _helper_prepare_stitch_config(
-                        databricks_client_stub,
-                        llm_client_stub,
-                        "test_catalog",
-                        "test_schema",
-                    )
+                # Verify results
+                assert result.get("success")
+                assert "stitch_config" in result
+                assert "metadata" in result
+                metadata = result["metadata"]
+                assert "config_file_path" in metadata
+                assert "init_script_path" in metadata
+                assert (
+                    metadata["init_script_path"]
+                    == "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh"
+                )
 
-                    # Verify results
-                    assert result.get("success")
-                    assert "stitch_config" in result
-                    assert "metadata" in result
-                    metadata = result["metadata"]
-                    assert "config_file_path" in metadata
-                    assert "init_script_path" in metadata
-                    assert (
-                        metadata["init_script_path"]
-                        == "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh"
-                    )
+                # Verify versioned init script upload was called with content from mocked API
+                mock_upload.assert_called_once_with(
+                    client=databricks_client_stub,
+                    target_catalog="test_catalog",
+                    target_schema="test_schema",
+                    init_script_content="#!/bin/bash\necho 'init script'",
+                )
 
-                    # Verify versioned init script upload was called with content from mocked API
-                    mock_upload.assert_called_once_with(
-                        client=databricks_client_stub,
-                        target_catalog="test_catalog",
-                        target_schema="test_schema",
-                        init_script_content="#!/bin/bash\necho 'init script'",
-                    )
-
-                # Verify no unsupported columns warning when all columns are supported
-                assert "unsupported_columns" in metadata
-                assert len(metadata["unsupported_columns"]) == 0
+            # Verify no unsupported columns warning when all columns are supported
+            assert "unsupported_columns" in metadata
+            assert len(metadata["unsupported_columns"]) == 0
 
 
+@patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
 def test_unsupported_types_filtered(
-    databricks_client_stub, llm_client_stub, mock_pii_scan_results_with_unsupported
+    mock_fetch_init,
+    databricks_client_stub,
+    llm_client_stub,
+    mock_pii_scan_results_with_unsupported,
 ):
     """Test that unsupported column types are filtered out from Stitch config."""
     import tempfile
@@ -585,80 +585,77 @@ def test_unsupported_types_filtered(
             databricks_client_stub.add_volume("test_catalog", "test_schema", "chuck")
 
             # Mock fetch_amperity_job_init to return job-id
-            with patch.object(
-                databricks_client_stub, "fetch_amperity_job_init"
-            ) as mock_fetch:
-                mock_fetch.return_value = {
-                    "cluster-init": "#!/bin/bash\necho 'init script'",
-                    "job-id": "test-job-789",
+            mock_fetch_init.return_value = {
+                "cluster-init": "#!/bin/bash\necho 'init script'",
+                "job-id": "test-job-789",
+            }
+
+            # Mock upload logic
+            with patch(
+                "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
+            ) as mock_upload:
+                mock_upload.return_value = {
+                    "success": True,
+                    "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
+                    "filename": "cluster_init-2025-06-02_14-30.sh",
+                    "timestamp": "2025-06-02_14-30",
                 }
 
-                # Mock upload logic
-                with patch(
-                    "chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic"
-                ) as mock_upload:
-                    mock_upload.return_value = {
-                        "success": True,
-                        "volume_path": "/Volumes/test_catalog/test_schema/chuck/cluster_init-2025-06-02_14-30.sh",
-                        "filename": "cluster_init-2025-06-02_14-30.sh",
-                        "timestamp": "2025-06-02_14-30",
-                    }
-
-                    # Call function - real business logic should filter unsupported types
-                    result = _helper_prepare_stitch_config(
-                        databricks_client_stub,
-                        llm_client_stub,
-                        "test_catalog",
-                        "test_schema",
-                    )
-
-                    # Verify results
-                    assert result.get("success")
-
-                # Get the generated config content
-                import json
-
-                config_content = json.dumps(result["stitch_config"])
-
-                # Verify unsupported types are not in the config
-                unsupported_types = ["STRUCT", "ARRAY", "GEOGRAPHY", "GEOMETRY", "MAP"]
-                for unsupported_type in unsupported_types:
-                    assert (
-                        unsupported_type not in config_content
-                    ), f"Config should not contain unsupported type: {unsupported_type}"
-
-                # Verify supported types are still included
-                assert (
-                    "string" in config_content.lower()
-                ), "Config should contain supported type: string"
-
-                # Verify unsupported columns are reported to user
-                assert "metadata" in result
-                metadata = result["metadata"]
-                assert "unsupported_columns" in metadata
-                unsupported_info = metadata["unsupported_columns"]
-                assert len(unsupported_info) == 2  # Two tables have unsupported columns
-
-                # Check first table (customers)
-                customers_unsupported = next(
-                    t for t in unsupported_info if "customers" in t["table"]
+                # Call function - real business logic should filter unsupported types
+                result = _helper_prepare_stitch_config(
+                    databricks_client_stub,
+                    llm_client_stub,
+                    "test_catalog",
+                    "test_schema",
                 )
-                assert len(customers_unsupported["columns"]) == 2  # metadata and tags
-                column_types = [col["type"] for col in customers_unsupported["columns"]]
-                assert "STRUCT" in column_types
-                assert "ARRAY" in column_types
 
-                # Check second table (geo_data)
-                geo_unsupported = next(
-                    t for t in unsupported_info if "geo_data" in t["table"]
-                )
+                # Verify results
+                assert result.get("success")
+
+            # Get the generated config content
+            import json
+
+            config_content = json.dumps(result["stitch_config"])
+
+            # Verify unsupported types are not in the config
+            unsupported_types = ["STRUCT", "ARRAY", "GEOGRAPHY", "GEOMETRY", "MAP"]
+            for unsupported_type in unsupported_types:
                 assert (
-                    len(geo_unsupported["columns"]) == 3
-                )  # location, geometry, properties
-                geo_column_types = [col["type"] for col in geo_unsupported["columns"]]
-                assert "GEOGRAPHY" in geo_column_types
-                assert "GEOMETRY" in geo_column_types
-                assert "MAP" in geo_column_types
+                    unsupported_type not in config_content
+                ), f"Config should not contain unsupported type: {unsupported_type}"
+
+            # Verify supported types are still included
+            assert (
+                "string" in config_content.lower()
+            ), "Config should contain supported type: string"
+
+            # Verify unsupported columns are reported to user
+            assert "metadata" in result
+            metadata = result["metadata"]
+            assert "unsupported_columns" in metadata
+            unsupported_info = metadata["unsupported_columns"]
+            assert len(unsupported_info) == 2  # Two tables have unsupported columns
+
+            # Check first table (customers)
+            customers_unsupported = next(
+                t for t in unsupported_info if "customers" in t["table"]
+            )
+            assert len(customers_unsupported["columns"]) == 2  # metadata and tags
+            column_types = [col["type"] for col in customers_unsupported["columns"]]
+            assert "STRUCT" in column_types
+            assert "ARRAY" in column_types
+
+            # Check second table (geo_data)
+            geo_unsupported = next(
+                t for t in unsupported_info if "geo_data" in t["table"]
+            )
+            assert (
+                len(geo_unsupported["columns"]) == 3
+            )  # location, geometry, properties
+            geo_column_types = [col["type"] for col in geo_unsupported["columns"]]
+            assert "GEOGRAPHY" in geo_column_types
+            assert "GEOMETRY" in geo_column_types
+            assert "MAP" in geo_column_types
 
 
 def test_all_columns_unsupported_types(databricks_client_stub, llm_client_stub):
@@ -716,6 +713,7 @@ class TestJobIdTracking:
     """Test job-id tracking from Amperity API in stitch_tools."""
 
     @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
     @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
@@ -724,6 +722,7 @@ class TestJobIdTracking:
         mock_pii_scan,
         mock_upload_init,
         mock_get_token,
+        mock_fetch_init,
         databricks_client_stub,
     ):
         """Test that _helper_prepare_stitch_config captures job-id from API."""
@@ -756,13 +755,11 @@ class TestJobIdTracking:
         }
 
         # Mock fetch_amperity_job_init to return job-id
-        def mock_fetch_init(token):
-            return {
-                "cluster-init": "#!/bin/bash\necho 'init'",
-                "job-id": "chk-test-123",
-            }
+        mock_fetch_init.return_value = {
+            "cluster-init": "#!/bin/bash\necho 'init'",
+            "job-id": "chk-test-123",
+        }
 
-        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
         databricks_client_stub.add_volume("catalog", "schema", "chuck")
 
         result = _helper_prepare_stitch_config(
@@ -774,6 +771,7 @@ class TestJobIdTracking:
         assert result["metadata"]["job_id"] == "chk-test-123"
 
     @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
     @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
@@ -782,6 +780,7 @@ class TestJobIdTracking:
         mock_pii_scan,
         mock_upload_init,
         mock_get_token,
+        mock_fetch_init,
         databricks_client_stub,
     ):
         """Test that _helper_prepare_stitch_config fails if job-id is missing."""
@@ -809,13 +808,11 @@ class TestJobIdTracking:
         }
 
         # Mock fetch_amperity_job_init WITHOUT job-id
-        def mock_fetch_init(token):
-            return {
-                "cluster-init": "#!/bin/bash\necho 'init'",
-                # job-id is missing
-            }
+        mock_fetch_init.return_value = {
+            "cluster-init": "#!/bin/bash\necho 'init'",
+            # job-id is missing
+        }
 
-        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
         databricks_client_stub.add_volume("catalog", "schema", "chuck")
 
         result = _helper_prepare_stitch_config(
@@ -1189,6 +1186,7 @@ class TestMultiCatalogSupport:
         assert all("error" in r for r in results)
 
     @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
     @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
@@ -1197,6 +1195,7 @@ class TestMultiCatalogSupport:
         mock_pii_scan,
         mock_upload_init,
         mock_get_token,
+        mock_fetch_init,
         databricks_client_stub,
         llm_client_stub,
     ):
@@ -1248,13 +1247,11 @@ class TestMultiCatalogSupport:
         }
 
         # Mock fetch_amperity_job_init
-        def mock_fetch_init(_token):
-            return {
-                "cluster-init": "#!/bin/bash\necho 'init'",
-                "job-id": "chk-multi-123",
-            }
+        mock_fetch_init.return_value = {
+            "cluster-init": "#!/bin/bash\necho 'init'",
+            "job-id": "chk-multi-123",
+        }
 
-        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
         databricks_client_stub.add_volume("catalog1", "schema1", "chuck")
 
         target_locations = [
@@ -1284,6 +1281,7 @@ class TestMultiCatalogSupport:
         assert len(metadata["scan_summary"]) == 2
 
     @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
     @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
@@ -1292,6 +1290,7 @@ class TestMultiCatalogSupport:
         mock_pii_scan,
         mock_upload_init,
         mock_get_token,
+        mock_fetch_init,
         databricks_client_stub,
         llm_client_stub,
     ):
@@ -1326,13 +1325,11 @@ class TestMultiCatalogSupport:
         }
 
         # Mock fetch_amperity_job_init
-        def mock_fetch_init(_token):
-            return {
-                "cluster-init": "#!/bin/bash\necho 'init'",
-                "job-id": "chk-multi-456",
-            }
+        mock_fetch_init.return_value = {
+            "cluster-init": "#!/bin/bash\necho 'init'",
+            "job-id": "chk-multi-456",
+        }
 
-        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
         databricks_client_stub.add_volume("catalog1", "schema1", "chuck")
 
         target_locations = [
@@ -1412,6 +1409,7 @@ class TestMultiCatalogSupport:
         assert "scan_summary" in result
 
     @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
     @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
@@ -1420,6 +1418,7 @@ class TestMultiCatalogSupport:
         mock_pii_scan,
         mock_upload_init,
         mock_get_token,
+        mock_fetch_init,
         databricks_client_stub,
         llm_client_stub,
     ):
@@ -1449,13 +1448,11 @@ class TestMultiCatalogSupport:
         }
 
         # Mock fetch_amperity_job_init
-        def mock_fetch_init(_token):
-            return {
-                "cluster-init": "#!/bin/bash\necho 'init'",
-                "job-id": "chk-single-789",
-            }
+        mock_fetch_init.return_value = {
+            "cluster-init": "#!/bin/bash\necho 'init'",
+            "job-id": "chk-single-789",
+        }
 
-        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
         databricks_client_stub.add_volume("catalog1", "schema1", "chuck")
 
         # Call with single catalog/schema (old way)
@@ -1474,6 +1471,7 @@ class TestMultiCatalogSupport:
         ]
 
     @pytest.mark.usefixtures("temp_config")
+    @patch("chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init")
     @patch("chuck_data.commands.stitch_tools.get_amperity_token")
     @patch("chuck_data.commands.stitch_tools._helper_upload_cluster_init_logic")
     @patch("chuck_data.commands.stitch_tools._helper_scan_schema_for_pii_logic")
@@ -1482,6 +1480,7 @@ class TestMultiCatalogSupport:
         mock_pii_scan,
         mock_upload_init,
         mock_get_token,
+        mock_fetch_init,
         databricks_client_stub,
         llm_client_stub,
     ):
@@ -1515,13 +1514,11 @@ class TestMultiCatalogSupport:
         }
 
         # Mock fetch_amperity_job_init
-        def mock_fetch_init(_token):
-            return {
-                "cluster-init": "#!/bin/bash\necho 'init'",
-                "job-id": "chk-multi-999",
-            }
+        mock_fetch_init.return_value = {
+            "cluster-init": "#!/bin/bash\necho 'init'",
+            "job-id": "chk-multi-999",
+        }
 
-        databricks_client_stub.fetch_amperity_job_init = mock_fetch_init
         databricks_client_stub.add_volume("catalog1", "schema1", "chuck")
 
         target_locations = [

@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.commands.cluster_init_tools import _helper_upload_cluster_init_logic
 from chuck_data.config import get_amperity_token
+from chuck_data.compute_providers.provider import ComputeProvider
 
 
 # Unsupported column types for Stitch (from stitch_tools.py)
@@ -35,19 +36,21 @@ NUMERIC_TYPES = [
 ]
 
 
-class DatabricksComputeProvider:
+class DatabricksComputeProvider(ComputeProvider):
     """Run Stitch jobs on Databricks clusters.
 
     This compute provider can process data from:
     - Databricks Unity Catalog (direct access)
     - AWS Redshift (via Spark-Redshift connector)
+
+    Implements the ComputeProvider protocol.
     """
 
     def __init__(
         self,
         workspace_url: str,
         token: str,
-        storage_provider: Optional[Any] = None,
+        storage_provider: Any,
         **kwargs,
     ):
         """Initialize Databricks compute provider.
@@ -55,24 +58,21 @@ class DatabricksComputeProvider:
         Args:
             workspace_url: Databricks workspace URL
             token: Authentication token
-            storage_provider: Optional StorageProvider for uploading artifacts.
-                            If not provided, will use client.upload_file() directly.
+            storage_provider: StorageProvider instance for uploading artifacts.
+                            Must be provided - use ProviderFactory.create_storage_provider()
             **kwargs: Additional configuration options
         """
+        if storage_provider is None:
+            raise ValueError(
+                "storage_provider is required. Use ProviderFactory.create_storage_provider() "
+                "to create the appropriate storage provider instance."
+            )
+
         self.workspace_url = workspace_url
         self.token = token
         self.config = kwargs
         self.client = DatabricksAPIClient(workspace_url=workspace_url, token=token)
-
-        # Use provided storage provider or create default one
-        if storage_provider is None:
-            from chuck_data.storage_providers import DatabricksVolumeStorage
-
-            self.storage_provider = DatabricksVolumeStorage(
-                workspace_url=workspace_url, token=token, client=self.client
-            )
-        else:
-            self.storage_provider = storage_provider
+        self.storage_provider = storage_provider
 
     def prepare_stitch_job(
         self,
@@ -235,7 +235,10 @@ class DatabricksComputeProvider:
 
         # Fetch init script content and job-id from Amperity API
         try:
-            init_script_data = self.client.fetch_amperity_job_init(amperity_token)
+            from chuck_data.clients.amperity import AmperityAPIClient
+
+            amperity_client = AmperityAPIClient()
+            init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
             init_script_content = init_script_data.get("cluster-init")
             job_id = init_script_data.get("job-id")
 

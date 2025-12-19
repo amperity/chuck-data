@@ -212,4 +212,5 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     usage_hint='Example: /tag-pii --table_name my_table --pii_columns \'[{"name": "email", "semantic": "email"}]\'',
+    provider="databricks",  # Databricks Unity Catalog-specific command - uses SQL ALTER TABLE for semantic tags
 )

@@ -156,25 +156,3 @@ def test_post_connection_error(mock_post, databricks_api_client):
         databricks_api_client.post("/test-endpoint", {"data": "test"})
 
     assert "Connection error occurred" in str(exc_info.value)
-
-
-@patch("chuck_data.clients.databricks.requests.post")
-def test_fetch_amperity_job_init_http_error(mock_post, databricks_api_client):
-    """fetch_amperity_job_init should show helpful message on HTTP errors."""
-    mock_response = MagicMock()
-    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
-        "HTTP 401", response=mock_response
-    )
-    mock_response.status_code = 401
-    mock_response.text = '{"status":401,"message":"Unauthorized"}'
-    mock_response.json.return_value = {
-        "status": 401,
-        "message": "Unauthorized",
-    }
-    mock_post.return_value = mock_response
-
-    with pytest.raises(ValueError) as exc_info:
-        databricks_api_client.fetch_amperity_job_init("fake-token")
-
-    assert "401 Error" in str(exc_info.value)
-    assert "Please /logout and /login again" in str(exc_info.value)

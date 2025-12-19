@@ -114,18 +114,21 @@ IMPORTANT WORKFLOWS:
    - If you need database info for internal processing: use list_databases (defaults to no table display)
 
 2. PII and/or Customer data DETECTION: To help with PII and/or customer data scanning:
-   - For single table: navigate to the right database/schema, then use tag_pii_columns
-   - For bulk scanning: use scan_schema_for_pii with explicit catalog_name and schema_name parameters
-     * When user says "scan database.schema" or "scan in schema database.schema", parse it as catalog_name=first_part, schema_name=second_part
-     * Example: "scan dev.public" means catalog_name="dev", schema_name="public"
-     * Example: "scan prod_db.sales" means catalog_name="prod_db", schema_name="sales"
+   - Use scan_schema_for_pii with explicit database and schema_name parameters (or rely on active database/schema)
+     * When user says "scan database.schema" or "scan in schema database.schema", parse it as database=first_part, schema_name=second_part
+     * Example: "scan dev.public" means database="dev", schema_name="public"
+     * Example: "scan prod_db.sales" means database="prod_db", schema_name="sales"
      * If database/schema not specified, scan_schema_for_pii will use currently active database/schema
 
 3. PII TAGGING: To help with bulk PII tagging across a schema:
-   - If user asks about tagging PII, bulk tagging PII, or applying PII tags: use bulk_tag_pii with explicit catalog_name and schema_name parameters
-     * When user says "tag database.schema" or "tag in schema database.schema", parse it as catalog_name=first_part, schema_name=second_part
-     * Example: "tag dev.public" means catalog_name="dev", schema_name="public"
-     * If database/schema not specified, bulk_tag_pii will use currently active database/schema
+   - When user asks to tag PII, apply PII tags, label PII, or mark PII columns: use bulk_tag_pii command
+   - bulk_tag_pii works with both explicit database/schema parameters OR uses the currently active database/schema
+   - The command will scan for PII, show a preview, and ask for confirmation before applying tags
+   - Examples:
+     * User says "tag please" or "apply PII tags" → use bulk_tag_pii (will use active database/schema)
+     * User says "tag dev.public" → use bulk_tag_pii with database="dev", schema_name="public"
+     * User says "label customer data" → use bulk_tag_pii (will use active database/schema)
+   - IMPORTANT: bulk_tag_pii is the ONLY way to tag PII columns in Redshift. There is no single-table tagging command.
 
 4. SCHEMAS: To work with schemas:
    - If user asks "what schemas do I have?" or wants to see schemas: use list_schemas with display=true (shows full table)

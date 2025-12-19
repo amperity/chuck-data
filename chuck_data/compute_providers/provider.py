@@ -3,9 +3,10 @@
 Defines the interface that all compute providers must implement.
 """
 
-from typing import Protocol, Dict, Any, Optional
+from typing import Protocol, Dict, Any, Optional, runtime_checkable
 
 
+@runtime_checkable
 class ComputeProvider(Protocol):
     """Protocol for compute providers.
 

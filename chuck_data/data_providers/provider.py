@@ -1,8 +1,9 @@
 """Data Provider Protocol."""
 
-from typing import Protocol, List, Dict, Optional, Any
+from typing import Protocol, List, Dict, Optional, Any, runtime_checkable
 
 
+@runtime_checkable
 class DataProvider(Protocol):
     """Protocol that all data providers must implement.
 

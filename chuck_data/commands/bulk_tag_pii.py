@@ -20,47 +20,10 @@ from chuck_data.ui.theme import INFO_STYLE, ERROR_STYLE, SUCCESS_STYLE
 from chuck_data import config
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
-from chuck_data.data_providers.adapters import (
-    DatabricksProviderAdapter,
-    RedshiftProviderAdapter,
+from chuck_data.data_providers import (
+    get_provider_adapter,
+    is_redshift_client,
 )
-
-
-def _get_data_provider(client):
-    """
-    Create a data provider adapter from a client instance.
-
-    Args:
-        client: Either DatabricksAPIClient, RedshiftAPIClient, or their stubs/mocks
-
-    Returns:
-        DataProvider adapter (DatabricksProviderAdapter or RedshiftProviderAdapter)
-
-    Raises:
-        ValueError: If client type is not supported
-    """
-    # Check by isinstance first (for real clients)
-    if isinstance(client, DatabricksAPIClient):
-        adapter = DatabricksProviderAdapter.__new__(DatabricksProviderAdapter)
-        adapter.client = client
-        return adapter
-    elif isinstance(client, RedshiftAPIClient):
-        adapter = RedshiftProviderAdapter.__new__(RedshiftProviderAdapter)
-        adapter.client = client
-        return adapter
-
-    # Check by class name (for stubs/mocks in tests)
-    client_class_name = client.__class__.__name__
-    if "Databricks" in client_class_name or "databricks" in client_class_name.lower():
-        adapter = DatabricksProviderAdapter.__new__(DatabricksProviderAdapter)
-        adapter.client = client
-        return adapter
-    elif "Redshift" in client_class_name or "redshift" in client_class_name.lower():
-        adapter = RedshiftProviderAdapter.__new__(RedshiftProviderAdapter)
-        adapter.client = client
-        return adapter
-
-    raise ValueError(f"Unsupported client type: {type(client)}")
 
 
 def handle_bulk_tag_pii(client, **kwargs):
@@ -109,18 +72,29 @@ def handle_bulk_tag_pii(client, **kwargs):
 
 
 def _validate_parameters(client, **kwargs):
-    """Comprehensive parameter validation."""
+    """Comprehensive parameter validation (provider-aware)."""
     errors = []
+    is_redshift = is_redshift_client(client)
 
-    # Get catalog name (explicit or from config)
-    catalog_name = kwargs.get("catalog_name")
+    # Get catalog/database name (explicit or from config)
+    catalog_name = kwargs.get("catalog_name") or kwargs.get("database")
     if not catalog_name:
         try:
-            catalog_name = config.get_active_catalog()
+            catalog_name = (
+                config.get_active_database()
+                if is_redshift
+                else config.get_active_catalog()
+            )
             if not catalog_name:
-                errors.append("No catalog specified and no active catalog configured")
+                resource_type = "database" if is_redshift else "catalog"
+                errors.append(
+                    f"No {resource_type} specified and no active {resource_type} configured"
+                )
         except Exception:
-            errors.append("No catalog specified and no active catalog configured")
+            resource_type = "database" if is_redshift else "catalog"
+            errors.append(
+                f"No {resource_type} specified and no active {resource_type} configured"
+            )
 
     # Get schema name (explicit or from config)
     schema_name = kwargs.get("schema_name")
@@ -132,63 +106,115 @@ def _validate_parameters(client, **kwargs):
         except Exception:
             errors.append("No schema specified and no active schema configured")
 
-    # Check warehouse configuration for SQL operations
-    try:
-        warehouse_id = config.get_warehouse_id()
-        if not warehouse_id:
+    # Check warehouse configuration for SQL operations (Databricks only)
+    if not is_redshift:
+        try:
+            warehouse_id = config.get_warehouse_id()
+            if not warehouse_id:
+                errors.append(
+                    "No warehouse configured. Please configure a warehouse for SQL operations."
+                )
+        except Exception:
             errors.append(
                 "No warehouse configured. Please configure a warehouse for SQL operations."
             )
-    except Exception:
-        errors.append(
-            "No warehouse configured. Please configure a warehouse for SQL operations."
-        )
 
     if errors:
         return CommandResult(
             False, message=f"Configuration errors: {'; '.join(errors)}"
         )
 
-    # Validate catalog exists
-    try:
-        client.get_catalog(catalog_name)
-    except Exception:
+    # Validate catalog/database and schema exist (provider-specific)
+    # Note: Validation is best-effort - if we can't validate, we proceed anyway
+    if is_redshift:
+        # For Redshift: validate database and schema (best-effort)
         try:
-            catalogs_result = client.list_catalogs()
-            catalog_names = [
-                c.get("name", "Unknown") for c in catalogs_result.get("catalogs", [])
-            ]
-            available = ", ".join(catalog_names)
-            return CommandResult(
-                False,
-                message=f"Catalog '{catalog_name}' not found. Available catalogs: {available}",
-            )
+            databases = client.list_databases()
+            if not any(
+                db.get("name") == catalog_name for db in databases.get("databases", [])
+            ):
+                db_names = [
+                    db.get("name", "Unknown") for db in databases.get("databases", [])
+                ]
+                available = ", ".join(db_names)
+                return CommandResult(
+                    False,
+                    message=f"Database '{catalog_name}' not found. Available databases: {available}",
+                )
         except Exception as e:
-            return CommandResult(False, message=f"Unable to validate catalog: {str(e)}")
+            # If we can't list databases (e.g., connection issues), log and proceed
+            import logging
 
-    # Validate schema exists
-    try:
-        client.get_schema(f"{catalog_name}.{schema_name}")
-    except Exception:
-        try:
-            schemas_result = client.list_schemas(catalog_name)
-            schemas = schemas_result.get("schemas", [])
-            schema_names = [s.get("name", "Unknown") for s in schemas]
-            available = ", ".join(schema_names)
-            return CommandResult(
-                False,
-                message=f"Schema '{schema_name}' not found. Available schemas: {available}",
+            logging.warning(
+                f"Unable to validate database (proceeding anyway): {str(e)}"
             )
+
+        try:
+            schemas = client.list_schemas(database=catalog_name)
+            schema_names = [
+                s.get("name", "Unknown") for s in schemas.get("schemas", [])
+            ]
+            if not any(s == schema_name for s in schema_names):
+                available = ", ".join(schema_names)
+                return CommandResult(
+                    False,
+                    message=f"Schema '{schema_name}' not found. Available schemas: {available}",
+                )
         except Exception as e:
-            return CommandResult(False, message=f"Unable to validate schema: {str(e)}")
+            # If we can't list schemas (e.g., connection issues), log and proceed
+            import logging
+
+            logging.warning(f"Unable to validate schema (proceeding anyway): {str(e)}")
+    else:
+        # For Databricks: validate catalog and schema
+        try:
+            client.get_catalog(catalog_name)
+        except Exception:
+            try:
+                catalogs_result = client.list_catalogs()
+                catalog_names = [
+                    c.get("name", "Unknown")
+                    for c in catalogs_result.get("catalogs", [])
+                ]
+                available = ", ".join(catalog_names)
+                return CommandResult(
+                    False,
+                    message=f"Catalog '{catalog_name}' not found. Available catalogs: {available}",
+                )
+            except Exception as e:
+                return CommandResult(
+                    False, message=f"Unable to validate catalog: {str(e)}"
+                )
+
+        try:
+            client.get_schema(f"{catalog_name}.{schema_name}")
+        except Exception:
+            try:
+                schemas_result = client.list_schemas(catalog_name)
+                schemas = schemas_result.get("schemas", [])
+                schema_names = [s.get("name", "Unknown") for s in schemas]
+                available = ", ".join(schema_names)
+                return CommandResult(
+                    False,
+                    message=f"Schema '{schema_name}' not found. Available schemas: {available}",
+                )
+            except Exception as e:
+                return CommandResult(
+                    False, message=f"Unable to validate schema: {str(e)}"
+                )
 
     return CommandResult(True, message="Parameters valid")
 
 
 def _execute_directly(client, **kwargs):
     """Execute workflow directly without interaction."""
-    # Get parameters (validated already)
-    catalog_name = kwargs.get("catalog_name") or config.get_active_catalog()
+    # Get parameters (validated already) - provider-aware
+    is_redshift = is_redshift_client(client)
+    catalog_name = kwargs.get("catalog_name") or kwargs.get("database")
+    if not catalog_name:
+        catalog_name = (
+            config.get_active_database() if is_redshift else config.get_active_catalog()
+        )
     schema_name = kwargs.get("schema_name") or config.get_active_schema()
     tool_output_callback = kwargs.get("tool_output_callback")
 
@@ -327,8 +353,8 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
         List of tagging result dictionaries with success/error information
     """
     # Get data provider adapter
-    provider = _get_data_provider(client)
-    is_redshift = isinstance(client, RedshiftAPIClient)
+    provider = get_provider_adapter(client)
+    is_redshift = is_redshift_client(client)
 
     # Determine catalog and schema from scan summary
     results_detail = scan_summary_data.get("results_detail", [])
@@ -577,8 +603,13 @@ def _report_progress(step_message, tool_output_callback=None):
 
 def _start_interactive_mode(client, **kwargs):
     """Start interactive workflow - Phase 1: Scan and Preview."""
-    # Get parameters (validated already)
-    catalog_name = kwargs.get("catalog_name") or config.get_active_catalog()
+    # Get parameters (validated already) - provider-aware
+    is_redshift = is_redshift_client(client)
+    catalog_name = kwargs.get("catalog_name") or kwargs.get("database")
+    if not catalog_name:
+        catalog_name = (
+            config.get_active_database() if is_redshift else config.get_active_catalog()
+        )
     schema_name = kwargs.get("schema_name") or config.get_active_schema()
 
     # Assert non-None since validation has passed
@@ -1287,12 +1318,16 @@ If you cannot understand the request, set action to "unknown".
 
 DEFINITION = CommandDefinition(
     name="bulk_tag_pii",
-    description="Apply semantic tags to PII columns in a schema with interactive confirmation. This command scans for PII, shows a preview, and allows the user to confirm/modify before applying tags. Only use this when the user explicitly wants to TAG pii columns, not just scan for them.",
+    description="Apply semantic tags to PII columns in a schema with interactive confirmation. Works with both Databricks Unity Catalog and AWS Redshift. This command scans for PII, shows a preview, and allows the user to confirm/modify before applying tags. Use this when the user wants to TAG, LABEL, or MARK PII columns (not just scan them).",
     handler=handle_bulk_tag_pii,
     parameters={
         "catalog_name": {
             "type": "string",
-            "description": "Optional: Name of the catalog (e.g., 'main', 'dev_catalog'). When user says 'catalog.schema' like 'main.public', this is the first part before the dot. If not provided, uses the active catalog",
+            "description": "Optional: For Databricks - name of the catalog (e.g., 'main'). For Redshift - name of the database (e.g., 'dev'). When user says 'catalog.schema' like 'main.public' or 'dev.public', this is the first part before the dot. If not provided, uses the active catalog/database",
+        },
+        "database": {
+            "type": "string",
+            "description": "Optional: Alternative parameter name for catalog_name, specifically for Redshift databases (e.g., 'dev'). If not provided, uses the active database",
         },
         "schema_name": {
             "type": "string",

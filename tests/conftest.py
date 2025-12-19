@@ -5,6 +5,14 @@ import tempfile
 import os
 from unittest.mock import MagicMock, patch
 
+# CRITICAL: Set test config path BEFORE any imports that use ConfigManager
+# This prevents tests from modifying the user's real ~/.chuck_config.json
+_TEST_CONFIG_DIR = tempfile.mkdtemp(prefix="chuck_test_config_")
+_TEST_CONFIG_PATH = os.path.join(_TEST_CONFIG_DIR, "test_config.json")
+with open(_TEST_CONFIG_PATH, "w") as f:
+    f.write('{"usage_tracking_consent": false}')
+os.environ["CHUCK_CONFIG_PATH"] = _TEST_CONFIG_PATH
+
 from tests.fixtures.databricks.client import DatabricksClientStub
 from tests.fixtures.amperity import AmperityClientStub
 from tests.fixtures.llm import LLMClientStub
@@ -12,6 +20,25 @@ from tests.fixtures.collectors import MetricsCollectorStub
 from chuck_data.config import ConfigManager
 
 # Import environment fixtures to make them available globally
+
+
+@pytest.fixture(autouse=True, scope="function")
+def reset_config_singleton():
+    """
+    Function-level fixture to reset config singleton between tests.
+
+    This ensures each test gets a fresh ConfigManager instance, preventing
+    test pollution while still using the session-level test config path.
+    """
+    # Clear cached singleton instances before each test
+    ConfigManager._instance = None
+    ConfigManager._instances_by_path.clear()
+
+    yield
+
+    # Clear again after test
+    ConfigManager._instance = None
+    ConfigManager._instances_by_path.clear()
 
 
 @pytest.fixture(autouse=True)

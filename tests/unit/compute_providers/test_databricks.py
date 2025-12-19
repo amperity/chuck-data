@@ -5,23 +5,47 @@ import pytest
 from chuck_data.compute_providers.databricks import DatabricksComputeProvider
 
 
+@pytest.fixture
+def mock_storage_provider():
+    """Mock storage provider for testing."""
+    mock_storage = Mock()
+    mock_storage.upload_manifest.return_value = "s3://bucket/path/manifest.json"
+    mock_storage.upload_init_script.return_value = "s3://bucket/path/init.sh"
+    return mock_storage
+
+
 class TestDatabricksComputeProviderInit:
     """Tests for DatabricksComputeProvider initialization."""
 
-    def test_can_instantiate(self):
+    def test_requires_storage_provider(self):
+        """Test that storage_provider is required."""
+        with pytest.raises(ValueError) as exc_info:
+            DatabricksComputeProvider(
+                workspace_url="https://test.databricks.com",
+                token="test-token",
+                storage_provider=None,
+            )
+
+        assert "storage_provider is required" in str(exc_info.value)
+        assert "ProviderFactory.create_storage_provider" in str(exc_info.value)
+
+    def test_can_instantiate(self, mock_storage_provider):
         """Test that DatabricksComputeProvider can be instantiated."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         assert provider.workspace_url == "https://test.databricks.com"
         assert provider.token == "test-token"
         assert provider.client is not None
 
-    def test_accepts_additional_kwargs(self):
+    def test_accepts_additional_kwargs(self, mock_storage_provider):
         """Test that additional kwargs are stored in config."""
         provider = DatabricksComputeProvider(
             workspace_url="https://test.databricks.com",
             token="test-token",
+            storage_provider=mock_storage_provider,
             cluster_size="small",
             custom_setting="value",
         )
@@ -29,10 +53,12 @@ class TestDatabricksComputeProviderInit:
         assert provider.config["cluster_size"] == "small"
         assert provider.config["custom_setting"] == "value"
 
-    def test_creates_databricks_client(self):
+    def test_creates_databricks_client(self, mock_storage_provider):
         """Test that DatabricksAPIClient is instantiated."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         # Client is created with the provided workspace_url
         assert provider.client is not None
@@ -45,7 +71,12 @@ class TestPrepareStitchJob:
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
     @patch("chuck_data.compute_providers.databricks._helper_upload_cluster_init_logic")
     def test_prepare_stitch_job_success(
-        self, mock_upload_init, mock_get_token, mock_databricks_client, mock_llm_client
+        self,
+        mock_upload_init,
+        mock_get_token,
+        mock_databricks_client,
+        mock_llm_client,
+        mock_storage_provider,
     ):
         """Test successful Stitch job preparation."""
         # Setup mocks
@@ -56,7 +87,9 @@ class TestPrepareStitchJob:
         }
 
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -79,10 +112,6 @@ class TestPrepareStitchJob:
         # Mock client methods
         mock_databricks_client.list_volumes.return_value = {"volumes": []}
         mock_databricks_client.create_volume.return_value = {"name": "chuck"}
-        mock_databricks_client.fetch_amperity_job_init.return_value = {
-            "cluster-init": "#!/bin/bash\necho 'init'",
-            "job-id": "test-job-123",
-        }
 
         config = {
             "target_catalog": "test_cat",
@@ -95,9 +124,17 @@ class TestPrepareStitchJob:
         ) as mock_scan:
             mock_scan.return_value = pii_scan_result
 
-            result = provider.prepare_stitch_job(
-                manifest={}, data_provider=None, config=config
-            )
+            with patch(
+                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init"
+            ) as mock_fetch_init:
+                mock_fetch_init.return_value = {
+                    "cluster-init": "#!/bin/bash\necho 'init'",
+                    "job-id": "test-job-123",
+                }
+
+                result = provider.prepare_stitch_job(
+                    manifest={}, data_provider=None, config=config
+                )
 
         # Assertions
         assert result["success"] is True
@@ -108,10 +145,12 @@ class TestPrepareStitchJob:
         assert result["metadata"]["job_id"] == "test-job-123"
         assert result["metadata"]["target_catalog"] == "test_cat"
 
-    def test_prepare_stitch_job_missing_catalog(self):
+    def test_prepare_stitch_job_missing_catalog(self, mock_storage_provider):
         """Test that missing catalog returns error."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
 
         config = {"target_schema": "test_schema", "llm_client": Mock()}
@@ -123,10 +162,12 @@ class TestPrepareStitchJob:
         assert "error" in result
         assert "catalog and schema are required" in result["error"]
 
-    def test_prepare_stitch_job_missing_llm_client(self):
+    def test_prepare_stitch_job_missing_llm_client(self, mock_storage_provider):
         """Test that missing LLM client returns error."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
 
         config = {"target_catalog": "test_cat", "target_schema": "test_schema"}
@@ -140,11 +181,13 @@ class TestPrepareStitchJob:
 
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
     def test_prepare_stitch_job_pii_scan_fails(
-        self, mock_get_token, mock_databricks_client, mock_llm_client
+        self, mock_databricks_client, mock_llm_client, mock_storage_provider
     ):
         """Test handling of PII scan failure."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -168,11 +211,17 @@ class TestPrepareStitchJob:
 
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
     def test_prepare_stitch_job_no_pii_tables(
-        self, mock_get_token, mock_databricks_client, mock_llm_client
+        self,
+        mock_get_token,
+        mock_databricks_client,
+        mock_llm_client,
+        mock_storage_provider,
     ):
         """Test handling when no tables with PII are found."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -206,13 +255,19 @@ class TestPrepareStitchJob:
 
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
     def test_prepare_stitch_job_no_amperity_token(
-        self, mock_get_token, mock_databricks_client, mock_llm_client
+        self,
+        mock_get_token,
+        mock_databricks_client,
+        mock_llm_client,
+        mock_storage_provider,
     ):
         """Test handling when Amperity token is not found."""
         mock_get_token.return_value = None
 
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -254,7 +309,12 @@ class TestPrepareStitchJob:
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
     @patch("chuck_data.compute_providers.databricks._helper_upload_cluster_init_logic")
     def test_prepare_stitch_job_filters_unsupported_types(
-        self, mock_upload_init, mock_get_token, mock_databricks_client, mock_llm_client
+        self,
+        mock_upload_init,
+        mock_get_token,
+        mock_databricks_client,
+        mock_llm_client,
+        mock_storage_provider,
     ):
         """Test that unsupported column types are filtered out."""
         mock_get_token.return_value = "test-amperity-token"
@@ -264,7 +324,9 @@ class TestPrepareStitchJob:
         }
 
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -287,10 +349,6 @@ class TestPrepareStitchJob:
         mock_databricks_client.list_volumes.return_value = {
             "volumes": [{"name": "chuck"}]
         }
-        mock_databricks_client.fetch_amperity_job_init.return_value = {
-            "cluster-init": "#!/bin/bash",
-            "job-id": "test-job-123",
-        }
 
         config = {
             "target_catalog": "test_cat",
@@ -303,9 +361,17 @@ class TestPrepareStitchJob:
         ) as mock_scan:
             mock_scan.return_value = pii_scan_result
 
-            result = provider.prepare_stitch_job(
-                manifest={}, data_provider=None, config=config
-            )
+            with patch(
+                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init"
+            ) as mock_fetch_init:
+                mock_fetch_init.return_value = {
+                    "cluster-init": "#!/bin/bash",
+                    "job-id": "test-job-123",
+                }
+
+                result = provider.prepare_stitch_job(
+                    manifest={}, data_provider=None, config=config
+                )
 
         # Only email should be included (STRING type)
         assert len(result["stitch_config"]["tables"][0]["fields"]) == 1
@@ -321,10 +387,12 @@ class TestPrepareStitchJob:
 class TestLaunchStitchJob:
     """Tests for launch_stitch_job method."""
 
-    def test_launch_stitch_job_preparation_failed(self):
-        """Test that launch fails when preparation failed."""
+    def test_launch_stitch_job_preparation_failed(self, mock_storage_provider):
+        """Test that job launch fails if preparation failed."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
 
         preparation = {"success": False, "error": "Preparation failed"}
@@ -335,12 +403,16 @@ class TestLaunchStitchJob:
         assert "preparation failed" in result["error"]
 
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
-    def test_launch_stitch_job_success(self, mock_get_token, mock_databricks_client):
+    def test_launch_stitch_job_success(
+        self, mock_get_token, mock_databricks_client, mock_storage_provider
+    ):
         """Test successful Stitch job launch."""
         mock_get_token.return_value = "test-amperity-token"
 
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -389,10 +461,14 @@ class TestLaunchStitchJob:
         assert result["job_id"] == "test-job-123"
         assert "Stitch setup for test_cat.test_schema initiated" in result["message"]
 
-    def test_launch_stitch_job_config_upload_fails(self, mock_databricks_client):
+    def test_launch_stitch_job_config_upload_fails(
+        self, mock_databricks_client, mock_storage_provider
+    ):
         """Test handling of config file upload failure."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -423,13 +499,15 @@ class TestLaunchStitchJob:
 
     @patch("chuck_data.compute_providers.databricks.get_amperity_token")
     def test_launch_stitch_job_with_unsupported_columns(
-        self, mock_get_token, mock_databricks_client
+        self, mock_get_token, mock_databricks_client, mock_storage_provider
     ):
         """Test that unsupported columns are included in the summary."""
         mock_get_token.return_value = "test-amperity-token"
 
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -482,10 +560,14 @@ class TestLaunchStitchJob:
 class TestGetJobStatus:
     """Tests for get_job_status method."""
 
-    def test_get_job_status_success(self, mock_databricks_client):
+    def test_get_job_status_success(
+        self, mock_databricks_client, mock_storage_provider
+    ):
         """Test successful job status retrieval."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -504,10 +586,14 @@ class TestGetJobStatus:
         assert result["status"] == "RUNNING"
         assert result["run_id"] == "12345"
 
-    def test_get_job_status_failure(self, mock_databricks_client):
+    def test_get_job_status_failure(
+        self, mock_databricks_client, mock_storage_provider
+    ):
         """Test job status retrieval failure."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -522,10 +608,12 @@ class TestGetJobStatus:
 class TestCancelJob:
     """Tests for cancel_job method."""
 
-    def test_cancel_job_not_implemented(self):
+    def test_cancel_job_not_implemented(self, mock_storage_provider):
         """Test that cancel_job raises NotImplementedError."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
 
         with pytest.raises(NotImplementedError) as exc_info:
@@ -537,10 +625,14 @@ class TestCancelJob:
 class TestCreateStitchReportNotebook:
     """Tests for _create_stitch_report_notebook helper method."""
 
-    def test_create_notebook_success(self, mock_databricks_client):
+    def test_create_notebook_success(
+        self, mock_databricks_client, mock_storage_provider
+    ):
         """Test successful notebook creation."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 
@@ -560,10 +652,14 @@ class TestCreateStitchReportNotebook:
         assert result["success"] is True
         assert "notebook_path" in result
 
-    def test_create_notebook_failure(self, mock_databricks_client):
+    def test_create_notebook_failure(
+        self, mock_databricks_client, mock_storage_provider
+    ):
         """Test notebook creation failure."""
         provider = DatabricksComputeProvider(
-            workspace_url="https://test.databricks.com", token="test-token"
+            workspace_url="https://test.databricks.com",
+            token="test-token",
+            storage_provider=mock_storage_provider,
         )
         provider.client = mock_databricks_client
 

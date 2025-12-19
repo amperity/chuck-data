@@ -133,7 +133,19 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
         # Set the active schema
         schema_name_to_set = target_schema.get("name")
-        owner = target_schema.get("owner", "Unknown")
+
+        # Get detailed schema info to fetch the owner
+        try:
+            from chuck_data.catalogs import get_schema
+
+            detailed_schema = get_schema(client, f"{catalog_name}.{schema_name_to_set}")
+            if detailed_schema and "owner" in detailed_schema:
+                owner = detailed_schema["owner"]
+            else:
+                owner = "Not available"
+        except Exception as e:
+            logging.debug(f"Could not fetch schema owner info: {e}")
+            owner = "Not available"
 
         set_active_schema(schema_name_to_set)
 
@@ -171,4 +183,5 @@ DEFINITION = CommandDefinition(
     agent_display="condensed",
     condensed_action="Setting schema:",
     usage_hint="Usage: /select-schema <schema_name>",
+    provider="databricks",  # Databricks Unity Catalog-specific command (catalog.schema model)
 )
