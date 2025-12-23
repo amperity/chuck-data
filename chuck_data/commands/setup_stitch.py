@@ -1004,6 +1004,136 @@ def _build_post_launch_guidance_message(
     return "\n".join(lines)
 
 
+def _redshift_prepare_manifest(
+    client: RedshiftAPIClient,
+    console,
+    database: str,
+    schema_name: str,
+    compute_provider_name: str = "databricks",
+    **kwargs,
+) -> Dict[str, Any]:
+    """Prepare Redshift manifest: read tags, schemas, generate and upload manifest.
+
+    Returns dict with:
+        - success: bool
+        - error: str (if success=False)
+        - manifest: dict
+        - manifest_path: str
+        - manifest_filename: str
+        - s3_path: str
+        - s3_bucket: str
+        - timestamp: str
+        - tables: list
+        - semantic_tags: list
+    """
+    # Step 1: Read semantic tags from chuck_metadata.semantic_tags table
+    console.print("\nStep 1: Reading semantic tags from metadata table...")
+    tags_result = client.read_semantic_tags(database, schema_name)
+
+    if not tags_result["success"]:
+        error_msg = tags_result.get("error", "Unknown error reading semantic tags")
+        return {"success": False, "error": error_msg}
+
+    semantic_tags = tags_result["tags"]
+    if not semantic_tags:
+        return {
+            "success": False,
+            "error": f"No semantic tags found for {database}.{schema_name}. Please run /tag-pii first.",
+        }
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Found {len(semantic_tags)} tagged columns across {len(set(t['table'] for t in semantic_tags))} tables[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 2: Read table schemas
+    console.print("\nStep 2: Reading table schemas...")
+    schema_result = client.read_table_schemas(database, schema_name, semantic_tags)
+
+    if not schema_result["success"]:
+        return {"success": False, "error": schema_result["error"]}
+
+    tables = schema_result["tables"]
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Read schemas for {len(tables)} tables[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 3: Generate manifest
+    console.print("\nStep 3: Generating manifest...")
+    manifest_result = _generate_redshift_manifest(
+        database,
+        schema_name,
+        tables,
+        semantic_tags,
+        client,
+        data_provider="redshift",
+        compute_provider=compute_provider_name,
+    )
+
+    if not manifest_result["success"]:
+        return {"success": False, "error": manifest_result["error"]}
+
+    manifest = manifest_result["manifest"]
+
+    # Validate manifest
+    is_valid, error = validate_manifest(manifest)
+    if not is_valid:
+        return {"success": False, "error": f"Generated manifest is invalid: {error}"}
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Manifest generated successfully[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 4: Save manifest locally
+    console.print("\nStep 4: Saving manifest locally...")
+    manifest_dir = os.path.expanduser("~/.chuck/manifests")
+    os.makedirs(manifest_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    manifest_filename = f"redshift_{database}_{schema_name}_{timestamp}.json"
+    manifest_path = os.path.join(manifest_dir, manifest_filename)
+
+    if not save_manifest_to_file(manifest, manifest_path):
+        return {
+            "success": False,
+            "error": f"Failed to save manifest to {manifest_path}",
+        }
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Saved manifest to {manifest_path}[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 5: Upload manifest to S3
+    console.print("\nStep 5: Uploading manifest to S3...")
+    s3_bucket = get_s3_bucket()
+    if not s3_bucket:
+        return {
+            "success": False,
+            "error": "No S3 bucket configured. Please run setup wizard to configure S3 bucket.",
+        }
+
+    s3_path = f"s3://{s3_bucket}/chuck/manifests/{manifest_filename}"
+    aws_profile = kwargs.get("aws_profile")
+
+    if not upload_manifest_to_s3(manifest, s3_path, aws_profile):
+        return {"success": False, "error": f"Failed to upload manifest to {s3_path}"}
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Uploaded manifest to {s3_path}[/{SUCCESS_STYLE}]"
+    )
+
+    return {
+        "success": True,
+        "manifest": manifest,
+        "manifest_path": manifest_path,
+        "manifest_filename": manifest_filename,
+        "s3_path": s3_path,
+        "s3_bucket": s3_bucket,
+        "timestamp": timestamp,
+        "tables": tables,
+        "semantic_tags": semantic_tags,
+    }
+
+
 def _redshift_phase_1_prepare(
     client: RedshiftAPIClient,
     compute_provider,  # ComputeProvider instance
@@ -1030,111 +1160,29 @@ def _redshift_phase_1_prepare(
         f"\n[{INFO_STYLE}]Preparing Stitch configuration for Redshift: {database}.{schema_name}...[/{INFO_STYLE}]"
     )
 
-    # Step 1: Read semantic tags from chuck_metadata.semantic_tags table
-    console.print("\nStep 1: Reading semantic tags from metadata table...")
-    tags_result = client.read_semantic_tags(database, schema_name)
-
-    if not tags_result["success"]:
-        context.clear_active_context("setup_stitch")
-        error_msg = tags_result.get("error", "Unknown error reading semantic tags")
-        return CommandResult(False, message=error_msg)
-
-    semantic_tags = tags_result["tags"]
-    if not semantic_tags:
-        context.clear_active_context("setup_stitch")
-        return CommandResult(
-            False,
-            message=f"No semantic tags found for {database}.{schema_name}. Please run /tag-pii first.",
-        )
-
-    console.print(
-        f"[{SUCCESS_STYLE}]✓ Found {len(semantic_tags)} tagged columns across {len(set(t['table'] for t in semantic_tags))} tables[/{SUCCESS_STYLE}]"
-    )
-
-    # Step 2: Read table schemas
-    console.print("\nStep 2: Reading table schemas...")
-    schema_result = client.read_table_schemas(database, schema_name, semantic_tags)
-
-    if not schema_result["success"]:
-        context.clear_active_context("setup_stitch")
-        return CommandResult(False, message=schema_result["error"])
-
-    tables = schema_result["tables"]
-    console.print(
-        f"[{SUCCESS_STYLE}]✓ Read schemas for {len(tables)} tables[/{SUCCESS_STYLE}]"
-    )
-
-    # Step 3: Generate manifest
-    console.print("\nStep 3: Generating manifest...")
     # Get provider names from compute_provider object
     compute_provider_name = (
         compute_provider.value if hasattr(compute_provider, "value") else "databricks"
     )
-    manifest_result = _generate_redshift_manifest(
-        database,
-        schema_name,
-        tables,
-        semantic_tags,
-        client,
-        data_provider="redshift",
-        compute_provider=compute_provider_name,
+
+    # Execute steps 1-5: prepare manifest
+    prep_result = _redshift_prepare_manifest(
+        client, console, database, schema_name, compute_provider_name, **kwargs
     )
 
-    if not manifest_result["success"]:
+    if not prep_result["success"]:
         context.clear_active_context("setup_stitch")
-        return CommandResult(False, message=manifest_result["error"])
+        return CommandResult(False, message=prep_result["error"])
 
-    manifest = manifest_result["manifest"]
-
-    # Validate manifest
-    is_valid, error = validate_manifest(manifest)
-    if not is_valid:
-        context.clear_active_context("setup_stitch")
-        return CommandResult(False, message=f"Generated manifest is invalid: {error}")
-
-    console.print(
-        f"[{SUCCESS_STYLE}]✓ Manifest generated successfully[/{SUCCESS_STYLE}]"
-    )
-
-    # Step 4: Save manifest locally
-    console.print("\nStep 4: Saving manifest locally...")
-    manifest_dir = os.path.expanduser("~/.chuck/manifests")
-    os.makedirs(manifest_dir, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    manifest_filename = f"redshift_{database}_{schema_name}_{timestamp}.json"
-    manifest_path = os.path.join(manifest_dir, manifest_filename)
-
-    if not save_manifest_to_file(manifest, manifest_path):
-        context.clear_active_context("setup_stitch")
-        return CommandResult(
-            False, message=f"Failed to save manifest to {manifest_path}"
-        )
-
-    console.print(
-        f"[{SUCCESS_STYLE}]✓ Saved manifest to {manifest_path}[/{SUCCESS_STYLE}]"
-    )
-
-    # Step 5: Upload manifest to S3
-    console.print("\nStep 5: Uploading manifest to S3...")
-    s3_bucket = get_s3_bucket()
-    if not s3_bucket:
-        context.clear_active_context("setup_stitch")
-        return CommandResult(
-            False,
-            message="No S3 bucket configured. Please run setup wizard to configure S3 bucket.",
-        )
-
-    s3_path = f"s3://{s3_bucket}/chuck/manifests/{manifest_filename}"
-    aws_profile = kwargs.get("aws_profile")
-
-    if not upload_manifest_to_s3(manifest, s3_path, aws_profile):
-        context.clear_active_context("setup_stitch")
-        return CommandResult(False, message=f"Failed to upload manifest to {s3_path}")
-
-    console.print(
-        f"[{SUCCESS_STYLE}]✓ Uploaded manifest to {s3_path}[/{SUCCESS_STYLE}]"
-    )
+    # Extract values from prep_result
+    manifest = prep_result["manifest"]
+    manifest_path = prep_result["manifest_path"]
+    manifest_filename = prep_result["manifest_filename"]
+    s3_path = prep_result["s3_path"]
+    s3_bucket = prep_result["s3_bucket"]
+    timestamp = prep_result["timestamp"]
+    tables = prep_result["tables"]
+    semantic_tags = prep_result["semantic_tags"]
 
     # Store all data in context for next phase
     context.store_context_data("setup_stitch", "phase", "ready_to_launch")
@@ -1148,7 +1196,7 @@ def _redshift_phase_1_prepare(
     context.store_context_data("setup_stitch", "timestamp", timestamp)
     context.store_context_data("setup_stitch", "tables", tables)
     context.store_context_data("setup_stitch", "semantic_tags", semantic_tags)
-    context.store_context_data("setup_stitch", "aws_profile", aws_profile)
+    context.store_context_data("setup_stitch", "aws_profile", kwargs.get("aws_profile"))
 
     # Display confirmation prompt
     console.print(
@@ -1166,9 +1214,164 @@ def _redshift_phase_1_prepare(
     )
 
 
+def _redshift_execute_job_launch(
+    console,
+    database: str,
+    schema_name: str,
+    manifest: Dict[str, Any],
+    manifest_path: str,
+    s3_path: str,
+    s3_bucket: str,
+    timestamp: str,
+    tables: list,
+    semantic_tags: list,
+    **kwargs,
+) -> CommandResult:
+    """Execute the Redshift Stitch job launch steps (fetch init script, submit job, create notebook).
+
+    This function contains the common logic used by both interactive and auto-confirm paths.
+    """
+    try:
+        # Step 6: Fetch and upload init script to S3
+        console.print("\nStep 6: Fetching and uploading init script to S3...")
+
+        # Fetch init script from Amperity
+        amperity_token = get_amperity_token()
+        if not amperity_token:
+            return CommandResult(
+                False, message="Amperity token not found. Please run /amp_login first."
+            )
+
+        try:
+            from chuck_data.clients.amperity import AmperityAPIClient
+
+            amperity_client = AmperityAPIClient()
+            init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
+            init_script_content = init_script_data.get("cluster-init")
+            job_id = init_script_data.get("job-id")
+
+            if not init_script_content:
+                return CommandResult(
+                    False,
+                    message="Failed to get cluster init script from Amperity API.",
+                )
+            if not job_id:
+                return CommandResult(
+                    False, message="Failed to get job-id from Amperity API."
+                )
+        except Exception as e:
+            return CommandResult(
+                False, message=f"Error fetching Amperity init script: {str(e)}"
+            )
+
+        # Upload init script using storage provider (S3 for Redshift)
+        init_script_filename = f"chuck-init-{timestamp}.sh"
+        init_script_s3_path = (
+            f"s3://{s3_bucket}/chuck/init-scripts/{init_script_filename}"
+        )
+
+        # Upload to S3
+        try:
+            import boto3
+
+            s3_client = boto3.client("s3", region_name=get_redshift_region())
+            s3_client.put_object(
+                Bucket=s3_bucket,
+                Key=f"chuck/init-scripts/{init_script_filename}",
+                Body=init_script_content.encode("utf-8"),
+            )
+            init_script_path = init_script_s3_path
+            logging.debug(f"Init script uploaded to {init_script_path}")
+        except Exception as e:
+            return CommandResult(
+                False, message=f"Failed to upload init script to S3: {str(e)}"
+            )
+        console.print(
+            f"[{SUCCESS_STYLE}]✓ Uploaded init script to {init_script_path}[/{SUCCESS_STYLE}]"
+        )
+
+        # Step 7: Submit Stitch job to Databricks
+        console.print("\nStep 7: Submitting Stitch job to Databricks...")
+
+        stitch_job_name = f"stitch-redshift-{database}-{schema_name}"
+        job_result = _submit_stitch_job_to_databricks(
+            console,
+            config_path=s3_path,
+            init_script_path=init_script_path,
+            stitch_job_name=stitch_job_name,
+            job_id=job_id,
+            policy_id=kwargs.get("policy_id"),
+        )
+
+        if not job_result["success"]:
+            console.print(f"[{ERROR_STYLE}]✗ {job_result['error']}[/{ERROR_STYLE}]")
+            return CommandResult(False, message=job_result["error"])
+
+        run_id = job_result["run_id"]
+        databricks_client = job_result["databricks_client"]
+
+        # Step 8: Create Stitch Report notebook
+        notebook_result = _create_stitch_report_notebook_unified(
+            console,
+            databricks_client,
+            manifest,
+            database,  # target_catalog (database for Redshift)
+            schema_name,  # target_schema
+            stitch_job_name,
+        )
+
+        console.print(
+            f"\n[{SUCCESS_STYLE}]Stitch job launched successfully![/{SUCCESS_STYLE}]"
+        )
+
+        # Build metadata for post-launch display
+        metadata = {
+            "target_catalog": database,  # Use database as catalog equivalent
+            "target_schema": schema_name,
+            "job_id": job_id,
+        }
+
+        # Build launch result data
+        launch_result = {
+            "run_id": run_id,
+            "notebook_result": notebook_result,
+            "message": f"Stitch job for Redshift {database}.{schema_name} launched successfully",
+        }
+
+        # Show detailed summary first as progress info
+        _display_detailed_summary(console, launch_result)
+
+        # Create the user guidance as the main result message
+        result_message = _build_post_launch_guidance_message(
+            launch_result, metadata, databricks_client, is_redshift=False
+        )
+
+        # Prepare return data
+        result_data = {
+            "database": database,
+            "schema": schema_name,
+            "manifest_path": manifest_path,
+            "s3_path": s3_path,
+            "tables": len(tables),
+            "tagged_columns": len(semantic_tags),
+            "run_id": str(run_id),
+            "init_script_path": init_script_path,
+        }
+
+        return CommandResult(
+            True,
+            message=result_message,
+            data=result_data,
+        )
+
+    except Exception as e:
+        logging.error(f"Error launching Redshift Stitch job: {e}", exc_info=True)
+        return CommandResult(
+            False, error=e, message=f"Error launching Stitch job: {str(e)}"
+        )
+
+
 def _redshift_phase_2_confirm(
-    client: RedshiftAPIClient,
-    compute_provider,  # ComputeProvider instance
     context: InteractiveContext,
     console,
     user_input: str,
@@ -1213,164 +1416,33 @@ def _redshift_phase_2_confirm(
     # Retrieve stored data
     database = builder_data["database"]
     schema_name = builder_data["schema_name"]
+    manifest = builder_data.get("manifest", {})
     manifest_path = builder_data["manifest_path"]
-    manifest_filename = builder_data["manifest_filename"]
     s3_path = builder_data["s3_path"]
     s3_bucket = builder_data["s3_bucket"]
     timestamp = builder_data["timestamp"]
     tables = builder_data["tables"]
     semantic_tags = builder_data["semantic_tags"]
-    aws_profile = builder_data.get("aws_profile")
 
-    try:
-        # Step 6: Fetch and upload init script to S3
-        console.print("\nStep 6: Fetching and uploading init script to S3...")
+    # Execute the job launch (common logic)
+    result = _redshift_execute_job_launch(
+        console,
+        database,
+        schema_name,
+        manifest,
+        manifest_path,
+        s3_path,
+        s3_bucket,
+        timestamp,
+        tables,
+        semantic_tags,
+        **kwargs,
+    )
 
-        # Fetch init script from Amperity
-        amperity_token = get_amperity_token()
-        if not amperity_token:
-            context.clear_active_context("setup_stitch")
-            return CommandResult(
-                False, message="Amperity token not found. Please run /amp_login first."
-            )
+    # Clear context after launch attempt (success or failure)
+    context.clear_active_context("setup_stitch")
 
-        try:
-            from chuck_data.clients.amperity import AmperityAPIClient
-
-            amperity_client = AmperityAPIClient()
-            init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
-            init_script_content = init_script_data.get("cluster-init")
-            job_id = init_script_data.get("job-id")
-
-            if not init_script_content:
-                context.clear_active_context("setup_stitch")
-                return CommandResult(
-                    False,
-                    message="Failed to get cluster init script from Amperity API.",
-                )
-            if not job_id:
-                context.clear_active_context("setup_stitch")
-                return CommandResult(
-                    False, message="Failed to get job-id from Amperity API."
-                )
-        except Exception as e:
-            context.clear_active_context("setup_stitch")
-            return CommandResult(
-                False, message=f"Error fetching Amperity init script: {str(e)}"
-            )
-
-        # Upload init script using storage provider (S3 for Redshift)
-        init_script_filename = f"chuck-init-{timestamp}.sh"
-        init_script_s3_path = (
-            f"s3://{s3_bucket}/chuck/init-scripts/{init_script_filename}"
-        )
-
-        # Upload to S3
-        try:
-            import boto3
-
-            s3_client = boto3.client("s3", region_name=get_redshift_region())
-            s3_client.put_object(
-                Bucket=s3_bucket,
-                Key=f"chuck/init-scripts/{init_script_filename}",
-                Body=init_script_content.encode("utf-8"),
-            )
-            init_script_path = init_script_s3_path
-            logging.debug(f"Init script uploaded to {init_script_path}")
-        except Exception as e:
-            context.clear_active_context("setup_stitch")
-            return CommandResult(
-                False, message=f"Failed to upload init script to S3: {str(e)}"
-            )
-        console.print(
-            f"[{SUCCESS_STYLE}]✓ Uploaded init script to {init_script_path}[/{SUCCESS_STYLE}]"
-        )
-
-        # Step 7: Submit Stitch job to Databricks
-        console.print("\nStep 7: Submitting Stitch job to Databricks...")
-
-        stitch_job_name = f"stitch-redshift-{database}-{schema_name}"
-        job_result = _submit_stitch_job_to_databricks(
-            console,
-            config_path=s3_path,
-            init_script_path=init_script_path,
-            stitch_job_name=stitch_job_name,
-            job_id=job_id,
-            policy_id=kwargs.get("policy_id"),
-        )
-
-        if not job_result["success"]:
-            context.clear_active_context("setup_stitch")
-            console.print(f"[{ERROR_STYLE}]✗ {job_result['error']}[/{ERROR_STYLE}]")
-            return CommandResult(False, message=job_result["error"])
-
-        run_id = job_result["run_id"]
-        databricks_client = job_result["databricks_client"]
-
-        # Clear context after successful launch
-        context.clear_active_context("setup_stitch")
-
-        # Step 8: Create Stitch Report notebook
-        manifest = builder_data.get("manifest", {})
-        notebook_result = _create_stitch_report_notebook_unified(
-            console,
-            databricks_client,
-            manifest,
-            database,  # target_catalog (database for Redshift)
-            schema_name,  # target_schema
-            stitch_job_name,
-        )
-
-        console.print(
-            f"\n[{SUCCESS_STYLE}]Stitch job launched successfully![/{SUCCESS_STYLE}]"
-        )
-
-        # Build metadata for post-launch display
-        metadata = {
-            "target_catalog": database,  # Use database as catalog equivalent
-            "target_schema": schema_name,
-            "job_id": job_id,
-        }
-
-        # Build launch result data
-        launch_result = {
-            "run_id": run_id,
-            "notebook_result": notebook_result,  # Add notebook result
-            "message": f"Stitch job for Redshift {database}.{schema_name} launched successfully",
-        }
-
-        # Show detailed summary first as progress info
-        _display_detailed_summary(console, launch_result)
-
-        # Create the user guidance as the main result message
-        result_message = _build_post_launch_guidance_message(
-            launch_result, metadata, databricks_client, is_redshift=False
-        )
-
-        # Prepare return data
-        result_data = {
-            "database": database,
-            "schema": schema_name,
-            "manifest_path": manifest_path,
-            "s3_path": s3_path,
-            "tables": len(tables),
-            "tagged_columns": len(semantic_tags),
-            "run_id": str(run_id),
-            "init_script_path": init_script_path,
-        }
-
-        return CommandResult(
-            True,
-            message=result_message,
-            data=result_data,
-        )
-
-    except Exception as e:
-        context.clear_active_context("setup_stitch")
-        logging.error(f"Error launching Redshift Stitch job: {e}", exc_info=True)
-        return CommandResult(
-            False, error=e, message=f"Error launching Stitch job: {str(e)}"
-        )
+    return result
 
 
 def _handle_redshift_stitch_setup(
@@ -1415,7 +1487,7 @@ def _handle_redshift_stitch_setup(
             # Handle user input in interactive mode - Phase 2: Handle confirmation
             logging.info("Taking Phase 2 path: handle confirmation")
             return _redshift_phase_2_confirm(
-                client, compute_provider, context, console, interactive_input, **kwargs
+                context, console, interactive_input, **kwargs
             )
         elif auto_confirm:
             logging.info("Taking auto-confirm path: execute all steps immediately")
@@ -1434,292 +1506,41 @@ def _handle_redshift_stitch_setup(
                 f"[{INFO_STYLE}]Setting up Stitch for Redshift: {database}.{schema_name}[/{INFO_STYLE}]"
             )
 
-            # Step 1: Read semantic tags from chuck_metadata.semantic_tags table
-            console.print("\nStep 1: Reading semantic tags from metadata table...")
-            tags_result = client.read_semantic_tags(database, schema_name)
-
-            if not tags_result["success"]:
-                return CommandResult(False, message=tags_result["error"])
-
-            semantic_tags = tags_result["tags"]
-            if not semantic_tags:
-                return CommandResult(
-                    False,
-                    message=f"No semantic tags found for {database}.{schema_name}. Please run /tag-pii first.",
-                )
-
-            console.print(
-                f"[{SUCCESS_STYLE}]✓ Found {len(semantic_tags)} tagged columns across {len(set(t['table'] for t in semantic_tags))} tables[/{SUCCESS_STYLE}]"
-            )
-
-            # Step 2: Read table schemas to get all columns (not just PII)
-            console.print("\nStep 2: Reading table schemas...")
-            schema_result = client.read_table_schemas(
-                database, schema_name, semantic_tags
-            )
-
-            if not schema_result["success"]:
-                return CommandResult(False, message=schema_result["error"])
-
-            tables = schema_result["tables"]
-            console.print(
-                f"[{SUCCESS_STYLE}]✓ Read schemas for {len(tables)} tables[/{SUCCESS_STYLE}]"
-            )
-
-            # Step 3: Generate manifest
-            console.print("\nStep 3: Generating manifest...")
-            # Default to databricks for auto-confirmed setup
-            manifest_result = _generate_redshift_manifest(
+            # Steps 1-5: Prepare manifest using common helper
+            prep_result = _redshift_prepare_manifest(
+                client,
+                console,
                 database,
                 schema_name,
+                compute_provider_name="databricks",
+                **kwargs,
+            )
+
+            if not prep_result["success"]:
+                return CommandResult(False, message=prep_result["error"])
+
+            # Extract values from prep_result
+            manifest = prep_result["manifest"]
+            manifest_path = prep_result["manifest_path"]
+            s3_path = prep_result["s3_path"]
+            s3_bucket = prep_result["s3_bucket"]
+            timestamp = prep_result["timestamp"]
+            tables = prep_result["tables"]
+            semantic_tags = prep_result["semantic_tags"]
+
+            # Step 6+: Execute job launch using common helper
+            return _redshift_execute_job_launch(
+                console,
+                database,
+                schema_name,
+                manifest,
+                manifest_path,
+                s3_path,
+                s3_bucket,
+                timestamp,
                 tables,
                 semantic_tags,
-                client,
-                data_provider="redshift",
-                compute_provider="databricks",
-            )
-
-            if not manifest_result["success"]:
-                return CommandResult(False, message=manifest_result["error"])
-
-            manifest = manifest_result["manifest"]
-
-            # Validate manifest
-            is_valid, error = validate_manifest(manifest)
-            if not is_valid:
-                return CommandResult(
-                    False, message=f"Generated manifest is invalid: {error}"
-                )
-
-            console.print(
-                f"[{SUCCESS_STYLE}]✓ Manifest generated successfully[/{SUCCESS_STYLE}]"
-            )
-
-            # Step 4: Save manifest locally
-            console.print("\nStep 4: Saving manifest locally...")
-            manifest_dir = os.path.expanduser("~/.chuck/manifests")
-            os.makedirs(manifest_dir, exist_ok=True)
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            manifest_filename = f"redshift_{database}_{schema_name}_{timestamp}.json"
-            manifest_path = os.path.join(manifest_dir, manifest_filename)
-
-            if not save_manifest_to_file(manifest, manifest_path):
-                return CommandResult(
-                    False, message=f"Failed to save manifest to {manifest_path}"
-                )
-
-            console.print(
-                f"[{SUCCESS_STYLE}]✓ Saved manifest to {manifest_path}[/{SUCCESS_STYLE}]"
-            )
-
-            # Step 5: Upload manifest to S3
-            console.print("\nStep 5: Uploading manifest to S3...")
-            s3_bucket = get_s3_bucket()
-            if not s3_bucket:
-                return CommandResult(
-                    False,
-                    message="No S3 bucket configured. Please run setup wizard to configure S3 bucket.",
-                )
-
-            s3_path = f"s3://{s3_bucket}/chuck/manifests/{manifest_filename}"
-            aws_profile = kwargs.get("aws_profile")
-
-            if not upload_manifest_to_s3(manifest, s3_path, aws_profile):
-                return CommandResult(
-                    False, message=f"Failed to upload manifest to {s3_path}"
-                )
-
-            console.print(
-                f"[{SUCCESS_STYLE}]✓ Uploaded manifest to {s3_path}[/{SUCCESS_STYLE}]"
-            )
-
-            # Step 6: Fetch and upload init script to Volumes
-            console.print("\nStep 6: Fetching and uploading init script to Volumes...")
-
-            # Fetch init script from Amperity
-            amperity_token = get_amperity_token()
-            if not amperity_token:
-                return CommandResult(
-                    False,
-                    message="Amperity token not found. Please run /amp_login first.",
-                )
-
-            try:
-                from chuck_data.clients.amperity import AmperityAPIClient
-
-                amperity_client = AmperityAPIClient()
-                init_script_data = amperity_client.fetch_amperity_job_init(
-                    amperity_token
-                )
-                init_script_content = init_script_data.get("cluster-init")
-                job_id = init_script_data.get("job-id")
-
-                if not init_script_content:
-                    return CommandResult(
-                        False,
-                        message="Failed to get cluster init script from Amperity API.",
-                    )
-                if not job_id:
-                    return CommandResult(
-                        False, message="Failed to get job-id from Amperity API."
-                    )
-            except Exception as e:
-                return CommandResult(
-                    False, message=f"Error fetching Amperity init script: {str(e)}"
-                )
-
-            # Upload init script using storage provider (S3 for Redshift)
-            init_script_filename = f"chuck-init-{timestamp}.sh"
-            init_script_s3_path = (
-                f"s3://{s3_bucket}/chuck/init-scripts/{init_script_filename}"
-            )
-
-            # Upload to S3
-            try:
-                import boto3
-
-                s3_client = boto3.client("s3", region_name=get_redshift_region())
-                s3_client.put_object(
-                    Bucket=s3_bucket,
-                    Key=f"chuck/init-scripts/{init_script_filename}",
-                    Body=init_script_content.encode("utf-8"),
-                )
-                init_script_path = init_script_s3_path
-                logging.debug(f"Init script uploaded to {init_script_path}")
-            except Exception as e:
-                return CommandResult(
-                    False, message=f"Failed to upload init script to S3: {str(e)}"
-                )
-
-            console.print(
-                f"[{SUCCESS_STYLE}]✓ Uploaded init script to {init_script_path}[/{SUCCESS_STYLE}]"
-            )
-
-            # Step 7: Submit Stitch job to Databricks
-            console.print("\nStep 7: Submitting Stitch job to Databricks...")
-
-            # Create Databricks client for job submission
-            from chuck_data.config import get_workspace_url, get_databricks_token
-
-            workspace_url = get_workspace_url()
-            token = get_databricks_token()
-
-            if not workspace_url or not token:
-                console.print(
-                    f"[{WARNING}]⚠ Databricks workspace not configured. Cannot submit job automatically.[/{WARNING}]"
-                )
-                console.print(
-                    f"\n[{INFO_STYLE}]Manual submission required:[/{INFO_STYLE}]"
-                )
-                console.print(f"1. Manifest uploaded to: {s3_path}")
-                console.print(
-                    f"2. Use this manifest path when submitting Stitch job to Databricks"
-                )
-                console.print(
-                    f"3. Job will use generic_main entry point which auto-detects Redshift backend"
-                )
-            else:
-                # Submit job using unified function
-                stitch_job_name = f"stitch-redshift-{database}-{schema_name}"
-                job_result = _submit_stitch_job_to_databricks(
-                    console,
-                    config_path=s3_path,
-                    init_script_path=init_script_path,
-                    stitch_job_name=stitch_job_name,
-                    job_id=job_id,
-                    policy_id=kwargs.get("policy_id"),
-                )
-
-                if not job_result["success"]:
-                    console.print(
-                        f"[{ERROR_STYLE}]✗ {job_result['error']}[/{ERROR_STYLE}]"
-                    )
-                    return CommandResult(False, message=job_result["error"])
-
-                run_id = job_result["run_id"]
-                databricks_client = job_result["databricks_client"]
-
-                # Step 8: Create Stitch Report notebook
-                notebook_result = _create_stitch_report_notebook_unified(
-                    console,
-                    databricks_client,
-                    manifest,
-                    database,  # target_catalog (database for Redshift)
-                    schema_name,  # target_schema
-                    stitch_job_name,
-                )
-
-                console.print(
-                    f"\n[{SUCCESS_STYLE}]Stitch job launched successfully![/{SUCCESS_STYLE}]"
-                )
-
-                # Build metadata for post-launch display
-                metadata = {
-                    "target_catalog": database,  # Use database as catalog equivalent
-                    "target_schema": schema_name,
-                    "job_id": job_id,
-                }
-
-                # Build launch result data
-                launch_result = {
-                    "run_id": run_id,
-                    "notebook_result": notebook_result,  # Add notebook result
-                    "message": f"Stitch job for Redshift {database}.{schema_name} launched successfully",
-                }
-
-                # Show detailed summary first as progress info
-                _display_detailed_summary(console, launch_result)
-
-                # Create the user guidance as the main result message
-                logging.info(
-                    f"Building post-launch guidance. launch_result: {launch_result}, metadata: {metadata}"
-                )
-                result_message = _build_post_launch_guidance_message(
-                    launch_result, metadata, databricks_client, is_redshift=False
-                )
-                logging.info(f"Post-launch guidance message: {result_message}")
-
-                # Fallback if message is empty
-                if not result_message or not result_message.strip():
-                    logging.warning(
-                        "Post-launch guidance message is empty, using fallback"
-                    )
-                    result_message = f"Stitch job submitted successfully with run ID: {run_id}. Use /job-status --run-id {run_id} to check progress."
-
-                # Prepare return data
-                result_data = {
-                    "database": database,
-                    "schema": schema_name,
-                    "manifest_path": manifest_path,
-                    "s3_path": s3_path,
-                    "tables": len(tables),
-                    "tagged_columns": len(semantic_tags),
-                    "run_id": str(run_id),  # Convert to string to avoid len() error
-                    "init_script_path": init_script_path,
-                }
-
-                logging.info(f"Returning CommandResult with message: {result_message}")
-                logging.info(f"Returning CommandResult with data: {result_data}")
-
-                return CommandResult(
-                    True,
-                    message=result_message,
-                    data=result_data,
-                )
-
-            # Return result even if no Databricks configured (manual submission case)
-            return CommandResult(
-                True,
-                message=f"Stitch setup complete for {database}.{schema_name}. Manifest uploaded to S3.",
-                data={
-                    "database": database,
-                    "schema": schema_name,
-                    "manifest_path": manifest_path,
-                    "s3_path": s3_path,
-                    "tables": len(tables),
-                    "tagged_columns": len(semantic_tags),
-                },
+                **kwargs,
             )
         else:
             # Unexpected state - this shouldn't happen

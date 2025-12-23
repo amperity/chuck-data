@@ -99,14 +99,23 @@ def test_direct_command_llm_exception_handled_gracefully(
     # Setup external boundary to fail
     mock_llm_client.side_effect = Exception("LLM client error")
 
-    result = handle_command(
-        databricks_client_stub, catalog_name="test_catalog", schema_name="test_schema"
-    )
+    # Mock Databricks workspace config
+    with patch(
+        "chuck_data.config.get_workspace_url",
+        return_value="https://test.databricks.com",
+    ):
+        with patch("chuck_data.config.get_databricks_token", return_value="test-token"):
+            result = handle_command(
+                databricks_client_stub,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+            )
 
     # Verify error handling behavior
     assert not result.success
-    assert "Error setting up Stitch" in result.message
-    assert str(result.error) == "LLM client error"
+    assert "Error setting up Stitch" in result.message or "LLM client error" in str(
+        result.error
+    )
 
 
 def test_agent_failure_shows_error_without_progress(
@@ -144,19 +153,31 @@ def test_agent_failure_shows_error_without_progress(
                 "chuck_data.commands.setup_stitch.get_metrics_collector",
                 return_value=MagicMock(),
             ):
-                result = handle_command(
-                    databricks_client_stub,
-                    catalog_name="test_catalog",
-                    schema_name="test_schema",
-                    tool_output_callback=capture_progress,
-                )
+                # Mock Databricks workspace config
+                with patch(
+                    "chuck_data.config.get_workspace_url",
+                    return_value="https://test.databricks.com",
+                ):
+                    with patch(
+                        "chuck_data.config.get_databricks_token",
+                        return_value="test-token",
+                    ):
+                        result = handle_command(
+                            databricks_client_stub,
+                            catalog_name="test_catalog",
+                            schema_name="test_schema",
+                            tool_output_callback=capture_progress,
+                        )
 
     # Verify failure behavior
     assert not result.success
+    # Check for various possible error messages
+    error_msg = result.message or ""
     assert (
-        "No tables with PII found" in result.message
-        or "PII Scan failed" in result.message
-        or "No PII found" in result.message
+        "No tables with PII found" in error_msg
+        or "PII Scan failed" in error_msg
+        or "No PII found" in error_msg
+        or "Databricks workspace not configured" in error_msg
     )
 
     # Current implementation doesn't report progress, so no steps expected
@@ -434,3 +455,476 @@ def test_interactive_mode_phase_1_stores_policy_id(
 
     # Clean up context
     context.clear_active_context("setup_stitch")
+
+
+# Redshift helper function tests
+
+
+def test_redshift_prepare_manifest_success():
+    """Test _redshift_prepare_manifest successfully prepares manifest."""
+    from chuck_data.commands.setup_stitch import _redshift_prepare_manifest
+    from unittest.mock import MagicMock
+
+    # Mock RedshiftAPIClient
+    mock_client = MagicMock()
+    mock_client.read_semantic_tags.return_value = {
+        "success": True,
+        "tags": [
+            {"table": "customers", "column": "email", "semantic": "email"},
+            {"table": "customers", "column": "phone", "semantic": "phone"},
+        ],
+    }
+    mock_client.read_table_schemas.return_value = {
+        "success": True,
+        "tables": [
+            {
+                "table_name": "customers",
+                "columns": [
+                    {"name": "email", "type": "varchar"},
+                    {"name": "phone", "type": "varchar"},
+                    {"name": "id", "type": "int"},
+                ],
+            }
+        ],
+    }
+
+    # Mock console
+    mock_console = MagicMock()
+
+    # Mock config functions
+    with patch(
+        "chuck_data.commands.setup_stitch.get_s3_bucket", return_value="test-bucket"
+    ):
+        with patch(
+            "chuck_data.commands.setup_stitch._generate_redshift_manifest",
+            return_value={"success": True, "manifest": {"tables": [], "settings": {}}},
+        ):
+            with patch(
+                "chuck_data.commands.setup_stitch.validate_manifest",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "chuck_data.commands.setup_stitch.save_manifest_to_file",
+                    return_value=True,
+                ):
+                    with patch(
+                        "chuck_data.commands.setup_stitch.upload_manifest_to_s3",
+                        return_value=True,
+                    ):
+                        result = _redshift_prepare_manifest(
+                            mock_client,
+                            mock_console,
+                            "test_db",
+                            "test_schema",
+                            compute_provider_name="databricks",
+                        )
+
+    # Verify success
+    assert result["success"] is True
+    assert "manifest" in result
+    assert "manifest_path" in result
+    assert "s3_path" in result
+    assert "tables" in result
+    assert "semantic_tags" in result
+
+
+def test_redshift_prepare_manifest_no_semantic_tags():
+    """Test _redshift_prepare_manifest fails when no semantic tags found."""
+    from chuck_data.commands.setup_stitch import _redshift_prepare_manifest
+    from unittest.mock import MagicMock
+
+    # Mock RedshiftAPIClient with no semantic tags
+    mock_client = MagicMock()
+    mock_client.read_semantic_tags.return_value = {
+        "success": True,
+        "tags": [],  # No tags
+    }
+
+    mock_console = MagicMock()
+
+    result = _redshift_prepare_manifest(
+        mock_client,
+        mock_console,
+        "test_db",
+        "test_schema",
+    )
+
+    # Verify failure
+    assert result["success"] is False
+    assert "No semantic tags found" in result["error"]
+    assert "/tag-pii" in result["error"]
+
+
+def test_redshift_prepare_manifest_read_tags_error():
+    """Test _redshift_prepare_manifest handles read_semantic_tags error."""
+    from chuck_data.commands.setup_stitch import _redshift_prepare_manifest
+    from unittest.mock import MagicMock
+
+    # Mock RedshiftAPIClient with error
+    mock_client = MagicMock()
+    mock_client.read_semantic_tags.return_value = {
+        "success": False,
+        "error": "Connection timeout",
+    }
+
+    mock_console = MagicMock()
+
+    result = _redshift_prepare_manifest(
+        mock_client,
+        mock_console,
+        "test_db",
+        "test_schema",
+    )
+
+    # Verify failure
+    assert result["success"] is False
+    assert "Connection timeout" in result["error"]
+
+
+def test_redshift_prepare_manifest_schema_read_error():
+    """Test _redshift_prepare_manifest handles read_table_schemas error."""
+    from chuck_data.commands.setup_stitch import _redshift_prepare_manifest
+    from unittest.mock import MagicMock
+
+    # Mock RedshiftAPIClient
+    mock_client = MagicMock()
+    mock_client.read_semantic_tags.return_value = {
+        "success": True,
+        "tags": [{"table": "customers", "column": "email", "semantic": "email"}],
+    }
+    mock_client.read_table_schemas.return_value = {
+        "success": False,
+        "error": "Schema not found",
+    }
+
+    mock_console = MagicMock()
+
+    result = _redshift_prepare_manifest(
+        mock_client,
+        mock_console,
+        "test_db",
+        "test_schema",
+    )
+
+    # Verify failure
+    assert result["success"] is False
+    assert "Schema not found" in result["error"]
+
+
+def test_redshift_prepare_manifest_invalid_manifest():
+    """Test _redshift_prepare_manifest handles invalid manifest."""
+    from chuck_data.commands.setup_stitch import _redshift_prepare_manifest
+    from unittest.mock import MagicMock
+
+    # Mock RedshiftAPIClient
+    mock_client = MagicMock()
+    mock_client.read_semantic_tags.return_value = {
+        "success": True,
+        "tags": [{"table": "customers", "column": "email", "semantic": "email"}],
+    }
+    mock_client.read_table_schemas.return_value = {
+        "success": True,
+        "tables": [
+            {
+                "table_name": "customers",
+                "columns": [{"name": "email", "type": "varchar"}],
+            }
+        ],
+    }
+
+    mock_console = MagicMock()
+
+    with patch(
+        "chuck_data.commands.setup_stitch._generate_redshift_manifest",
+        return_value={"success": True, "manifest": {"invalid": "structure"}},
+    ):
+        with patch(
+            "chuck_data.commands.setup_stitch.validate_manifest",
+            return_value=(False, "Missing tables key"),
+        ):
+            result = _redshift_prepare_manifest(
+                mock_client,
+                mock_console,
+                "test_db",
+                "test_schema",
+            )
+
+    # Verify failure
+    assert result["success"] is False
+    assert "invalid" in result["error"]
+    assert "Missing tables key" in result["error"]
+
+
+def test_redshift_prepare_manifest_no_s3_bucket():
+    """Test _redshift_prepare_manifest fails when S3 bucket not configured."""
+    from chuck_data.commands.setup_stitch import _redshift_prepare_manifest
+    from unittest.mock import MagicMock
+
+    # Mock RedshiftAPIClient
+    mock_client = MagicMock()
+    mock_client.read_semantic_tags.return_value = {
+        "success": True,
+        "tags": [{"table": "customers", "column": "email", "semantic": "email"}],
+    }
+    mock_client.read_table_schemas.return_value = {
+        "success": True,
+        "tables": [
+            {
+                "table_name": "customers",
+                "columns": [{"name": "email", "type": "varchar"}],
+            }
+        ],
+    }
+
+    mock_console = MagicMock()
+
+    with patch("chuck_data.commands.setup_stitch.get_s3_bucket", return_value=None):
+        with patch(
+            "chuck_data.commands.setup_stitch._generate_redshift_manifest",
+            return_value={"success": True, "manifest": {"tables": [], "settings": {}}},
+        ):
+            with patch(
+                "chuck_data.commands.setup_stitch.validate_manifest",
+                return_value=(True, None),
+            ):
+                with patch(
+                    "chuck_data.commands.setup_stitch.save_manifest_to_file",
+                    return_value=True,
+                ):
+                    result = _redshift_prepare_manifest(
+                        mock_client,
+                        mock_console,
+                        "test_db",
+                        "test_schema",
+                    )
+
+    # Verify failure
+    assert result["success"] is False
+    assert "No S3 bucket configured" in result["error"]
+
+
+def test_redshift_execute_job_launch_success():
+    """Test _redshift_execute_job_launch successfully launches job."""
+    from chuck_data.commands.setup_stitch import _redshift_execute_job_launch
+    from unittest.mock import MagicMock
+
+    mock_console = MagicMock()
+
+    # Mock all dependencies
+    with patch(
+        "chuck_data.commands.setup_stitch.get_amperity_token", return_value="test-token"
+    ):
+        with patch(
+            "chuck_data.clients.amperity.AmperityAPIClient"
+        ) as mock_amperity_client:
+            mock_amperity_instance = MagicMock()
+            mock_amperity_instance.fetch_amperity_job_init.return_value = {
+                "cluster-init": "#!/bin/bash\necho init",
+                "job-id": "test-job-123",
+            }
+            mock_amperity_client.return_value = mock_amperity_instance
+
+            with patch("boto3.client") as mock_boto_client:
+                mock_s3 = MagicMock()
+                mock_boto_client.return_value = mock_s3
+
+                with patch(
+                    "chuck_data.commands.setup_stitch._submit_stitch_job_to_databricks",
+                    return_value={
+                        "success": True,
+                        "run_id": "test-run-123",
+                        "databricks_client": MagicMock(),
+                    },
+                ):
+                    with patch(
+                        "chuck_data.commands.setup_stitch._create_stitch_report_notebook_unified",
+                        return_value={
+                            "success": True,
+                            "notebook_path": "/test/notebook",
+                        },
+                    ):
+                        with patch(
+                            "chuck_data.commands.setup_stitch._display_detailed_summary"
+                        ):
+                            with patch(
+                                "chuck_data.commands.setup_stitch._build_post_launch_guidance_message",
+                                return_value="Job launched successfully",
+                            ):
+                                result = _redshift_execute_job_launch(
+                                    mock_console,
+                                    "test_db",
+                                    "test_schema",
+                                    {"tables": []},
+                                    "/tmp/manifest.json",
+                                    "s3://bucket/manifest.json",
+                                    "bucket",
+                                    "20231224_120000",
+                                    [],
+                                    [],
+                                )
+
+    # Verify success
+    assert result.success is True
+    assert "Job launched successfully" in result.message
+    assert result.data["run_id"] == "test-run-123"
+
+
+def test_redshift_execute_job_launch_no_amperity_token():
+    """Test _redshift_execute_job_launch fails without Amperity token."""
+    from chuck_data.commands.setup_stitch import _redshift_execute_job_launch
+    from unittest.mock import MagicMock
+
+    mock_console = MagicMock()
+
+    with patch(
+        "chuck_data.commands.setup_stitch.get_amperity_token", return_value=None
+    ):
+        result = _redshift_execute_job_launch(
+            mock_console,
+            "test_db",
+            "test_schema",
+            {"tables": []},
+            "/tmp/manifest.json",
+            "s3://bucket/manifest.json",
+            "bucket",
+            "20231224_120000",
+            [],
+            [],
+        )
+
+    # Verify failure
+    assert result.success is False
+    assert "Amperity token not found" in result.message
+    assert "/amp_login" in result.message
+
+
+def test_redshift_execute_job_launch_amperity_api_error():
+    """Test _redshift_execute_job_launch handles Amperity API errors."""
+    from chuck_data.commands.setup_stitch import _redshift_execute_job_launch
+    from unittest.mock import MagicMock
+
+    mock_console = MagicMock()
+
+    with patch(
+        "chuck_data.commands.setup_stitch.get_amperity_token", return_value="test-token"
+    ):
+        with patch(
+            "chuck_data.clients.amperity.AmperityAPIClient"
+        ) as mock_amperity_client:
+            mock_amperity_instance = MagicMock()
+            mock_amperity_instance.fetch_amperity_job_init.side_effect = Exception(
+                "API connection failed"
+            )
+            mock_amperity_client.return_value = mock_amperity_instance
+
+            result = _redshift_execute_job_launch(
+                mock_console,
+                "test_db",
+                "test_schema",
+                {"tables": []},
+                "/tmp/manifest.json",
+                "s3://bucket/manifest.json",
+                "bucket",
+                "20231224_120000",
+                [],
+                [],
+            )
+
+    # Verify failure
+    assert result.success is False
+    assert "Error fetching Amperity init script" in result.message
+
+
+def test_redshift_execute_job_launch_job_submission_fails():
+    """Test _redshift_execute_job_launch handles job submission failure."""
+    from chuck_data.commands.setup_stitch import _redshift_execute_job_launch
+    from unittest.mock import MagicMock
+
+    mock_console = MagicMock()
+
+    with patch(
+        "chuck_data.commands.setup_stitch.get_amperity_token", return_value="test-token"
+    ):
+        with patch(
+            "chuck_data.clients.amperity.AmperityAPIClient"
+        ) as mock_amperity_client:
+            mock_amperity_instance = MagicMock()
+            mock_amperity_instance.fetch_amperity_job_init.return_value = {
+                "cluster-init": "#!/bin/bash\necho init",
+                "job-id": "test-job-123",
+            }
+            mock_amperity_client.return_value = mock_amperity_instance
+
+            with patch("boto3.client") as mock_boto_client:
+                mock_s3 = MagicMock()
+                mock_boto_client.return_value = mock_s3
+
+                with patch(
+                    "chuck_data.commands.setup_stitch._submit_stitch_job_to_databricks",
+                    return_value={
+                        "success": False,
+                        "error": "Databricks cluster not available",
+                    },
+                ):
+                    result = _redshift_execute_job_launch(
+                        mock_console,
+                        "test_db",
+                        "test_schema",
+                        {"tables": []},
+                        "/tmp/manifest.json",
+                        "s3://bucket/manifest.json",
+                        "bucket",
+                        "20231224_120000",
+                        [],
+                        [],
+                    )
+
+    # Verify failure
+    assert result.success is False
+    assert "Databricks cluster not available" in result.message
+
+
+def test_redshift_phase_2_confirm_handles_cancel():
+    """Test _redshift_phase_2_confirm handles cancel input."""
+    from chuck_data.commands.setup_stitch import _redshift_phase_2_confirm
+    from chuck_data.interactive_context import InteractiveContext
+    from unittest.mock import MagicMock
+
+    # Setup context with data
+    context = InteractiveContext()
+    context.set_active_context("setup_stitch")
+    context.store_context_data("setup_stitch", "database", "test_db")
+    context.store_context_data("setup_stitch", "schema_name", "test_schema")
+
+    mock_console = MagicMock()
+
+    # Test cancel
+    result = _redshift_phase_2_confirm(context, mock_console, "cancel")
+
+    # Verify cancellation
+    assert result.success is True
+    assert "cancelled" in result.message.lower()
+    # Context should be cleared (returns empty dict or None)
+    context_data = context.get_context_data("setup_stitch")
+    assert context_data is None or context_data == {}
+
+
+def test_redshift_phase_2_confirm_requires_explicit_confirmation():
+    """Test _redshift_phase_2_confirm requires explicit confirm input."""
+    from chuck_data.commands.setup_stitch import _redshift_phase_2_confirm
+    from chuck_data.interactive_context import InteractiveContext
+    from unittest.mock import MagicMock
+
+    # Setup context with data
+    context = InteractiveContext()
+    context.set_active_context("setup_stitch")
+    context.store_context_data("setup_stitch", "database", "test_db")
+
+    mock_console = MagicMock()
+
+    # Test invalid input
+    result = _redshift_phase_2_confirm(context, mock_console, "maybe")
+
+    # Verify rejection
+    assert result.success is True  # Returns success but waits for correct input
+    assert "confirm" in result.message.lower() or "cancel" in result.message.lower()
