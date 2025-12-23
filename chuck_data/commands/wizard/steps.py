@@ -272,7 +272,11 @@ class LLMProviderSelectionStep(SetupStep):
                 service = get_chuck_service()
                 databricks_client = None
 
-                if service and service.client and isinstance(service.client, DatabricksAPIClient):
+                if (
+                    service
+                    and service.client
+                    and isinstance(service.client, DatabricksAPIClient)
+                ):
                     databricks_client = service.client
 
                 # For Databricks LLM provider, we need workspace_url and token
@@ -616,7 +620,11 @@ class ModelSelectionStep(SetupStep):
                     service = get_chuck_service()
                     databricks_client = None
 
-                    if service and service.client and isinstance(service.client, DatabricksAPIClient):
+                    if (
+                        service
+                        and service.client
+                        and isinstance(service.client, DatabricksAPIClient)
+                    ):
                         databricks_client = service.client
 
                     provider = DatabricksProvider(
