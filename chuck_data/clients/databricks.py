@@ -79,23 +79,27 @@ class DatabricksAPIClient:
         }
         return node_type_map.get(self.cloud_provider, "r5d.4xlarge")
 
-    def get_cloud_attributes(self):
+    def get_cloud_attributes(self, instance_profile_arn=None):
         """
         Get cloud-specific attributes for cluster configuration.
+
+        Args:
+            instance_profile_arn: Optional AWS instance profile ARN for Databricks cluster
 
         Returns:
             Dictionary containing cloud-specific attributes
         """
         if self.cloud_provider == "AWS":
-            return {
-                "aws_attributes": {
-                    "first_on_demand": 1,
-                    "availability": "SPOT_WITH_FALLBACK",
-                    "zone_id": "us-west-2b",
-                    "spot_bid_price_percent": 100,
-                    "ebs_volume_count": 0,
-                }
+            aws_attrs = {
+                "first_on_demand": 1,
+                "availability": "SPOT_WITH_FALLBACK",
+                "zone_id": "us-west-2b",
+                "spot_bid_price_percent": 100,
+                "ebs_volume_count": 0,
             }
+            if instance_profile_arn:
+                aws_attrs["instance_profile_arn"] = instance_profile_arn
+            return {"aws_attributes": aws_attrs}
         elif self.cloud_provider == "Azure":
             return {
                 "azure_attributes": {
@@ -113,15 +117,16 @@ class DatabricksAPIClient:
             }
         else:
             # Default to AWS
-            return {
-                "aws_attributes": {
-                    "first_on_demand": 1,
-                    "availability": "SPOT_WITH_FALLBACK",
-                    "zone_id": "us-west-2b",
-                    "spot_bid_price_percent": 100,
-                    "ebs_volume_count": 0,
-                }
+            aws_attrs = {
+                "first_on_demand": 1,
+                "availability": "SPOT_WITH_FALLBACK",
+                "zone_id": "us-west-2b",
+                "spot_bid_price_percent": 100,
+                "ebs_volume_count": 0,
             }
+            if instance_profile_arn:
+                aws_attrs["instance_profile_arn"] = instance_profile_arn
+            return {"aws_attributes": aws_attrs}
 
     #
     # Base API request methods
@@ -572,7 +577,12 @@ class DatabricksAPIClient:
     #
 
     def submit_job_run(
-        self, config_path, init_script_path, run_name=None, policy_id=None
+        self,
+        config_path,
+        init_script_path,
+        run_name=None,
+        policy_id=None,
+        instance_profile_arn=None,
     ):
         """
         Submit a one-time Databricks job run using the /runs/submit endpoint.
@@ -582,6 +592,7 @@ class DatabricksAPIClient:
             init_script_path: Path to the initialization script
             run_name: Optional name for the run. If None, a default name will be generated.
             policy_id: Optional cluster policy ID to use for the job run.
+            instance_profile_arn: Optional AWS instance profile ARN for cluster access to AWS services.
 
         Returns:
             Dict containing the job run information (including run_id)
@@ -645,7 +656,7 @@ class DatabricksAPIClient:
             cluster_config["policy_id"] = policy_id
 
         # Add cloud-specific attributes
-        cluster_config.update(self.get_cloud_attributes())
+        cluster_config.update(self.get_cloud_attributes(instance_profile_arn))
 
         run_payload = {
             "run_name": run_name,
