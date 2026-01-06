@@ -475,15 +475,20 @@ class RedshiftAPIClient:
             ORDER BY table_name, column_name
             """
 
+            logging.info(f"Reading semantic tags with query: {query}")
             result = self.execute_sql(query, database=database)
+            logging.info(f"Query result structure: {result.keys() if result else 'None'}")
+            logging.info(f"Full result: {result}")
 
             if not result.get("result"):
+                logging.warning(f"No 'result' key in response: {result}")
                 return {
                     "success": False,
                     "error": "No results returned from semantic_tags query",
                 }
 
             rows = result["result"].get("Records", [])
+            logging.info(f"Found {len(rows)} rows in semantic_tags table")
             tags = []
             for row in rows:
                 tags.append(
@@ -494,6 +499,7 @@ class RedshiftAPIClient:
                     }
                 )
 
+            logging.info(f"Successfully parsed {len(tags)} semantic tags")
             return {"success": True, "tags": tags}
 
         except Exception as e:

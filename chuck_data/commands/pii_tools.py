@@ -37,7 +37,12 @@ def _helper_tag_pii_columns_logic(
             and "." not in table_name_param
         ):
             # Only a table name was provided, construct full name
-            resolved_table_name = f"{catalog_or_database_context}.{schema_name_context}.{table_name_param}"
+            # For Redshift: schema.table (2 parts)
+            # For Databricks: catalog.schema.table (3 parts)
+            if is_redshift:
+                resolved_table_name = f"{schema_name_context}.{table_name_param}"
+            else:
+                resolved_table_name = f"{catalog_or_database_context}.{schema_name_context}.{table_name_param}"
 
         try:
             # Use direct API call - different for each provider

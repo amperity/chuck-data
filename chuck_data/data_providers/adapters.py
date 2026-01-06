@@ -408,18 +408,39 @@ class RedshiftProviderAdapter(DataProvider):
             """
             self.client.execute_sql(create_table_sql, database=database)
 
-            # Step 3: Delete existing tags for this schema (to handle re-tagging)
-            delete_sql = f"""
-            DELETE FROM chuck_metadata.semantic_tags
-            WHERE database_name = '{database}'
-            AND schema_name = '{schema}'
-            """
-            self.client.execute_sql(delete_sql, database=database)
-
-            # Step 4: Insert tags
+            # Step 3: Delete existing tags only for the specific tables being tagged
+            # This prevents wiping out tags from other tables in the schema
             if not tags:
                 return {"success": True, "tags_applied": 0, "errors": []}
 
+            # Build list of unique tables from tags
+            unique_tables = set()
+            for tag in tags:
+                table_name = tag.get("table")
+                if table_name:
+                    unique_tables.add(table_name)
+
+            logging.info(
+                f"tag_columns called with {len(tags)} tags for tables: {unique_tables}"
+            )
+
+            if unique_tables:
+                # Delete only tags for tables we're about to re-tag
+                escaped_tables = [t.replace("'", "''") for t in unique_tables]
+                table_conditions = " OR ".join(
+                    [f"table_name = '{t}'" for t in escaped_tables]
+                )
+                delete_sql = f"""
+                DELETE FROM chuck_metadata.semantic_tags
+                WHERE database_name = '{database}'
+                AND schema_name = '{schema}'
+                AND ({table_conditions})
+                """
+                logging.info(f"Deleting existing tags with SQL: {delete_sql}")
+                delete_result = self.client.execute_sql(delete_sql, database=database)
+                logging.info(f"Delete result: {delete_result}")
+
+            # Step 4: Insert tags
             # Build INSERT statement with all values
             values_list = []
             for tag in tags:
@@ -449,9 +470,62 @@ class RedshiftProviderAdapter(DataProvider):
             VALUES {', '.join(values_list)}
             """
 
-            self.client.execute_sql(insert_sql, database=database)
+            logging.info(f"Inserting {len(values_list)} tags into semantic_tags table")
+            insert_result = self.client.execute_sql(insert_sql, database=database)
+            logging.info(f"Insert result: {insert_result}")
 
-            return {"success": True, "tags_applied": len(values_list), "errors": []}
+            # Step 5: Verify all records were inserted by counting rows
+            escaped_tables = [t.replace("'", "''") for t in unique_tables]
+            table_conditions = " OR ".join(
+                [f"table_name = '{t}'" for t in escaped_tables]
+            )
+            count_sql = f"""
+            SELECT COUNT(*) as row_count
+            FROM chuck_metadata.semantic_tags
+            WHERE database_name = '{database}'
+            AND schema_name = '{schema}'
+            AND ({table_conditions})
+            """
+            logging.info(f"Verifying with count SQL: {count_sql}")
+            count_result = self.client.execute_sql(
+                count_sql, database=database, wait=True
+            )
+            logging.info(f"Count query result: {count_result}")
+
+            # Extract row count from result
+            # Redshift returns results in format: {"result": {"Records": [[{"longValue": 123}]]}}
+            actual_count = 0
+            if count_result and "result" in count_result and count_result["result"]:
+                records = count_result["result"].get("Records", [])
+                if records and len(records) > 0:
+                    # First row, first column - count is a long value
+                    first_row = records[0]
+                    if first_row and len(first_row) > 0:
+                        count_value = first_row[0]
+                        # Handle both longValue (for integers) and stringValue (fallback)
+                        actual_count = count_value.get("longValue") or int(
+                            count_value.get("stringValue", 0)
+                        )
+
+            expected_count = len(values_list)
+
+            logging.info(
+                f"Verification: Expected {expected_count} records, found {actual_count}"
+            )
+
+            if actual_count != expected_count:
+                error_msg = f"Verification failed: Expected {expected_count} records but found {actual_count} in semantic_tags table"
+                logging.error(error_msg)
+                return {
+                    "success": False,
+                    "tags_applied": actual_count,
+                    "errors": [{"error": error_msg}],
+                }
+
+            logging.info(
+                f"Verification passed: All {actual_count} tags inserted successfully"
+            )
+            return {"success": True, "tags_applied": actual_count, "errors": []}
 
         except Exception as e:
             import traceback
