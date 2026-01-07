@@ -53,14 +53,20 @@ class TestProviderFactoryComputeProviders:
 
     def test_create_emr_compute_provider(self, monkeypatch):
         """Test creating an EMR compute provider."""
-        from unittest.mock import Mock
+        from unittest.mock import Mock, MagicMock
         import chuck_data.storage_providers.s3 as s3_module
+        import chuck_data.clients.emr as emr_module
 
         # Mock boto3 to avoid requiring real AWS profile
         mock_boto3 = Mock()
         mock_session = Mock()
+        mock_emr_client = MagicMock()
         mock_boto3.Session.return_value = mock_session
+        mock_session.client.return_value = mock_emr_client
+
+        # Mock boto3 in both s3 and emr modules
         monkeypatch.setattr(s3_module, "boto3", mock_boto3)
+        monkeypatch.setattr(emr_module, "boto3", mock_boto3)
 
         provider = ProviderFactory.create_compute_provider(
             "aws_emr", {"region": "us-west-2", "aws_profile": "test-profile"}
