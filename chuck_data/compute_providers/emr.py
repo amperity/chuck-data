@@ -7,9 +7,47 @@ allowing customers to leverage their existing AWS infrastructure for data proces
 """
 
 import logging
+import json
 from typing import Dict, Any, Optional
 
 from chuck_data.compute_providers.provider import ComputeProvider
+from chuck_data.clients.amperity import AmperityAPIClient
+from chuck_data.clients.emr import EMRAPIClient
+from chuck_data.config import get_amperity_token
+from chuck_data.clients.amperity import get_amperity_url
+
+
+def modify_init_script_for_emr(init_script_content: str, s3_jar_path: str) -> str:
+    """Modify Amperity init script for EMR compatibility.
+
+    Transforms the init script to:
+    1. Download JAR to /tmp instead of /opt/amperity (no sudo required in EMR)
+    2. Copy JAR from /tmp to S3 for Spark job execution
+    3. Set proper permissions and error handling
+
+    Args:
+        init_script_content: Original init script content from Amperity API
+        s3_jar_path: S3 path where JAR should be uploaded (e.g., s3://bucket/chuck/jars/job-123.jar)
+
+    Returns:
+        Modified init script content with EMR-compatible paths
+
+    Example:
+        >>> s3_path = "s3://my-bucket/chuck/jars/job-20231215.jar"
+        >>> modified = modify_init_script_for_emr(original_script, s3_path)
+        >>> assert "/tmp/amperity" in modified
+        >>> assert s3_path in modified
+    """
+    # Replace /opt/amperity with /tmp/amperity (no sudo required)
+    modified_script = init_script_content.replace(
+        "mkdir -p /opt/amperity",
+        "# EMR: Download to /tmp instead of /opt/amperity (no sudo required)\nmkdir -p /tmp/amperity",
+    ).replace("/opt/amperity/job.jar", "/tmp/amperity/job.jar")
+
+    # Add S3 upload command at the end
+    modified_script += f"\n\n# Copy JAR to S3 for Spark job execution\naws s3 cp /tmp/amperity/job.jar {s3_jar_path}\necho 'JAR uploaded to {s3_jar_path}'\n"
+
+    return modified_script
 
 
 class EMRComputeProvider(ComputeProvider):
@@ -78,7 +116,7 @@ class EMRComputeProvider(ComputeProvider):
                 - spark_version: Spark version (default: latest)
                 - bootstrap_actions: List of bootstrap action configurations
                 - spark_jars: Additional JARs to include (e.g., Stitch JAR)
-                - spark_packages: Maven packages (e.g., 'io.github.spark-redshift-community:spark-redshift_2.12:6.2.0')
+                - spark_packages: Maven packages (e.g., 'io.github.spark-redshift-community:spark-redshift_2.12:6.5.1-spark_3.5')
 
         Note: AWS credentials are discovered via boto3's standard credential chain.
               See class docstring for credential resolution order.
@@ -120,11 +158,10 @@ class EMRComputeProvider(ComputeProvider):
         self.config = kwargs
         self.storage_provider = storage_provider
 
-        # Future: Initialize EMR client
-        # self.emr_client = EMRAPIClient(
-        #     region=region,
-        #     aws_profile=aws_profile
-        # )
+        # Initialize EMR client
+        self.emr_client = EMRAPIClient(
+            region=region, cluster_id=cluster_id, aws_profile=aws_profile
+        )
 
         logging.info(
             f"Initialized EMRComputeProvider (region={region}, "
@@ -234,46 +271,11 @@ class EMRComputeProvider(ComputeProvider):
     def launch_stitch_job(self, preparation: Dict[str, Any]) -> Dict[str, Any]:
         """Launch the Stitch job on EMR cluster.
 
-        This method will perform the following steps (when implemented):
-
-        1. **Validation**: Verify preparation succeeded and contains required metadata
-
-        2. **Cluster Validation** (if cluster_id provided):
-           - Check cluster exists and is in WAITING or RUNNING state
-           - Verify cluster has necessary Spark configuration
-           - Ensure cluster has access to S3 artifacts
-
-        3. **On-Demand Cluster Creation** (if cluster_id is None):
-           - Create new EMR cluster with appropriate configuration
-           - Bootstrap with Stitch dependencies
-           - Wait for cluster to reach WAITING state
-
-        4. **EMR Step Submission**:
-           - Submit Spark job as EMR step via AddJobFlowSteps API
-           - Configure step with:
-             * Stitch JAR and dependencies
-             * Spark configuration (executor memory, cores, etc.)
-             * Data connector configurations (Redshift, Databricks)
-             * Input configuration path (S3)
-             * Output paths for Stitch results
-           - Set step action on failure (CONTINUE vs TERMINATE_CLUSTER)
-
-        5. **Job Registration**:
-           - Record job submission with Amperity backend
-           - Link EMR step ID to Amperity job ID
-           - Cache job ID for status lookups
-
-        6. **Response Generation**:
-           - Return job execution details
-           - Include EMR cluster URL for monitoring
-           - Provide S3 paths for logs and outputs
-           - List any warnings (unsupported columns, etc.)
-
         Args:
             preparation: Results from prepare_stitch_job() containing:
                 - success: Must be True to proceed
                 - stitch_config: Stitch configuration
-                - metadata: Job metadata with S3 paths and EMR step definition
+                - metadata: Job metadata with S3 paths and connector configuration
 
         Returns:
             Job execution results with:
@@ -284,55 +286,231 @@ class EMRComputeProvider(ComputeProvider):
                 - job_id: Amperity job ID
                 - s3_config_path: S3 path to configuration file
                 - monitoring_url: EMR console URL for job monitoring
-                - log_uri: S3 path for job logs
                 - unsupported_columns: Columns excluded due to unsupported types
                 - error: Error message if launch failed
-
-        Raises:
-            NotImplementedError: Full implementation coming in future PR
-
-        Example future usage:
-            >>> preparation = provider.prepare_stitch_job(...)
-            >>> result = provider.launch_stitch_job(preparation)
-            >>> print(f"Job launched: {result['step_id']}")
-            >>> print(f"Monitor at: {result['monitoring_url']}")
-            >>> print(f"Check status: provider.get_job_status(result['step_id'])")
         """
-        raise NotImplementedError(
-            "EMRComputeProvider.launch_stitch_job() will be implemented in a future PR. "
-            "This method will submit EMR steps, register jobs with Amperity backend, "
-            "and provide job monitoring details. "
-            "See docstring for detailed implementation plan."
-        )
+        if not preparation.get("success"):
+            return {
+                "success": False,
+                "error": "Cannot launch job: preparation failed",
+                "preparation_error": preparation.get("error"),
+            }
+
+        stitch_config = preparation["stitch_config"]
+        metadata = preparation["metadata"]
+
+        try:
+            # Extract metadata
+            stitch_job_name = metadata["stitch_job_name"]
+            s3_config_path = metadata["s3_config_path"]
+            s3_jar_path = metadata.get("s3_jar_path")
+            main_class = metadata.get(
+                "main_class", "amperity.stitch_standalone.generic_main"
+            )
+            unsupported_columns = metadata.get("unsupported_columns", [])
+
+            # Get connector configuration (Redshift or Databricks)
+            s3_temp_dir = metadata.get("s3_temp_dir")
+            redshift_jdbc_url = metadata.get("redshift_jdbc_url")
+            aws_iam_role = metadata.get("aws_iam_role")
+            databricks_jdbc_url = metadata.get("databricks_jdbc_url")
+            databricks_catalog = metadata.get("databricks_catalog")
+            databricks_schema = metadata.get("databricks_schema")
+
+            # Write Stitch config to S3
+            config_content_json = json.dumps(stitch_config, indent=2)
+            try:
+                upload_success = self.storage_provider.upload_file(
+                    path=s3_config_path, content=config_content_json, overwrite=True
+                )
+                if not upload_success:
+                    return {
+                        "success": False,
+                        "error": f"Failed to write Stitch config to '{s3_config_path}'",
+                    }
+                logging.debug(f"Stitch config written to {s3_config_path}")
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to write Stitch config '{s3_config_path}': {str(e)}",
+                }
+
+            # Validate cluster is accessible
+            try:
+                if not self.emr_client.validate_connection():
+                    return {
+                        "success": False,
+                        "error": f"Cannot connect to EMR cluster {self.cluster_id}. Please verify the cluster exists and is accessible.",
+                    }
+
+                cluster_status = self.emr_client.get_cluster_status()
+                if cluster_status not in ["WAITING", "RUNNING"]:
+                    return {
+                        "success": False,
+                        "error": f"EMR cluster {self.cluster_id} is in state '{cluster_status}'. Cluster must be WAITING or RUNNING to submit jobs.",
+                    }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Error validating EMR cluster: {str(e)}",
+                }
+
+            # Submit init script execution step to download the JAR
+            try:
+                # Get init script path from metadata
+                init_script_s3_path = metadata.get("init_script_path")
+
+                if init_script_s3_path:
+                    # Build environment variables for init script
+                    # Similar to Databricks spark_env_vars
+
+                    env_vars = {
+                        "CHUCK_API_URL": f"https://{get_amperity_url()}",
+                    }
+
+                    logging.info(f"Submitting init script step: {init_script_s3_path}")
+                    logging.debug(f"Environment variables: {env_vars}")
+
+                    init_step_id = self.emr_client.submit_bash_script(
+                        name=f"Download Stitch JAR: {stitch_job_name}",
+                        script_s3_path=init_script_s3_path,
+                        env_vars=env_vars,
+                        action_on_failure="CANCEL_AND_WAIT",
+                    )
+                    s3_jar_path = metadata.get("s3_jar_path", "S3")
+                    logging.info(
+                        f"Init script step submitted: {init_step_id}. JAR will be downloaded to /tmp and uploaded to {s3_jar_path}"
+                    )
+                else:
+                    logging.warning(
+                        "No init_script_path found in metadata. JAR download may fail."
+                    )
+
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to submit init script step: {str(e)}",
+                }
+
+            # Submit Spark job to EMR
+            try:
+                # Build Spark arguments for the job
+                spark_args = metadata.get("spark_args", [])
+                if not spark_args:
+                    # Default Spark configuration
+                    spark_args = [
+                        "--executor-memory",
+                        "8g",
+                        "--executor-cores",
+                        "4",
+                        "--driver-memory",
+                        "4g",
+                    ]
+
+                # Job arguments (empty string for tenant, config path)
+                job_args = ["", s3_config_path]
+
+                # Use S3 JAR path (uploaded by init script from /tmp)
+                # Fall back to local path for backward compatibility
+                jar_path = metadata.get("s3_jar_path", "/opt/amperity/job.jar")
+
+                # Check data source type and use appropriate connector
+                if redshift_jdbc_url and s3_temp_dir:
+                    # Use submit_spark_redshift_job for Redshift data sources
+                    step_id = self.emr_client.submit_spark_redshift_job(
+                        name=f"Stitch Setup: {stitch_job_name}",
+                        jar_path=jar_path,
+                        main_class=main_class,
+                        args=job_args,
+                        s3_temp_dir=s3_temp_dir,
+                        redshift_jdbc_url=redshift_jdbc_url,
+                        aws_iam_role=aws_iam_role,
+                        spark_args=spark_args,
+                        action_on_failure="CONTINUE",
+                    )
+                elif databricks_jdbc_url:
+                    # Use submit_spark_databricks_job for Databricks Unity Catalog data sources
+                    step_id = self.emr_client.submit_spark_databricks_job(
+                        name=f"Stitch Setup: {stitch_job_name}",
+                        jar_path=jar_path,
+                        main_class=main_class,
+                        args=job_args,
+                        databricks_jdbc_url=databricks_jdbc_url,
+                        databricks_catalog=databricks_catalog,
+                        databricks_schema=databricks_schema,
+                        spark_args=spark_args,
+                        action_on_failure="CONTINUE",
+                    )
+                else:
+                    # Use standard submit_spark_job for other data sources
+                    step_id = self.emr_client.submit_spark_job(
+                        name=f"Stitch Setup: {stitch_job_name}",
+                        jar_path=jar_path,
+                        main_class=main_class,
+                        args=job_args,
+                        spark_args=spark_args,
+                        action_on_failure="CONTINUE",
+                    )
+
+                if not step_id:
+                    return {
+                        "success": False,
+                        "error": "Failed to launch job (no step_id returned)",
+                    }
+
+                logging.info(
+                    f"Launched EMR step {step_id} on cluster {self.cluster_id}"
+                )
+
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to launch Stitch job: {str(e)}",
+                }
+
+            # Record job submission with Amperity backend
+            try:
+                amperity_token = metadata.get("amperity_token") or get_amperity_token()
+                job_id = metadata.get("job_id")
+
+                if amperity_token and job_id:
+                    amperity_client = AmperityAPIClient()
+                    amperity_client.record_job_submission(
+                        databricks_run_id=step_id,  # Reuse field for EMR step ID
+                        token=amperity_token,
+                        job_id=job_id,
+                    )
+                    logging.info(
+                        f"Recorded job submission: job_id={job_id}, step_id={step_id}"
+                    )
+            except Exception as e:
+                # Log warning but don't fail the launch
+                logging.warning(f"Failed to record job submission with Amperity: {e}")
+
+            # Get monitoring URL
+            monitoring_url = self.emr_client.get_monitoring_url()
+
+            return {
+                "success": True,
+                "message": f"Stitch job launched successfully on EMR cluster {self.cluster_id}",
+                "step_id": step_id,
+                "cluster_id": self.cluster_id,
+                "job_id": job_id if job_id else None,
+                "s3_config_path": s3_config_path,
+                "stitch_job_name": stitch_job_name,
+                "monitoring_url": monitoring_url,
+                "unsupported_columns": unsupported_columns,
+            }
+
+        except Exception as e:
+            logging.error(f"Error launching Stitch job: {e}", exc_info=True)
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """Get job status from EMR.
 
-        This method will query EMR API for step status (when implemented):
-
-        1. **Step Status Retrieval**:
-           - Call DescribeStep API with step_id
-           - Extract step state and status details
-           - Map EMR states to unified status format
-
-        2. **Status Mapping**:
-           EMR Step States → Unified Status:
-           - PENDING → PENDING
-           - RUNNING → RUNNING
-           - COMPLETED → SUCCESS
-           - CANCELLED → CANCELLED
-           - FAILED → FAILED
-           - INTERRUPTED → FAILED
-
-        3. **Additional Details**:
-           - Extract step timeline (start time, end time)
-           - Retrieve failure reason if applicable
-           - Include log file locations (stderr, stdout)
-           - Provide EMR cluster state if relevant
-
         Args:
             job_id: EMR step identifier (e.g., 's-XXXXXXXXXXXXX')
-                   Can also accept Amperity job ID (will lookup step_id from cache)
 
         Returns:
             Job status information including:
@@ -341,83 +519,102 @@ class EMRComputeProvider(ComputeProvider):
                 - cluster_id: EMR cluster ID
                 - status: Unified job status (PENDING, RUNNING, SUCCESS, FAILED, CANCELLED)
                 - state_message: Detailed state message from EMR
-                - start_time: Job start timestamp (ISO 8601)
+                - start_time: Job start timestamp (ISO 8601) if available
                 - end_time: Job end timestamp if completed (ISO 8601)
                 - failure_reason: Failure details if job failed
-                - log_uri: S3 path to job logs
                 - monitoring_url: EMR console URL
-                - full_status: Complete EMR API response
+                - full_status: Complete status data from EMR
                 - error: Error message if retrieval failed
-
-        Raises:
-            NotImplementedError: Full implementation coming in future PR
-
-        Example future usage:
-            >>> status = provider.get_job_status('s-XXXXXXXXXXXXX')
-            >>> print(f"Status: {status['status']}")
-            >>> if status['status'] == 'FAILED':
-            ...     print(f"Failure reason: {status['failure_reason']}")
-            ...     print(f"Logs: {status['log_uri']}")
         """
-        raise NotImplementedError(
-            "EMRComputeProvider.get_job_status() will be implemented in a future PR. "
-            "This method will query EMR API for step status and provide detailed "
-            "job execution information. "
-            "See docstring for detailed implementation plan."
-        )
+        try:
+            # Get step status from EMR
+            status_data = self.emr_client.get_step_status(job_id)
+
+            # Map EMR states to unified status
+            # EMR states: PENDING, RUNNING, COMPLETED, CANCELLED, FAILED, INTERRUPTED
+            emr_status = status_data.get("status", "UNKNOWN")
+            status_map = {
+                "PENDING": "PENDING",
+                "RUNNING": "RUNNING",
+                "COMPLETED": "SUCCESS",
+                "CANCELLED": "CANCELLED",
+                "FAILED": "FAILED",
+                "INTERRUPTED": "FAILED",
+            }
+            unified_status = status_map.get(emr_status, emr_status)
+
+            result = {
+                "success": True,
+                "step_id": job_id,
+                "cluster_id": self.cluster_id,
+                "status": unified_status,
+                "emr_status": emr_status,
+                "state_message": status_data.get("state_message", ""),
+                "monitoring_url": self.emr_client.get_monitoring_url(),
+                "full_status": status_data,
+            }
+
+            # Add timeline information if available
+            if "start_time" in status_data:
+                result["start_time"] = status_data["start_time"]
+            if "end_time" in status_data:
+                result["end_time"] = status_data["end_time"]
+
+            # Add failure information if job failed
+            if emr_status in ["FAILED", "INTERRUPTED"]:
+                result["failure_reason"] = status_data.get("failure_reason", "Unknown")
+                if "failure_message" in status_data:
+                    result["failure_message"] = status_data["failure_message"]
+                if "log_file" in status_data:
+                    result["log_uri"] = status_data["log_file"]
+
+            return result
+
+        except Exception as e:
+            logging.error(
+                f"Error getting job status for {job_id}: {str(e)}", exc_info=True
+            )
+            return {"success": False, "error": f"Failed to get job status: {str(e)}"}
 
     def cancel_job(self, job_id: str) -> bool:
         """Cancel a running EMR step.
 
-        This method will cancel an in-progress EMR step (when implemented):
-
-        1. **Step Validation**:
-           - Verify step exists and is in cancellable state (PENDING or RUNNING)
-           - Cannot cancel already completed, failed, or cancelled steps
-
-        2. **Cancellation**:
-           - Call CancelSteps API with step_id
-           - EMR will mark step as CANCELLED
-           - Running Spark job will be terminated
-
-        3. **Cluster Handling**:
-           - By default, cluster continues running (action: CONTINUE)
-           - If step was configured with TERMINATE_CLUSTER on failure,
-             cluster will terminate after cancellation
-           - Can optionally terminate cluster after cancel
-
-        4. **Cleanup**:
-           - Record cancellation event with Amperity backend
-           - Update job cache with cancelled status
-           - Preserve logs and partial outputs in S3
-
         Args:
             job_id: EMR step identifier (e.g., 's-XXXXXXXXXXXXX')
-                   Can also accept Amperity job ID (will lookup step_id from cache)
 
         Returns:
             True if cancellation succeeded, False otherwise
-
-        Raises:
-            NotImplementedError: Full implementation coming in future PR
 
         Note:
             Cancellation is asynchronous - the step state transitions to CANCELLED
             but may take a few seconds to fully terminate the running Spark job.
             Use get_job_status() to verify cancellation completed.
-
-        Example future usage:
-            >>> success = provider.cancel_job('s-XXXXXXXXXXXXX')
-            >>> if success:
-            ...     print("Cancellation initiated")
-            ...     # Wait for cancellation to complete
-            ...     time.sleep(5)
-            ...     status = provider.get_job_status('s-XXXXXXXXXXXXX')
-            ...     assert status['status'] == 'CANCELLED'
         """
-        raise NotImplementedError(
-            "EMRComputeProvider.cancel_job() will be implemented in a future PR. "
-            "This method will use EMR CancelSteps API to terminate running jobs. "
-            "API endpoint: POST to EMR API with CancelSteps action. "
-            "See docstring for detailed implementation plan."
-        )
+        try:
+            # Check if step is in a cancellable state
+            status = self.get_job_status(job_id)
+            if not status.get("success"):
+                logging.error(f"Cannot get status for step {job_id}, cannot cancel")
+                return False
+
+            emr_status = status.get("emr_status", "")
+            if emr_status not in ["PENDING", "RUNNING"]:
+                logging.warning(
+                    f"Step {job_id} is in state '{emr_status}', cannot cancel. "
+                    f"Only PENDING or RUNNING steps can be cancelled."
+                )
+                return False
+
+            # Cancel the step using EMR client
+            success = self.emr_client.cancel_step(job_id)
+
+            if success:
+                logging.info(f"Successfully initiated cancellation for step {job_id}")
+            else:
+                logging.error(f"Failed to cancel step {job_id}")
+
+            return success
+
+        except Exception as e:
+            logging.error(f"Error cancelling job {job_id}: {str(e)}", exc_info=True)
+            return False

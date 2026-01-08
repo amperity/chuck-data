@@ -120,6 +120,44 @@ def test_cloud_attributes():
     assert gcp_attrs["gcp_attributes"]["use_preemptible_executors"]
 
 
+def test_cloud_attributes_with_instance_profile_arn():
+    """Test that AWS attributes include instance_profile_arn when provided."""
+    # Test AWS client with instance profile ARN
+    aws_client = DatabricksAPIClient("workspace.cloud.databricks.com", "token")
+    instance_profile_arn = (
+        "arn:aws:iam::123456789012:instance-profile/DatabricksProfile"
+    )
+    aws_attrs = aws_client.get_cloud_attributes(instance_profile_arn)
+
+    assert "aws_attributes" in aws_attrs
+    assert aws_attrs["aws_attributes"]["availability"] == "SPOT_WITH_FALLBACK"
+    assert aws_attrs["aws_attributes"]["instance_profile_arn"] == instance_profile_arn
+
+    # Test AWS client without instance profile ARN
+    aws_attrs_no_profile = aws_client.get_cloud_attributes()
+    assert "aws_attributes" in aws_attrs_no_profile
+    assert "instance_profile_arn" not in aws_attrs_no_profile["aws_attributes"]
+
+    # Test Generic client (falls back to AWS) with instance profile ARN
+    generic_client = DatabricksAPIClient("workspace.databricks.com", "token")
+    generic_attrs = generic_client.get_cloud_attributes(instance_profile_arn)
+    assert "aws_attributes" in generic_attrs
+    assert (
+        generic_attrs["aws_attributes"]["instance_profile_arn"] == instance_profile_arn
+    )
+
+    # Test that Azure and GCP clients ignore instance_profile_arn
+    azure_client = DatabricksAPIClient("workspace.azuredatabricks.net", "token")
+    azure_attrs = azure_client.get_cloud_attributes(instance_profile_arn)
+    assert "azure_attributes" in azure_attrs
+    assert "instance_profile_arn" not in azure_attrs.get("azure_attributes", {})
+
+    gcp_client = DatabricksAPIClient("workspace.gcp.databricks.com", "token")
+    gcp_attrs = gcp_client.get_cloud_attributes(instance_profile_arn)
+    assert "gcp_attributes" in gcp_attrs
+    assert "instance_profile_arn" not in gcp_attrs.get("gcp_attributes", {})
+
+
 @patch.object(DatabricksAPIClient, "post")
 def test_job_submission_uses_correct_node_type(mock_post):
     """Test that job submission uses the correct node type for Azure."""
@@ -142,6 +180,62 @@ def test_job_submission_uses_correct_node_type(mock_post):
     assert (
         cluster_config["azure_attributes"]["availability"] == "SPOT_WITH_FALLBACK_AZURE"
     )
+
+
+@patch.object(DatabricksAPIClient, "post")
+def test_job_submission_with_instance_profile_arn(mock_post):
+    """Test that job submission includes instance_profile_arn in AWS attributes."""
+    mock_post.return_value = {"run_id": "12345"}
+
+    aws_client = DatabricksAPIClient("workspace.cloud.databricks.com", "token")
+    instance_profile_arn = (
+        "arn:aws:iam::123456789012:instance-profile/DatabricksProfile"
+    )
+
+    # Submit job with instance profile ARN
+    aws_client.submit_job_run(
+        config_path="/config/path",
+        init_script_path="/init/script/path",
+        instance_profile_arn=instance_profile_arn,
+    )
+
+    # Verify that post was called and get the payload
+    mock_post.assert_called_once()
+    call_args = mock_post.call_args
+    payload = call_args[0][1]  # Second argument is the data payload
+
+    # Check that the cluster config includes instance_profile_arn in AWS attributes
+    cluster_config = payload["tasks"][0]["new_cluster"]
+    assert "aws_attributes" in cluster_config
+    assert (
+        cluster_config["aws_attributes"]["instance_profile_arn"] == instance_profile_arn
+    )
+    assert cluster_config["aws_attributes"]["availability"] == "SPOT_WITH_FALLBACK"
+
+
+@patch.object(DatabricksAPIClient, "post")
+def test_job_submission_without_instance_profile_arn(mock_post):
+    """Test that job submission works without instance_profile_arn."""
+    mock_post.return_value = {"run_id": "12345"}
+
+    aws_client = DatabricksAPIClient("workspace.cloud.databricks.com", "token")
+
+    # Submit job without instance profile ARN
+    aws_client.submit_job_run(
+        config_path="/config/path",
+        init_script_path="/init/script/path",
+    )
+
+    # Verify that post was called and get the payload
+    mock_post.assert_called_once()
+    call_args = mock_post.call_args
+    payload = call_args[0][1]  # Second argument is the data payload
+
+    # Check that the cluster config does NOT include instance_profile_arn
+    cluster_config = payload["tasks"][0]["new_cluster"]
+    assert "aws_attributes" in cluster_config
+    assert "instance_profile_arn" not in cluster_config["aws_attributes"]
+    assert cluster_config["aws_attributes"]["availability"] == "SPOT_WITH_FALLBACK"
 
     # Base API request tests
 

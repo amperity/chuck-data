@@ -477,7 +477,9 @@ class RedshiftAPIClient:
 
             logging.info(f"Reading semantic tags with query: {query}")
             result = self.execute_sql(query, database=database)
-            logging.info(f"Query result structure: {result.keys() if result else 'None'}")
+            logging.info(
+                f"Query result structure: {result.keys() if result else 'None'}"
+            )
             logging.info(f"Full result: {result}")
 
             if not result.get("result"):
