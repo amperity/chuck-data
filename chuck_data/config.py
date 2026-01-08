@@ -390,6 +390,13 @@ def get_redshift_s3_temp_dir():
     return getattr(_config_manager.get_config(), "redshift_s3_temp_dir", None)
 
 
+def get_databricks_instance_profile_arn():
+    """Get Databricks instance profile ARN for AWS access from config."""
+    return getattr(
+        _config_manager.get_config(), "databricks_instance_profile_arn", None
+    )
+
+
 def get_data_provider():
     """Get the data provider from config (databricks, aws_redshift, etc.)."""
     config = _config_manager.get_config()
@@ -519,3 +526,15 @@ def get_s3_bucket():
     config = _config_manager.get_config()
     # Access via __dict__ since s3_bucket is not in the Pydantic schema but allowed via "extra": "allow"
     return getattr(config, "s3_bucket", None)
+
+
+def get_emr_cluster_id():
+    """Get the EMR cluster ID from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "emr_cluster_id", None)
+
+
+def get_aws_profile():
+    """Get the AWS profile name from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "aws_profile", None)

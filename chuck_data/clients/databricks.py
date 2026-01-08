@@ -667,7 +667,7 @@ class DatabricksAPIClient:
                     "spark_jar_task": {
                         "jar_uri": "",
                         "main_class_name": os.environ.get(
-                            "MAIN_CLASS", "amperity.stitch_standalone.chuck_main"
+                            "MAIN_CLASS", "amperity.stitch_standalone.generic_main"
                         ),
                         "parameters": [
                             "",
@@ -675,7 +675,19 @@ class DatabricksAPIClient:
                         ],
                         "run_as_repl": True,
                     },
-                    "libraries": [{"jar": "file:///opt/amperity/job.jar"}],
+                    "libraries": [
+                        {"jar": "file:///opt/amperity/job.jar"},
+                        {
+                            "maven": {
+                                "coordinates": "io.github.spark-redshift-community:spark-redshift_2.12:6.5.1-spark_3.5"
+                            }
+                        },
+                        {
+                            "maven": {
+                                "coordinates": "org.apache.spark:spark-avro_2.12:3.5.0"
+                            }
+                        },
+                    ],
                     "timeout_seconds": 0,
                     "email_notifications": {},
                     "webhook_notifications": {},
