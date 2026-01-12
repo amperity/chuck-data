@@ -416,6 +416,7 @@ class TestRedshiftS3Upload:
 
         client = MagicMock()
         console = get_console()
+        compute_provider = MagicMock()
 
         # Mock the submission function and guidance message builder
         with (
@@ -434,7 +435,9 @@ class TestRedshiftS3Upload:
             mock_guidance.return_value = "Mock guidance message"
 
             # Call the function
-            result = _redshift_phase_2_confirm(context, console, "confirm")
+            result = _redshift_phase_2_confirm(
+                client, compute_provider, context, console, "confirm"
+            )
 
         # Verify S3 upload was called
         mock_s3_client.put_object.assert_called_once()

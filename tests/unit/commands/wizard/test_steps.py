@@ -446,7 +446,7 @@ class TestComputeProviderSelectionStep:
         assert step.get_step_title() == "Compute Provider Selection"
 
     def test_handle_input_databricks(self, validator):
-        """Test selecting Databricks compute provider."""
+        """Test selecting Databricks compute provider with Redshift data provider."""
         step = ComputeProviderSelectionStep(validator)
         state = WizardState(
             data_provider="aws_redshift",
@@ -460,7 +460,8 @@ class TestComputeProviderSelectionStep:
             result = step.handle_input("1", state)
 
             assert result.success is True
-            assert result.next_step == WizardStep.WORKSPACE_URL
+            # With Redshift data provider, should ask for Instance Profile first
+            assert result.next_step == WizardStep.INSTANCE_PROFILE_INPUT
             assert result.data == {"compute_provider": "databricks"}
 
     def test_handle_input_empty_defaults_to_databricks(self, validator):
@@ -514,7 +515,8 @@ class TestDataProviderSelectionStep:
             result = step.handle_input("1", state)
 
             assert result.success is True
-            assert result.next_step == WizardStep.COMPUTE_PROVIDER_SELECTION
+            # After selecting Databricks, go to workspace URL to collect credentials
+            assert result.next_step == WizardStep.WORKSPACE_URL
             assert result.data == {"data_provider": "databricks"}
 
     def test_handle_input_redshift_by_number(self, validator):
@@ -567,6 +569,7 @@ class TestStepFactory:
             WizardStep.REDSHIFT_CLUSTER_SELECTION,
             WizardStep.S3_BUCKET_INPUT,
             WizardStep.IAM_ROLE_INPUT,
+            WizardStep.INSTANCE_PROFILE_INPUT,
             WizardStep.COMPUTE_PROVIDER_SELECTION,
         ]
 
@@ -587,3 +590,302 @@ class TestStepFactory:
 
             with pytest.raises(ValueError, match="Unknown step type"):
                 create_step(mock_unknown_step, validator)
+
+
+class TestInstanceProfileInputStep:
+    """Tests for Instance Profile ARN input step."""
+
+    def test_valid_instance_profile_arn(self, validator):
+        """Test that valid Instance Profile ARN is accepted."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+        state.iam_role = "arn:aws:iam::123456789012:role/RedshiftRole"
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.return_value = True
+            result = step.handle_input(
+                "arn:aws:iam::123456789012:instance-profile/DatabricksProfile", state
+            )
+
+        assert result.success
+        assert result.next_step == WizardStep.WORKSPACE_URL
+        assert result.action == WizardAction.CONTINUE
+        assert (
+            result.data["instance_profile_arn"]
+            == "arn:aws:iam::123456789012:instance-profile/DatabricksProfile"
+        )
+
+    def test_valid_instance_profile_arn_with_path(self, validator):
+        """Test that Instance Profile ARN with path components is accepted."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+        state.iam_role = "arn:aws:iam::123456789012:role/RedshiftRole"
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.return_value = True
+            result = step.handle_input(
+                "arn:aws:iam::123456789012:instance-profile/databricks/DatabricksProfile",
+                state,
+            )
+
+        assert result.success
+        assert result.next_step == WizardStep.WORKSPACE_URL
+
+    def test_invalid_instance_profile_arn_format(self, validator):
+        """Test that invalid Instance Profile ARN format is rejected."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+
+        # Missing arn:aws:iam:: prefix
+        result = step.handle_input("invalid-arn", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Invalid Instance Profile ARN format" in result.message
+
+        # Missing :instance-profile/ component (role instead)
+        result = step.handle_input("arn:aws:iam::123456789012:role/TestRole", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert ":instance-profile/" in result.message
+
+        # User instead of instance-profile
+        result = step.handle_input("arn:aws:iam::123456789012:user/TestUser", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+
+    def test_empty_instance_profile_arn(self, validator):
+        """Test that empty Instance Profile ARN is rejected."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+
+        result = step.handle_input("", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "cannot be empty" in result.message
+
+    def test_whitespace_trimming(self, validator):
+        """Test that leading/trailing whitespace is trimmed."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+        state.iam_role = "arn:aws:iam::123456789012:role/RedshiftRole"
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.return_value = True
+            result = step.handle_input(
+                "  arn:aws:iam::123456789012:instance-profile/DatabricksProfile  ",
+                state,
+            )
+
+        assert result.success
+        assert (
+            result.data["instance_profile_arn"]
+            == "arn:aws:iam::123456789012:instance-profile/DatabricksProfile"
+        )
+
+    def test_config_save_failure(self, validator):
+        """Test handling of config save failure."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+        state.iam_role = "arn:aws:iam::123456789012:role/RedshiftRole"
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.return_value = False
+            result = step.handle_input(
+                "arn:aws:iam::123456789012:instance-profile/DatabricksProfile", state
+            )
+
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Failed to save" in result.message
+
+    def test_config_save_exception(self, validator):
+        """Test handling of exception during config save."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+        state.data_provider = "aws_redshift"
+        state.iam_role = "arn:aws:iam::123456789012:role/RedshiftRole"
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config.return_value.update.side_effect = Exception("Database error")
+            result = step.handle_input(
+                "arn:aws:iam::123456789012:instance-profile/DatabricksProfile", state
+            )
+
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Error saving" in result.message
+
+    def test_step_title(self, validator):
+        """Test that step has appropriate title."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        title = step.get_step_title()
+        assert "Instance Profile" in title
+        assert "Databricks" in title
+
+    def test_prompt_message(self, validator):
+        """Test that step has informative prompt message."""
+        step = create_step(WizardStep.INSTANCE_PROFILE_INPUT, validator)
+        state = WizardState()
+        prompt = step.get_prompt_message(state)
+        assert "Instance Profile ARN" in prompt
+        assert "arn:aws:iam::" in prompt
+        assert "instance-profile" in prompt
+        assert "Databricks" in prompt
+
+
+class TestEMRClusterIDInputStep:
+    """Tests for EMR cluster ID input step."""
+
+    def test_valid_emr_cluster_id(self, validator):
+        """Test that valid EMR cluster ID is accepted."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = "us-west-2"
+        state.aws_profile = "default"
+
+        with patch("chuck_data.clients.emr.EMRAPIClient") as mock_emr:
+            mock_client = MagicMock()
+            mock_client.validate_connection.return_value = True
+            mock_client.get_cluster_status.return_value = "WAITING"
+            mock_emr.return_value = mock_client
+
+            with patch("chuck_data.config.get_config_manager") as mock_config:
+                mock_config.return_value.update.return_value = True
+                result = step.handle_input("j-XXXXXXXXXXXXX", state)
+
+        assert result.success
+        assert result.next_step == WizardStep.LLM_PROVIDER_SELECTION
+        assert result.action == WizardAction.CONTINUE
+        assert result.data["emr_cluster_id"] == "j-XXXXXXXXXXXXX"
+
+    def test_invalid_cluster_id_format(self, validator):
+        """Test that cluster IDs not starting with 'j-' are rejected."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = "us-west-2"
+
+        result = step.handle_input("invalid-cluster-id", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "start with 'j-'" in result.message
+
+    def test_empty_cluster_id(self, validator):
+        """Test that empty cluster ID is rejected."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+
+        result = step.handle_input("", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "cannot be empty" in result.message
+
+    def test_whitespace_trimming(self, validator):
+        """Test that leading/trailing whitespace is trimmed."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = "us-west-2"
+        state.aws_profile = "default"
+
+        with patch("chuck_data.clients.emr.EMRAPIClient") as mock_emr:
+            mock_client = MagicMock()
+            mock_client.validate_connection.return_value = True
+            mock_client.get_cluster_status.return_value = "WAITING"
+            mock_emr.return_value = mock_client
+
+            with patch("chuck_data.config.get_config_manager") as mock_config:
+                mock_config.return_value.update.return_value = True
+                result = step.handle_input("  j-XXXXXXXXXXXXX  ", state)
+
+        assert result.success
+        assert result.data["emr_cluster_id"] == "j-XXXXXXXXXXXXX"
+
+    def test_connection_validation_failure(self, validator):
+        """Test handling of EMR connection validation failure."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = "us-west-2"
+        state.aws_profile = "default"
+
+        with patch("chuck_data.clients.emr.EMRAPIClient") as mock_emr:
+            mock_client = MagicMock()
+            mock_client.validate_connection.return_value = False
+            mock_emr.return_value = mock_client
+
+            result = step.handle_input("j-XXXXXXXXXXXXX", state)
+
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Failed to connect" in result.message
+
+    def test_missing_aws_region(self, validator):
+        """Test that missing AWS region is handled."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = None
+
+        result = step.handle_input("j-XXXXXXXXXXXXX", state)
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "AWS region not found" in result.message
+
+    def test_config_save_failure(self, validator):
+        """Test handling of config save failure."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = "us-west-2"
+        state.aws_profile = "default"
+
+        with patch("chuck_data.clients.emr.EMRAPIClient") as mock_emr:
+            mock_client = MagicMock()
+            mock_client.validate_connection.return_value = True
+            mock_client.get_cluster_status.return_value = "WAITING"
+            mock_emr.return_value = mock_client
+
+            with patch("chuck_data.config.get_config_manager") as mock_config:
+                mock_config.return_value.update.return_value = False
+                result = step.handle_input("j-XXXXXXXXXXXXX", state)
+
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Failed to save" in result.message
+
+    def test_exception_during_validation(self, validator):
+        """Test handling of exception during cluster validation."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        state.compute_provider = "aws_emr"
+        state.aws_region = "us-west-2"
+        state.aws_profile = "default"
+
+        with patch("chuck_data.clients.emr.EMRAPIClient") as mock_emr:
+            mock_emr.side_effect = Exception("AWS connection error")
+            result = step.handle_input("j-XXXXXXXXXXXXX", state)
+
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Error validating EMR cluster" in result.message
+
+    def test_step_title(self, validator):
+        """Test that step has appropriate title."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        title = step.get_step_title()
+        assert "EMR" in title
+        assert "Cluster" in title
+
+    def test_prompt_message(self, validator):
+        """Test that step has informative prompt message."""
+        step = create_step(WizardStep.EMR_CLUSTER_ID_INPUT, validator)
+        state = WizardState()
+        prompt = step.get_prompt_message(state)
+        assert "EMR cluster ID" in prompt
+        assert "j-" in prompt

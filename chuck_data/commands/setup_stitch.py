@@ -47,6 +47,72 @@ from .stitch_tools import (
 )
 
 
+def _ensure_s3_temp_dir_exists(s3_temp_dir: str) -> bool:
+    """
+    Ensures the S3 temp directory exists by creating it if necessary.
+
+    Args:
+        s3_temp_dir: S3 path like 's3://bucket/redshift-temp/'
+
+    Returns:
+        True if directory exists or was created successfully, False otherwise
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+
+    try:
+        # Parse S3 path
+        if not s3_temp_dir.startswith("s3://"):
+            logging.error(f"Invalid S3 path: {s3_temp_dir}")
+            return False
+
+        path = s3_temp_dir.replace("s3://", "")
+        parts = path.split("/", 1)
+        bucket = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+
+        # Ensure prefix ends with / if not empty
+        if prefix and not prefix.endswith("/"):
+            prefix = prefix + "/"
+
+        s3_client = boto3.client("s3")
+
+        # Check if bucket exists and is accessible
+        try:
+            s3_client.head_bucket(Bucket=bucket)
+            logging.info(f"S3 bucket '{bucket}' is accessible")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "404":
+                logging.error(f"S3 bucket '{bucket}' does not exist")
+            elif error_code == "403":
+                logging.error(f"Access denied to S3 bucket '{bucket}'")
+            else:
+                logging.error(f"Error accessing S3 bucket '{bucket}': {e}")
+            return False
+
+        # Create a marker file to ensure the prefix/directory exists
+        # This is necessary because S3 doesn't have true directories
+        marker_key = f"{prefix}.spark-redshift-temp-marker"
+
+        try:
+            s3_client.put_object(
+                Bucket=bucket,
+                Key=marker_key,
+                Body=b"",
+                Metadata={"purpose": "Spark-Redshift temp directory marker"},
+            )
+            logging.info(f"S3 temp directory validated/created: {s3_temp_dir}")
+            return True
+        except ClientError as e:
+            logging.error(f"Failed to create marker in S3 temp directory: {e}")
+            return False
+
+    except Exception as e:
+        logging.error(f"Error validating S3 temp directory: {e}")
+        return False
+
+
 def _display_config_preview(console, stitch_config, metadata):
     """Display a preview of the Stitch configuration to the user."""
     console.print(f"\n[{INFO_STYLE}]Stitch Configuration Preview:[/{INFO_STYLE}]")
@@ -145,7 +211,11 @@ def _submit_stitch_job_to_databricks(
     """
     try:
         # Create Databricks client for job submission
-        from chuck_data.config import get_workspace_url, get_databricks_token
+        from chuck_data.config import (
+            get_workspace_url,
+            get_databricks_token,
+            get_databricks_instance_profile_arn,
+        )
 
         workspace_url = get_workspace_url()
         databricks_token = get_databricks_token()
@@ -160,12 +230,16 @@ def _submit_stitch_job_to_databricks(
             workspace_url=workspace_url, token=databricks_token
         )
 
+        # Get instance profile ARN if configured (needed for AWS access)
+        instance_profile_arn = get_databricks_instance_profile_arn()
+
         # Submit job using Databricks client
         job_run_data = databricks_client.submit_job_run(
             config_path=config_path,
             init_script_path=init_script_path,
             run_name=f"Stitch Setup: {stitch_job_name}",
             policy_id=policy_id,
+            instance_profile_arn=instance_profile_arn,
         )
         run_id = job_run_data.get("run_id")
         if not run_id:
@@ -287,27 +361,67 @@ def handle_command(
     # Detect data provider
     is_redshift = is_redshift_client(client)
 
-    # Create compute provider (currently only Databricks is supported)
+    # Create compute provider based on configuration
     from chuck_data.provider_factory import ProviderFactory
-    from chuck_data.config import get_workspace_url, get_databricks_token
+    from chuck_data.config import (
+        get_workspace_url,
+        get_databricks_token,
+        get_compute_provider,
+    )
 
-    workspace_url = get_workspace_url()
-    databricks_token = get_databricks_token()
-
-    if not workspace_url or not databricks_token:
-        return CommandResult(False, message="Databricks workspace not configured")
+    # Get compute provider from config (defaults to databricks if not set)
+    compute_provider_name = get_compute_provider() or "databricks"
 
     # Determine data provider type for storage provider selection
     data_provider_type = "redshift" if is_redshift else "databricks"
 
-    compute_provider = ProviderFactory.create_compute_provider(
-        "databricks",
-        {
-            "workspace_url": workspace_url,
-            "token": databricks_token,
-            "data_provider_type": data_provider_type,
-        },
-    )
+    # Create appropriate compute provider
+    if compute_provider_name == "aws_emr":
+        # EMR compute provider configuration
+        from chuck_data.config import get_emr_cluster_id
+
+        emr_cluster_id = get_emr_cluster_id()
+        if not emr_cluster_id:
+            return CommandResult(
+                False,
+                message="EMR cluster ID not configured. Please run /setup wizard to configure EMR.",
+            )
+
+        # Get AWS/Redshift configuration for EMR
+        region = get_redshift_region()
+        aws_profile = kwargs.get("aws_profile")  # Get from function arguments
+
+        if not region:
+            return CommandResult(
+                False,
+                message="AWS region not configured. Please run /setup wizard.",
+            )
+
+        compute_provider = ProviderFactory.create_compute_provider(
+            "aws_emr",
+            {
+                "region": region,
+                "cluster_id": emr_cluster_id,
+                "aws_profile": aws_profile,
+                "data_provider_type": data_provider_type,
+            },
+        )
+    else:
+        # Databricks compute provider (default)
+        workspace_url = get_workspace_url()
+        databricks_token = get_databricks_token()
+
+        if not workspace_url or not databricks_token:
+            return CommandResult(False, message="Databricks workspace not configured")
+
+        compute_provider = ProviderFactory.create_compute_provider(
+            "databricks",
+            {
+                "workspace_url": workspace_url,
+                "token": databricks_token,
+                "data_provider_type": data_provider_type,
+            },
+        )
 
     # Route to appropriate handler
     if is_redshift:
@@ -377,7 +491,9 @@ def _handle_databricks_stitch_setup(
         if current_phase == "review":
             return _phase_2_handle_review(client, context, console, interactive_input)
         if current_phase == "ready_to_launch":
-            return _phase_3_launch_job(client, context, console, interactive_input)
+            return _phase_3_launch_job(
+                client, compute_provider, context, console, interactive_input
+            )
         return CommandResult(
             False,
             message=f"Unknown phase: {current_phase}. Please run /setup-stitch again.",
@@ -522,9 +638,6 @@ def _phase_1_prepare_config(
 ) -> CommandResult:
     """Phase 1: Prepare the Stitch configuration for single or multiple targets."""
 
-    # Set context as active for interactive mode
-    context.set_active_context("setup_stitch")
-
     # Create LLM provider using factory
     llm_client = LLMProviderFactory.create()
 
@@ -534,7 +647,6 @@ def _phase_1_prepare_config(
         for target in targets_arg:
             parts = target.split(".")
             if len(parts) != 2:
-                context.clear_active_context("setup_stitch")
                 return CommandResult(
                     False,
                     message=f"Invalid target format: '{target}'. Expected 'catalog.schema'",
@@ -561,7 +673,6 @@ def _phase_1_prepare_config(
         target_schema = schema_name_arg or get_active_schema()
 
         if not target_catalog or not target_schema:
-            context.clear_active_context("setup_stitch")
             return CommandResult(
                 False,
                 message="Target catalog and schema must be specified or active for Stitch setup.",
@@ -576,7 +687,6 @@ def _phase_1_prepare_config(
         )
 
     if prep_result.get("error"):
-        context.clear_active_context("setup_stitch")
         return CommandResult(False, message=prep_result["error"])
 
     # Add policy_id to metadata if provided
@@ -596,6 +706,9 @@ def _phase_1_prepare_config(
         console, prep_result["stitch_config"], prep_result["metadata"]
     )
     _display_confirmation_prompt(console)
+
+    # Set context as active NOW - after all output is shown and we're ready to wait for user input
+    context.set_active_context("setup_stitch")
 
     return CommandResult(
         True, message=""  # Empty message - let the console output speak for itself
@@ -684,7 +797,11 @@ def _phase_2_handle_review(
 
 
 def _phase_3_launch_job(
-    client: DatabricksAPIClient, context: InteractiveContext, console, user_input: str
+    client: DatabricksAPIClient,
+    compute_provider,  # ComputeProvider instance
+    context: InteractiveContext,
+    console,
+    user_input: str,
 ) -> CommandResult:
     """Phase 3: Final confirmation and job launch."""
     builder_data = context.get_context_data("setup_stitch")
@@ -704,8 +821,17 @@ def _phase_3_launch_job(
     ]:
         console.print(f"\n[{INFO_STYLE}]Launching Stitch job...[/{INFO_STYLE}]")
 
-        # Launch the job
-        launch_result = _helper_launch_stitch_job(client, stitch_config, metadata)
+        # Detect compute provider type and route accordingly
+        from chuck_data.compute_providers.emr import EMRComputeProvider
+
+        if isinstance(compute_provider, EMRComputeProvider):
+            # EMR compute provider with Databricks Unity Catalog data
+            launch_result = _helper_launch_stitch_job_emr_databricks(
+                client, compute_provider, stitch_config, metadata
+            )
+        else:
+            # Databricks compute provider (default)
+            launch_result = _helper_launch_stitch_job(client, stitch_config, metadata)
 
         # Clear context after launch (success or failure)
         context.clear_active_context("setup_stitch")
@@ -898,7 +1024,7 @@ def _display_detailed_summary(console, launch_result):
 
 
 def _build_post_launch_guidance_message(
-    launch_result, metadata, client=None, is_redshift=False
+    launch_result, metadata, client=None, is_redshift=False, compute_provider=None
 ):
     """Build the post-launch guidance message as a string to return as CommandResult message.
 
@@ -907,16 +1033,25 @@ def _build_post_launch_guidance_message(
         metadata: Dict with target_catalog, target_schema, job_id
         client: Optional Databricks client for fetching job details
         is_redshift: Boolean indicating if this is a Redshift job (no notebook created)
+        compute_provider: String indicating compute provider ('databricks' or 'aws_emr')
     """
-    from chuck_data.config import get_workspace_url
+    from chuck_data.config import get_workspace_url, get_compute_provider
     from chuck_data.databricks.url_utils import (
         get_full_workspace_url,
         detect_cloud_provider,
         normalize_workspace_url,
     )
 
+    # Detect compute provider if not explicitly provided
+    if not compute_provider:
+        compute_provider = get_compute_provider() or "databricks"
+
     lines = []
-    lines.append("Stitch is now running in your Databricks workspace!")
+    # Show appropriate message based on compute provider
+    if compute_provider == "aws_emr":
+        lines.append("Stitch is now running on your EMR cluster!")
+    else:
+        lines.append("Stitch is now running in your Databricks workspace!")
     # Additional information about outputs
     lines.append("")
     lines.append(
@@ -955,51 +1090,67 @@ def _build_post_launch_guidance_message(
         lines.append(
             f"• you can ask me about the status of the Chuck job (job-id: {job_id})"
         )
-    if run_id:
-        lines.append(
-            f"• you can ask me about the status of the Databricks job run (run-id: {run_id})"
-        )
 
-    # Get workspace URL for constructing browser links
-    workspace_url = get_workspace_url() or ""
-    # If workspace_url is already a full URL, normalize it to get just the workspace ID
-    # If it's just the workspace ID, this will return it as-is
-    workspace_id = normalize_workspace_url(workspace_url)
-    cloud_provider = detect_cloud_provider(workspace_url)
-    full_workspace_url = get_full_workspace_url(workspace_id, cloud_provider)
-
-    # Option 2: Open job in browser
-    if run_id and client:
-        try:
-            job_run_status = client.get_job_run_status(run_id)
-            job_id = job_run_status.get("job_id")
-            if job_id:
-                # Use proper URL format: https://workspace.domain.com/jobs/<job-id>/runs/<run-id>?o=<workspace-id>
-                job_url = (
-                    f"{full_workspace_url}/jobs/{job_id}/runs/{run_id}?o={workspace_id}"
-                )
-                lines.append(f"• Open Databricks job in browser: {job_url}")
-        except Exception as e:
-            logging.warning(f"Could not get job details for run {run_id}: {e}")
-
-    # Option 3: Open notebook in browser
-    if notebook_result and notebook_result.get("success"):
-        notebook_path = notebook_result.get("notebook_path", "")
-        if notebook_path:
-            from urllib.parse import quote
-
-            # Remove leading /Workspace if present, and construct proper URL
-            clean_path = notebook_path.replace("/Workspace", "")
-            # URL encode the path, especially spaces
-            encoded_path = quote(clean_path, safe="/")
-            # Construct URL with workspace ID: https://workspace.domain.com/?o=workspace_id#workspace/path
-            notebook_url = (
-                f"{full_workspace_url}/?o={workspace_id}#workspace{encoded_path}"
+    if compute_provider == "aws_emr":
+        # EMR-specific options
+        step_id = launch_result.get("step_id") or run_id
+        if step_id:
+            lines.append(
+                f"• you can ask me about the status of the EMR job step (run-id: {step_id})"
             )
-            lines.append(f"• Open Stitch Report notebook in browser: {notebook_url}")
 
-    # Option 4: Open main workspace
-    lines.append(f"• Open Databricks workspace: {full_workspace_url}")
+        # EMR monitoring URL
+        monitoring_url = launch_result.get("monitoring_url")
+        if monitoring_url:
+            lines.append(f"• Open EMR cluster in AWS console: {monitoring_url}")
+
+    else:
+        # Databricks-specific options
+        if run_id:
+            lines.append(
+                f"• you can ask me about the status of the Databricks job run (run-id: {run_id})"
+            )
+
+        # Get workspace URL for constructing browser links
+        workspace_url = get_workspace_url() or ""
+        # If workspace_url is already a full URL, normalize it to get just the workspace ID
+        # If it's just the workspace ID, this will return it as-is
+        workspace_id = normalize_workspace_url(workspace_url)
+        cloud_provider = detect_cloud_provider(workspace_url)
+        full_workspace_url = get_full_workspace_url(workspace_id, cloud_provider)
+
+        # Option 2: Open job in browser
+        if run_id and client:
+            try:
+                job_run_status = client.get_job_run_status(run_id)
+                job_id_from_run = job_run_status.get("job_id")
+                if job_id_from_run:
+                    # Use proper URL format: https://workspace.domain.com/jobs/<job-id>/runs/<run-id>?o=<workspace-id>
+                    job_url = f"{full_workspace_url}/jobs/{job_id_from_run}/runs/{run_id}?o={workspace_id}"
+                    lines.append(f"• Open Databricks job in browser: {job_url}")
+            except Exception as e:
+                logging.warning(f"Could not get job details for run {run_id}: {e}")
+
+        # Option 3: Open notebook in browser
+        if notebook_result and notebook_result.get("success"):
+            notebook_path = notebook_result.get("notebook_path", "")
+            if notebook_path:
+                from urllib.parse import quote
+
+                # Remove leading /Workspace if present, and construct proper URL
+                clean_path = notebook_path.replace("/Workspace", "")
+                # URL encode the path, especially spaces
+                encoded_path = quote(clean_path, safe="/")
+                # Construct URL with workspace ID: https://workspace.domain.com/?o=workspace_id#workspace/path
+                notebook_url = (
+                    f"{full_workspace_url}/?o={workspace_id}#workspace{encoded_path}"
+                )
+                lines.append(
+                    f"• Open Stitch Report notebook in browser: {notebook_url}"
+                )
+
+        # Option 4: Open main workspace
+        lines.append(f"• Open Databricks workspace: {full_workspace_url}")
 
     return "\n".join(lines)
 
@@ -1142,15 +1293,11 @@ def _redshift_phase_1_prepare(
     **kwargs,
 ) -> CommandResult:
     """Phase 1: Prepare manifest, upload to S3, and show preview."""
-    # Set context as active for interactive mode
-    context.set_active_context("setup_stitch")
-
     # Get database and schema
     database = kwargs.get("database") or get_active_database()
     schema_name = kwargs.get("schema_name") or get_active_schema()
 
     if not database or not schema_name:
-        context.clear_active_context("setup_stitch")
         return CommandResult(
             False,
             message="Database and schema must be specified or active. Use /select-database and /select-schema commands.",
@@ -1161,17 +1308,23 @@ def _redshift_phase_1_prepare(
     )
 
     # Get provider names from compute_provider object
-    compute_provider_name = (
-        compute_provider.value if hasattr(compute_provider, "value") else "databricks"
-    )
+    from chuck_data.compute_providers.emr import EMRComputeProvider
+
+    if isinstance(compute_provider, EMRComputeProvider):
+        compute_provider_name = "aws_emr"
+    else:
+        compute_provider_name = "databricks"
 
     # Execute steps 1-5: prepare manifest
+    # Remove database and schema_name from kwargs to avoid duplicate arguments
+    filtered_kwargs = {
+        k: v for k, v in kwargs.items() if k not in ["database", "schema_name"]
+    }
     prep_result = _redshift_prepare_manifest(
-        client, console, database, schema_name, compute_provider_name, **kwargs
+        client, console, database, schema_name, compute_provider_name, **filtered_kwargs
     )
 
     if not prep_result["success"]:
-        context.clear_active_context("setup_stitch")
         return CommandResult(False, message=prep_result["error"])
 
     # Extract values from prep_result
@@ -1209,13 +1362,166 @@ def _redshift_phase_1_prepare(
         f"\n[{WARNING}]Ready to launch Stitch job. Type 'confirm' to proceed or 'cancel' to abort.[/{WARNING}]"
     )
 
+    # Set context as active NOW - after all output is shown and we're ready to wait for user input
+    context.set_active_context("setup_stitch")
+
     return CommandResult(
         True, message="Ready to launch. Type 'confirm' to proceed with job launch."
     )
 
 
+def _helper_launch_stitch_job_emr_databricks(
+    client,  # DatabricksAPIClient instance (for consistency, not used)
+    compute_provider,  # EMRComputeProvider instance
+    stitch_config: Dict[str, Any],
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Launch Stitch job on EMR with Databricks Unity Catalog as data source.
+
+    This function uploads config/init script to S3, builds Databricks JDBC URL,
+    and submits the job to EMR with Databricks connector configuration.
+    """
+    try:
+
+        # Extract metadata
+        target_catalog = metadata["target_catalog"]
+        target_schema = metadata["target_schema"]
+        stitch_job_name = metadata["stitch_job_name"]
+        init_script_content = metadata["init_script_content"]
+        pii_scan_output = metadata["pii_scan_output"]
+        unsupported_columns = metadata["unsupported_columns"]
+
+        # Get S3 bucket for artifact storage
+        s3_bucket = get_s3_bucket()
+        if not s3_bucket:
+            return {"error": "S3 bucket not configured. Please run setup wizard."}
+
+        # Generate timestamp for unique paths
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Build S3 paths for config and init script
+        s3_config_path = (
+            f"s3://{s3_bucket}/chuck/configs/stitch-{stitch_job_name}-{timestamp}.json"
+        )
+        s3_init_script_path = (
+            f"s3://{s3_bucket}/chuck/init-scripts/chuck-init-{timestamp}.sh"
+        )
+        s3_jar_path = f"s3://{s3_bucket}/chuck/jars/job-{timestamp}.jar"
+
+        # Modify init script for EMR compatibility
+        from chuck_data.compute_providers.emr import modify_init_script_for_emr
+
+        init_script_content = modify_init_script_for_emr(
+            init_script_content, s3_jar_path
+        )
+        logging.debug(
+            f"Modified init script for EMR: JAR will be uploaded to {s3_jar_path}"
+        )
+
+        # Get Amperity job ID
+        amperity_token = metadata.get("amperity_token") or get_amperity_token()
+        job_id = metadata.get("job_id")
+
+        # Build Databricks JDBC URL for Spark connector
+        # Format: jdbc:databricks://workspace-host:443/default;httpPath=/sql/1.0/warehouses/warehouse-id;AuthMech=3;UID=token;PWD=token
+        from chuck_data.config import (
+            get_workspace_url,
+            get_databricks_token,
+            get_warehouse_id,
+        )
+
+        workspace_url = get_workspace_url()
+        databricks_token = get_databricks_token()
+        warehouse_id = get_warehouse_id()
+
+        if not workspace_url or not databricks_token:
+            return {
+                "error": "Databricks workspace not configured. Please run setup wizard."
+            }
+
+        # Extract host from workspace URL (remove https:// and trailing /)
+        workspace_host = (
+            workspace_url.replace("https://", "").replace("http://", "").rstrip("/")
+        )
+
+        # Build JDBC URL
+        databricks_jdbc_url = f"jdbc:databricks://{workspace_host}:443/default"
+        if warehouse_id:
+            databricks_jdbc_url += f";httpPath=/sql/1.0/warehouses/{warehouse_id}"
+        databricks_jdbc_url += f";AuthMech=3;UID=token;PWD={databricks_token}"
+
+        logging.info(
+            f"Built Databricks JDBC URL for EMR: jdbc:databricks://{workspace_host}:443/..."
+        )
+
+        # Upload modified init script to S3
+        try:
+            import boto3
+            from chuck_data.config import get_redshift_region
+
+            s3_client = boto3.client("s3", region_name=get_redshift_region())
+            s3_client.put_object(
+                Bucket=s3_bucket,
+                Key=f"chuck/init-scripts/chuck-init-{timestamp}.sh",
+                Body=init_script_content.encode("utf-8"),
+            )
+            logging.debug(f"Init script uploaded to {s3_init_script_path}")
+        except Exception as e:
+            return {"error": f"Failed to upload init script to S3: {str(e)}"}
+
+        # Prepare metadata for compute provider
+        emr_metadata = {
+            "stitch_job_name": stitch_job_name,
+            "s3_config_path": s3_config_path,
+            "init_script_path": s3_init_script_path,  # Init script will download JAR
+            "s3_jar_path": s3_jar_path,  # S3 path where JAR will be uploaded by init script
+            "main_class": "amperity.stitch_standalone.generic_main",
+            "job_id": job_id,
+            "amperity_token": amperity_token,
+            "databricks_jdbc_url": databricks_jdbc_url,
+            "databricks_catalog": target_catalog,
+            "databricks_schema": target_schema,
+            "unsupported_columns": unsupported_columns,
+        }
+
+        # Launch job using compute provider
+        preparation = {
+            "success": True,
+            "stitch_config": stitch_config,
+            "metadata": emr_metadata,
+        }
+
+        launch_result = compute_provider.launch_stitch_job(preparation)
+
+        if not launch_result.get("success"):
+            return {"error": launch_result.get("error", "Failed to launch job")}
+
+        # Get step/run ID
+        step_id = launch_result.get("step_id")
+
+        # Build success result
+        return {
+            "run_id": step_id,
+            "step_id": step_id,
+            "job_id": job_id,
+            "message": f"Stitch job for {target_catalog}.{target_schema} launched successfully on EMR",
+            "config_file_path": s3_config_path,
+            "init_script_path": s3_init_script_path,
+            "pii_scan_output": pii_scan_output,
+            "unsupported_columns": unsupported_columns,
+            "monitoring_url": launch_result.get("monitoring_url"),
+        }
+
+    except Exception as e:
+        logging.error(
+            f"Error launching Stitch job on EMR with Databricks: {e}", exc_info=True
+        )
+        return {"error": f"Failed to launch job: {str(e)}"}
+
+
 def _redshift_execute_job_launch(
     console,
+    client,  # RedshiftAPIClient instance
     database: str,
     schema_name: str,
     manifest: Dict[str, Any],
@@ -1225,11 +1531,13 @@ def _redshift_execute_job_launch(
     timestamp: str,
     tables: list,
     semantic_tags: list,
+    compute_provider,  # ComputeProvider instance (EMR or Databricks)
     **kwargs,
 ) -> CommandResult:
     """Execute the Redshift Stitch job launch steps (fetch init script, submit job, create notebook).
 
     This function contains the common logic used by both interactive and auto-confirm paths.
+    Works with both EMR and Databricks compute providers.
     """
     try:
         # Step 6: Fetch and upload init script to S3
@@ -1270,9 +1578,26 @@ def _redshift_execute_job_launch(
             f"s3://{s3_bucket}/chuck/init-scripts/{init_script_filename}"
         )
 
+        # Modify init script for EMR compatibility (if using EMR compute provider)
+        from chuck_data.compute_providers.emr import (
+            EMRComputeProvider,
+            modify_init_script_for_emr,
+        )
+
+        s3_jar_path = f"s3://{s3_bucket}/chuck/jars/job-{timestamp}.jar"
+
+        if isinstance(compute_provider, EMRComputeProvider):
+            init_script_content = modify_init_script_for_emr(
+                init_script_content, s3_jar_path
+            )
+            logging.debug(
+                f"Modified init script for EMR: JAR will be uploaded to {s3_jar_path}"
+            )
+
         # Upload to S3
         try:
             import boto3
+            from chuck_data.config import get_redshift_region
 
             s3_client = boto3.client("s3", region_name=get_redshift_region())
             s3_client.put_object(
@@ -1290,35 +1615,118 @@ def _redshift_execute_job_launch(
             f"[{SUCCESS_STYLE}]✓ Uploaded init script to {init_script_path}[/{SUCCESS_STYLE}]"
         )
 
-        # Step 7: Submit Stitch job to Databricks
-        console.print("\nStep 7: Submitting Stitch job to Databricks...")
+        # Step 7: Submit Stitch job via compute provider (EMR or Databricks)
+        console.print("\nStep 7: Submitting Stitch job...")
 
         stitch_job_name = f"stitch-redshift-{database}-{schema_name}"
-        job_result = _submit_stitch_job_to_databricks(
-            console,
-            config_path=s3_path,
-            init_script_path=init_script_path,
-            stitch_job_name=stitch_job_name,
-            job_id=job_id,
-            policy_id=kwargs.get("policy_id"),
-        )
 
-        if not job_result["success"]:
-            console.print(f"[{ERROR_STYLE}]✗ {job_result['error']}[/{ERROR_STYLE}]")
-            return CommandResult(False, message=job_result["error"])
+        # Build Redshift connector configuration for the compute provider
+        # Note: These functions are already imported at the top of the file
 
-        run_id = job_result["run_id"]
-        databricks_client = job_result["databricks_client"]
+        # Build JDBC URL from Redshift client configuration
+        redshift_jdbc_url = None
+        if client:
+            try:
+                # Get AWS account ID (required for both provisioned and serverless)
+                account_id = get_aws_account_id()
+                if not account_id:
+                    logging.warning(
+                        "AWS account ID not found in config - JDBC URL may be incorrect"
+                    )
 
-        # Step 8: Create Stitch Report notebook
-        notebook_result = _create_stitch_report_notebook_unified(
-            console,
-            databricks_client,
-            manifest,
-            database,  # target_catalog (database for Redshift)
-            schema_name,  # target_schema
-            stitch_job_name,
-        )
+                # Build JDBC URL based on cluster type
+                if client.cluster_identifier:
+                    # Provisioned cluster: jdbc:redshift://cluster-id.account-id.region.redshift.amazonaws.com:5439/database
+                    if account_id:
+                        redshift_jdbc_url = f"jdbc:redshift://{client.cluster_identifier}.{account_id}.{client.region}.redshift.amazonaws.com:5439/{client.database}"
+                    else:
+                        # Fall back to URL without account ID (will likely fail)
+                        redshift_jdbc_url = f"jdbc:redshift://{client.cluster_identifier}.{client.region}.redshift.amazonaws.com:5439/{client.database}"
+                elif client.workgroup_name:
+                    # Serverless: jdbc:redshift://workgroup-name.account-id.region.redshift-serverless.amazonaws.com:5439/database
+                    if account_id:
+                        redshift_jdbc_url = f"jdbc:redshift://{client.workgroup_name}.{account_id}.{client.region}.redshift-serverless.amazonaws.com:5439/{client.database}"
+                    else:
+                        # Fall back to URL without account ID (will likely fail)
+                        redshift_jdbc_url = f"jdbc:redshift://{client.workgroup_name}.{client.region}.redshift-serverless.amazonaws.com:5439/{client.database}"
+                logging.info(f"Built Redshift JDBC URL: {redshift_jdbc_url}")
+            except Exception as e:
+                logging.warning(f"Could not build JDBC URL from Redshift client: {e}")
+
+        # Prepare metadata for compute provider
+        metadata = {
+            "stitch_job_name": stitch_job_name,
+            "s3_config_path": s3_path,
+            "init_script_path": init_script_path,  # Init script will download JAR
+            "s3_jar_path": s3_jar_path,  # S3 path where JAR will be uploaded by init script
+            "main_class": "amperity.stitch_standalone.generic_main",
+            "job_id": job_id,
+            "amperity_token": amperity_token,
+            "s3_temp_dir": get_redshift_s3_temp_dir()
+            or f"s3://{s3_bucket}/redshift-temp/",
+            "redshift_jdbc_url": redshift_jdbc_url,
+            "aws_iam_role": get_redshift_iam_role(),
+            "unsupported_columns": [],
+        }
+
+        # Detect compute provider type and route accordingly
+        from chuck_data.compute_providers.emr import EMRComputeProvider
+
+        if isinstance(compute_provider, EMRComputeProvider):
+            # EMR compute provider - use provider abstraction
+            preparation = {
+                "success": True,
+                "stitch_config": manifest,
+                "metadata": metadata,
+            }
+
+            launch_result = compute_provider.launch_stitch_job(preparation)
+
+            if not launch_result["success"]:
+                console.print(
+                    f"[{ERROR_STYLE}]✗ {launch_result['error']}[/{ERROR_STYLE}]"
+                )
+                return CommandResult(False, message=launch_result["error"])
+
+            # Extract run_id or step_id depending on compute provider
+            run_id = launch_result.get("run_id") or launch_result.get("step_id")
+            databricks_client = None  # EMR doesn't return a Databricks client
+        else:
+            # Databricks compute provider - use direct submission to get databricks_client back
+            submit_result = _submit_stitch_job_to_databricks(
+                console,
+                config_path=s3_path,
+                init_script_path=init_script_path,
+                stitch_job_name=stitch_job_name,
+                job_id=job_id,
+                policy_id=kwargs.get("policy_id"),
+            )
+
+            if not submit_result["success"]:
+                console.print(
+                    f"[{ERROR_STYLE}]✗ {submit_result['error']}[/{ERROR_STYLE}]"
+                )
+                return CommandResult(False, message=submit_result["error"])
+
+            run_id = submit_result.get("run_id")
+            databricks_client = submit_result.get("databricks_client")
+
+        # Step 8: Create Stitch Report notebook (only for Databricks)
+        notebook_result = None
+        if databricks_client:
+            notebook_result = _create_stitch_report_notebook_unified(
+                console,
+                databricks_client,
+                manifest,
+                database,  # target_catalog (database for Redshift)
+                schema_name,  # target_schema
+                stitch_job_name,
+            )
+        else:
+            # For EMR, skip notebook creation
+            console.print(
+                f"\n[{INFO_STYLE}]Stitch Report notebook not created (EMR compute provider)[/{INFO_STYLE}]"
+            )
 
         console.print(
             f"\n[{SUCCESS_STYLE}]Stitch job launched successfully![/{SUCCESS_STYLE}]"
@@ -1332,18 +1740,42 @@ def _redshift_execute_job_launch(
         }
 
         # Build launch result data
-        launch_result = {
+        launch_result_data = {
             "run_id": run_id,
+            "step_id": (
+                launch_result.get("step_id")
+                if isinstance(compute_provider, EMRComputeProvider)
+                else None
+            ),
+            "monitoring_url": (
+                launch_result.get("monitoring_url")
+                if isinstance(compute_provider, EMRComputeProvider)
+                else None
+            ),
             "notebook_result": notebook_result,
             "message": f"Stitch job for Redshift {database}.{schema_name} launched successfully",
         }
 
         # Show detailed summary first as progress info
-        _display_detailed_summary(console, launch_result)
+        _display_detailed_summary(console, launch_result_data)
+
+        # Detect compute provider type for appropriate messaging
+        from chuck_data.compute_providers.emr import EMRComputeProvider
+
+        compute_provider_type = (
+            "aws_emr"
+            if isinstance(compute_provider, EMRComputeProvider)
+            else "databricks"
+        )
 
         # Create the user guidance as the main result message
+        # Pass compute_provider to show EMR-specific information
         result_message = _build_post_launch_guidance_message(
-            launch_result, metadata, databricks_client, is_redshift=False
+            launch_result_data,
+            metadata,
+            databricks_client,
+            is_redshift=False,
+            compute_provider=compute_provider_type,
         )
 
         # Prepare return data
@@ -1372,6 +1804,8 @@ def _redshift_execute_job_launch(
 
 
 def _redshift_phase_2_confirm(
+    client: RedshiftAPIClient,
+    compute_provider,  # ComputeProvider instance
     context: InteractiveContext,
     console,
     user_input: str,
@@ -1427,6 +1861,7 @@ def _redshift_phase_2_confirm(
     # Execute the job launch (common logic)
     result = _redshift_execute_job_launch(
         console,
+        client,
         database,
         schema_name,
         manifest,
@@ -1436,6 +1871,7 @@ def _redshift_phase_2_confirm(
         timestamp,
         tables,
         semantic_tags,
+        compute_provider,
         **kwargs,
     )
 
@@ -1487,7 +1923,7 @@ def _handle_redshift_stitch_setup(
             # Handle user input in interactive mode - Phase 2: Handle confirmation
             logging.info("Taking Phase 2 path: handle confirmation")
             return _redshift_phase_2_confirm(
-                context, console, interactive_input, **kwargs
+                client, compute_provider, context, console, interactive_input, **kwargs
             )
         elif auto_confirm:
             logging.info("Taking auto-confirm path: execute all steps immediately")
@@ -1531,6 +1967,7 @@ def _handle_redshift_stitch_setup(
             # Step 6+: Execute job launch using common helper
             return _redshift_execute_job_launch(
                 console,
+                client,
                 database,
                 schema_name,
                 manifest,
@@ -1540,6 +1977,7 @@ def _handle_redshift_stitch_setup(
                 timestamp,
                 tables,
                 semantic_tags,
+                compute_provider,
                 **kwargs,
             )
         else:
@@ -1654,6 +2092,14 @@ def _generate_redshift_manifest(
                 "error": "No S3 temp directory configured. Please configure s3_bucket in chuck config or set redshift_s3_temp_dir.",
             }
 
+        # Validate and ensure S3 temp directory exists
+        logging.info(f"Validating S3 temp directory: {s3_temp_dir}")
+        if not _ensure_s3_temp_dir_exists(s3_temp_dir):
+            return {
+                "success": False,
+                "error": f"Failed to validate/create S3 temp directory: {s3_temp_dir}. Check AWS credentials and S3 bucket permissions.",
+            }
+
         if not iam_role or "123456789012" in str(iam_role):
             logging.warning(
                 "IAM role appears to be a placeholder. Set redshift_iam_role in chuck config for production use."
@@ -1667,6 +2113,7 @@ def _generate_redshift_manifest(
             "name": manifest_name,
             "tables": manifest_tables,
             "settings": {
+                "job_name": "stitch_job",
                 "redshift_config": redshift_config,
                 "s3_temp_dir": s3_temp_dir,
                 "redshift_iam_role": iam_role,
