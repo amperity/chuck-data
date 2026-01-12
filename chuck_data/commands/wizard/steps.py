@@ -20,6 +20,17 @@ from chuck_data.config import (
 from chuck_data.ui.tui import get_chuck_service
 
 
+# Valid data provider + compute provider combinations
+# These match the combinations allowed by chuck-api backend
+VALID_PROVIDER_COMBINATIONS = {
+    "databricks": ["databricks"],  # Databricks data → Databricks compute only
+    "aws_redshift": [
+        "databricks",
+        "aws_emr",
+    ],  # Redshift data → Databricks or EMR compute
+}
+
+
 class SetupStep(ABC):
     """Base class for setup wizard steps."""
 
@@ -138,8 +149,8 @@ class DataProviderSelectionStep(SetupStep):
         # Map inputs to provider names
         if input_normalized in ["1", "databricks"]:
             provider = "databricks"
-            next_step = WizardStep.COMPUTE_PROVIDER_SELECTION
-            message = "Databricks selected. Please select your compute provider."
+            next_step = WizardStep.WORKSPACE_URL
+            message = "Databricks selected. Please enter your Databricks workspace URL."
         elif input_normalized in ["2", "aws_redshift", "aws redshift", "redshift"]:
             provider = "aws_redshift"
             next_step = WizardStep.AWS_PROFILE_INPUT
@@ -187,28 +198,106 @@ class ComputeProviderSelectionStep(SetupStep):
         return "Compute Provider Selection"
 
     def get_prompt_message(self, state: WizardState) -> str:
-        return (
-            "Please select your compute provider:\n"
-            "  1. Databricks (default)\n"
-            "Enter the number or name of the provider:"
+        # Get valid compute providers for the selected data provider
+        valid_providers = VALID_PROVIDER_COMBINATIONS.get(
+            state.data_provider, ["databricks", "aws_emr"]
         )
+
+        # Build dynamic prompt based on valid combinations
+        if valid_providers == ["databricks"]:
+            # Only Databricks is valid
+            return (
+                "Please select your compute provider:\n"
+                "  1. Databricks\n"
+                "Enter the number or name of the provider:"
+            )
+        elif valid_providers == ["aws_emr"]:
+            # Only EMR is valid (shouldn't happen with current combinations, but handle it)
+            return (
+                "Please select your compute provider:\n"
+                "  1. AWS EMR\n"
+                "Enter the number or name of the provider:"
+            )
+        else:
+            # Multiple options available
+            return (
+                "Please select your compute provider:\n"
+                "  1. Databricks (default)\n"
+                "  2. AWS EMR\n"
+                "Enter the number or name of the provider:"
+            )
 
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle compute provider selection input."""
+        # Get valid compute providers for the selected data provider
+        valid_providers = VALID_PROVIDER_COMBINATIONS.get(
+            state.data_provider, ["databricks", "aws_emr"]
+        )
+
         # Normalize input
         input_normalized = input_text.strip().lower()
 
         # Map inputs to provider names
         if input_normalized in ["1", "databricks", ""]:
-            provider = "databricks"
-            next_step = WizardStep.WORKSPACE_URL
-            message = (
-                "Databricks selected for computation. Please enter your workspace URL."
-            )
+            # Check if only one option is available and map accordingly
+            if valid_providers == ["databricks"]:
+                provider = "databricks"
+            elif valid_providers == ["aws_emr"]:
+                provider = "aws_emr"
+            else:
+                # Default to Databricks when "1" is entered with multiple options
+                provider = "databricks"
+        elif input_normalized in ["2", "emr", "aws_emr", "aws emr"]:
+            provider = "aws_emr"
         else:
             return StepResult(
                 success=False,
-                message="Invalid selection. Please enter 1 (Databricks).",
+                message="Invalid selection. Please enter 1 (Databricks) or 2 (AWS EMR).",
+                action=WizardAction.RETRY,
+            )
+
+        # Validate the selected provider is allowed for this data provider
+        if provider not in valid_providers:
+            valid_names = " or ".join(valid_providers)
+            return StepResult(
+                success=False,
+                message=f"Invalid combination: {state.data_provider} data provider does not support {provider} compute provider. Valid options: {valid_names}",
+                action=WizardAction.RETRY,
+            )
+
+        # Determine next step based on provider and data provider
+        if provider == "databricks":
+            # If data provider is AWS Redshift, need to collect Instance Profile ARN first
+            if state.data_provider == "aws_redshift":
+                next_step = WizardStep.INSTANCE_PROFILE_INPUT
+                message = "Databricks selected for computation. Please enter the Instance Profile ARN for Databricks to access AWS services."
+            elif state.data_provider == "databricks":
+                # Databricks data + Databricks compute: creds already collected
+                next_step = WizardStep.LLM_PROVIDER_SELECTION
+                message = (
+                    "Databricks selected for computation. Select your LLM provider."
+                )
+            else:
+                # Other cases: need to collect Databricks creds
+                next_step = WizardStep.WORKSPACE_URL
+                message = "Databricks selected for computation. Please enter your workspace URL."
+        elif provider == "aws_emr":
+            # For EMR, we need AWS credentials regardless of data provider
+            # If data provider is Databricks (not Redshift), we haven't collected AWS config yet
+            if state.data_provider != "aws_redshift":
+                # Need to collect AWS profile and region before EMR cluster ID
+                next_step = WizardStep.AWS_PROFILE_INPUT
+                message = (
+                    "AWS EMR selected for computation. Please configure AWS settings."
+                )
+            else:
+                # AWS config already collected during Redshift setup
+                next_step = WizardStep.EMR_CLUSTER_ID_INPUT
+                message = "AWS EMR selected for computation. Please enter your EMR cluster ID."
+        else:
+            return StepResult(
+                success=False,
+                message="Invalid compute provider selection.",
                 action=WizardAction.RETRY,
             )
 
@@ -241,6 +330,99 @@ class ComputeProviderSelectionStep(SetupStep):
             )
 
 
+class EMRClusterIDInputStep(SetupStep):
+    """Handle EMR cluster ID input."""
+
+    def get_step_title(self) -> str:
+        return "EMR Cluster ID"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please enter your AWS EMR cluster ID.\n"
+            "The cluster ID should be in the format: j-XXXXXXXXXXXXX\n"
+            "EMR Cluster ID:"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle EMR cluster ID input."""
+        cluster_id = input_text.strip()
+
+        # Validate cluster ID format
+        if not cluster_id:
+            return StepResult(
+                success=False,
+                message="EMR cluster ID cannot be empty. Please enter a valid cluster ID.",
+                action=WizardAction.RETRY,
+            )
+
+        # Basic format validation (EMR cluster IDs start with 'j-')
+        if not cluster_id.startswith("j-"):
+            return StepResult(
+                success=False,
+                message="Invalid EMR cluster ID format. Cluster IDs should start with 'j-'.",
+                action=WizardAction.RETRY,
+            )
+
+        # Validate connection to EMR cluster
+        try:
+            from chuck_data.clients.emr import EMRAPIClient
+
+            # Get AWS region from state (set during Redshift setup)
+            aws_region = state.aws_region
+            if not aws_region:
+                return StepResult(
+                    success=False,
+                    message="AWS region not found. Please complete AWS configuration first.",
+                    action=WizardAction.RETRY,
+                )
+
+            # Create EMR client and validate cluster
+            emr_client = EMRAPIClient(
+                region=aws_region,
+                cluster_id=cluster_id,
+                aws_profile=state.aws_profile,
+            )
+
+            # Validate connection
+            if not emr_client.validate_connection():
+                return StepResult(
+                    success=False,
+                    message=f"Failed to connect to EMR cluster {cluster_id}. Please check the cluster ID and try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            # Get cluster status to provide feedback
+            cluster_status = emr_client.get_cluster_status()
+            logging.info(f"EMR cluster {cluster_id} is in state: {cluster_status}")
+
+            # Save to config
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(emr_cluster_id=cluster_id)
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save EMR cluster ID. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=f"EMR cluster {cluster_id} validated successfully (status: {cluster_status}). Proceeding to LLM provider selection.",
+                next_step=WizardStep.LLM_PROVIDER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"emr_cluster_id": cluster_id},
+            )
+
+        except Exception as e:
+            logging.error(f"Error validating EMR cluster: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error validating EMR cluster: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
 class LLMProviderSelectionStep(SetupStep):
     """Handle LLM provider selection."""
 
@@ -248,12 +430,55 @@ class LLMProviderSelectionStep(SetupStep):
         return "LLM Provider Selection"
 
     def get_prompt_message(self, state: WizardState) -> str:
-        return "Please select your LLM provider:\n  1. Databricks (default)\n  2. AWS Bedrock\nEnter the number or name of the provider:"
+        # Check which providers are available
+        has_databricks_creds = bool(state.workspace_url and state.token)
+        has_aws_config = bool(state.aws_profile and state.aws_region)
+
+        # Build dynamic prompt based on available providers
+        if has_databricks_creds and has_aws_config:
+            return "Please select your LLM provider:\n  1. Databricks (default)\n  2. AWS Bedrock\nEnter the number or name of the provider:"
+        elif has_databricks_creds:
+            return "Please select your LLM provider:\n  1. Databricks"
+        elif has_aws_config:
+            return "Please select your LLM provider:\n  1. AWS Bedrock"
+        else:
+            return "Please select your LLM provider:\n  1. Databricks (default)\n  2. AWS Bedrock\nEnter the number or name of the provider:"
 
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle LLM provider selection input."""
-        # Normalize input
-        input_normalized = input_text.strip().lower()
+        # Check which providers are available
+        has_databricks_creds = bool(state.workspace_url and state.token)
+        has_aws_config = bool(state.aws_profile and state.aws_region)
+
+        # Auto-select if only one provider is available
+        if has_databricks_creds and not has_aws_config:
+            # Only Databricks available - auto-select it
+            if not input_text or input_text.strip() in ["1", "databricks"]:
+                input_normalized = "1"
+            else:
+                return StepResult(
+                    success=False,
+                    message="Only Databricks is available with your current configuration. Please enter 1.",
+                    action=WizardAction.RETRY,
+                )
+        elif has_aws_config and not has_databricks_creds:
+            # Only AWS available - auto-select it
+            if not input_text or input_text.strip() in [
+                "1",
+                "aws_bedrock",
+                "aws",
+                "bedrock",
+            ]:
+                input_normalized = "2"  # Map to AWS since it's the only option
+            else:
+                return StepResult(
+                    success=False,
+                    message="Only AWS Bedrock is available with your current configuration. Please enter 1.",
+                    action=WizardAction.RETRY,
+                )
+        else:
+            # Both available or neither - use normal input
+            input_normalized = input_text.strip().lower()
 
         models = []
 
@@ -283,7 +508,7 @@ class LLMProviderSelectionStep(SetupStep):
                 if not state.workspace_url or not state.token:
                     return StepResult(
                         success=False,
-                        message="Databricks credentials not available. Please configure Databricks workspace and token first.",
+                        message="Databricks credentials not available. AWS Bedrock is the only supported LLM provider for your configuration. Please select option 2.",
                         action=WizardAction.RETRY,
                     )
 
@@ -503,11 +728,23 @@ class TokenInputStep(SetupStep):
                         "Failed to reinitialize client, but credentials were saved"
                     )
 
-            # Data provider configuration complete, proceed to LLM provider selection
+            # Determine next step based on data provider
+            if state.data_provider == "databricks":
+                # For Databricks data provider, go to compute provider selection
+                next_step = WizardStep.COMPUTE_PROVIDER_SELECTION
+                message = (
+                    "Databricks credentials configured. Select your compute provider."
+                )
+            else:
+                # For other cases (e.g., Redshift data + Databricks compute),
+                # go to LLM provider selection
+                next_step = WizardStep.LLM_PROVIDER_SELECTION
+                message = "Databricks credentials configured. Select your LLM provider."
+
             return StepResult(
                 success=True,
-                message="Databricks data provider configured. Select your LLM provider.",
-                next_step=WizardStep.LLM_PROVIDER_SELECTION,
+                message=message,
+                next_step=next_step,
                 action=WizardAction.CONTINUE,
                 data={"token": validation.processed_value},
             )
@@ -522,7 +759,7 @@ class TokenInputStep(SetupStep):
 
 
 class AWSProfileInputStep(SetupStep):
-    """Handle AWS profile input for Redshift configuration."""
+    """Handle AWS profile input for AWS services (Redshift or EMR)."""
 
     def get_step_title(self) -> str:
         return "AWS Profile Configuration"
@@ -531,9 +768,18 @@ class AWSProfileInputStep(SetupStep):
         import os
 
         current_profile = os.getenv("AWS_PROFILE", "default")
+
+        # Determine which service we're configuring for
+        if state.data_provider == "aws_redshift":
+            service_name = "Redshift"
+        elif state.compute_provider == "aws_emr":
+            service_name = "EMR"
+        else:
+            service_name = "AWS services"
+
         return (
             f"Current AWS_PROFILE: {current_profile}\n\n"
-            "Please enter the AWS profile name to use for Redshift access\n"
+            f"Please enter the AWS profile name to use for {service_name} access\n"
             "(Press Enter to use 'default', or specify a profile from your ~/.aws/config):"
         )
 
@@ -719,7 +965,7 @@ class ModelSelectionStep(SetupStep):
 
 
 class AWSRegionInputStep(SetupStep):
-    """Handle AWS region input for Redshift configuration."""
+    """Handle AWS region input for AWS services (Redshift or EMR)."""
 
     def get_step_title(self) -> str:
         return "AWS Region Configuration"
@@ -729,10 +975,19 @@ class AWSRegionInputStep(SetupStep):
 
         aws_profile = os.getenv("AWS_PROFILE", "not set")
         aws_region = os.getenv("AWS_REGION", "not set")
+
+        # Determine which service we're configuring for
+        if state.data_provider == "aws_redshift":
+            service_name = "Redshift cluster"
+        elif state.compute_provider == "aws_emr":
+            service_name = "EMR cluster"
+        else:
+            service_name = "AWS resources"
+
         return (
             f"Current AWS_PROFILE: {aws_profile}\n"
             f"Current AWS_REGION: {aws_region}\n\n"
-            "Please enter the AWS region where your Redshift cluster is located\n"
+            f"Please enter the AWS region where your {service_name} is located\n"
             "(e.g., us-west-2, us-east-1, eu-west-1):"
         )
 
@@ -770,10 +1025,25 @@ class AWSRegionInputStep(SetupStep):
             logging.info(
                 f"AWS region '{region}' saved to config and will be added to state"
             )
+
+            # Determine next step based on what we're configuring
+            if state.data_provider == "aws_redshift":
+                # For Redshift, continue with full AWS setup
+                next_step = WizardStep.AWS_ACCOUNT_ID_INPUT
+                message = f"AWS region '{region}' configured. Proceeding to AWS account ID input."
+            elif state.compute_provider == "aws_emr":
+                # For EMR (with Databricks data provider), go directly to EMR cluster ID
+                next_step = WizardStep.EMR_CLUSTER_ID_INPUT
+                message = f"AWS region '{region}' configured. Proceeding to EMR cluster ID input."
+            else:
+                # Fallback to account ID input
+                next_step = WizardStep.AWS_ACCOUNT_ID_INPUT
+                message = f"AWS region '{region}' configured. Proceeding to AWS account ID input."
+
             return StepResult(
                 success=True,
-                message=f"AWS region '{region}' configured. Proceeding to AWS account ID input.",
-                next_step=WizardStep.AWS_ACCOUNT_ID_INPUT,
+                message=message,
+                next_step=next_step,
                 action=WizardAction.CONTINUE,
                 data={"aws_region": region},
             )
@@ -1199,6 +1469,78 @@ class IAMRoleInputStep(SetupStep):
             )
 
 
+class InstanceProfileInputStep(SetupStep):
+    """Handle Databricks Instance Profile ARN configuration for AWS access."""
+
+    def get_step_title(self) -> str:
+        return "Databricks Instance Profile Configuration"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Enter the AWS Instance Profile ARN for Databricks:\n"
+            "(Required for Databricks clusters to access AWS services like Redshift and S3)\n"
+            "Example: arn:aws:iam::123456789012:instance-profile/DatabricksInstanceProfile"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        """Handle Instance Profile ARN input."""
+        instance_profile_arn = input_text.strip()
+
+        if not instance_profile_arn:
+            return StepResult(
+                success=False,
+                message="Instance Profile ARN cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+
+        # Basic Instance Profile ARN validation
+        if not instance_profile_arn.startswith("arn:aws:iam::"):
+            return StepResult(
+                success=False,
+                message="Invalid Instance Profile ARN format. Must start with 'arn:aws:iam::'",
+                action=WizardAction.RETRY,
+            )
+
+        # Check that the ARN contains :instance-profile/
+        if ":instance-profile/" not in instance_profile_arn:
+            return StepResult(
+                success=False,
+                message="Invalid Instance Profile ARN format. Must contain ':instance-profile/' followed by profile name",
+                action=WizardAction.RETRY,
+            )
+
+        # Save Instance Profile ARN to config
+        try:
+            from chuck_data.config import get_config_manager
+
+            success = get_config_manager().update(
+                databricks_instance_profile_arn=instance_profile_arn
+            )
+
+            if not success:
+                return StepResult(
+                    success=False,
+                    message="Failed to save Instance Profile ARN configuration. Please try again.",
+                    action=WizardAction.RETRY,
+                )
+
+            return StepResult(
+                success=True,
+                message=f"Instance Profile ARN configured successfully. Proceeding to Databricks workspace configuration.",
+                next_step=WizardStep.WORKSPACE_URL,
+                action=WizardAction.CONTINUE,
+                data={"instance_profile_arn": instance_profile_arn},
+            )
+
+        except Exception as e:
+            logging.error(f"Error saving Instance Profile ARN: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving Instance Profile ARN: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
 class UsageConsentStep(SetupStep):
     """Handle usage tracking consent."""
 
@@ -1261,6 +1603,7 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
         WizardStep.AMPERITY_AUTH: AmperityAuthStep,
         WizardStep.DATA_PROVIDER_SELECTION: DataProviderSelectionStep,
         WizardStep.COMPUTE_PROVIDER_SELECTION: ComputeProviderSelectionStep,
+        WizardStep.EMR_CLUSTER_ID_INPUT: EMRClusterIDInputStep,
         WizardStep.WORKSPACE_URL: WorkspaceUrlStep,
         WizardStep.TOKEN_INPUT: TokenInputStep,
         WizardStep.LLM_PROVIDER_SELECTION: LLMProviderSelectionStep,
@@ -1271,6 +1614,7 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
         WizardStep.REDSHIFT_CLUSTER_SELECTION: RedshiftClusterSelectionStep,
         WizardStep.S3_BUCKET_INPUT: S3BucketInputStep,
         WizardStep.IAM_ROLE_INPUT: IAMRoleInputStep,
+        WizardStep.INSTANCE_PROFILE_INPUT: InstanceProfileInputStep,
         WizardStep.USAGE_CONSENT: UsageConsentStep,
     }
 

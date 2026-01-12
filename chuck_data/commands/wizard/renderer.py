@@ -179,16 +179,6 @@ class WizardRenderer:
             "\nChuck is an Open Source CLI and you can always review the code for security at https://github.com/amperity/chuck-data\n"
         )
 
-    def get_step_number(self, step: WizardStep) -> int:
-        """Get display step number for a wizard step."""
-        step_numbers = {
-            WizardStep.AMPERITY_AUTH: 1,
-            WizardStep.DATA_PROVIDER_SELECTION: 2,
-            WizardStep.WORKSPACE_URL: 3,
-            WizardStep.TOKEN_INPUT: 4,
-            WizardStep.LLM_PROVIDER_SELECTION: 5,
-            WizardStep.MODEL_SELECTION: 6,
-            WizardStep.USAGE_CONSENT: 7,
-            WizardStep.COMPLETE: 8,
-        }
-        return step_numbers.get(step, 1)
+    def get_step_number(self, state: WizardState) -> int:
+        """Get display step number from wizard state."""
+        return state.step_number

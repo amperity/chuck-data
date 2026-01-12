@@ -326,7 +326,7 @@ class TestJobExecution:
         # Check Redshift connector packages
         assert "--packages" in command
         assert "spark-redshift_2.12:6.5.1-spark_3.5" in command
-        assert "redshift-jdbc42" in command
+        assert "spark-avro_2.12:3.5.0" in command
         # Check S3 temp dir configuration
         assert "spark.hadoop.fs.s3a.tempdir" in command
         assert "s3://bucket/temp/" in command
@@ -394,26 +394,28 @@ class TestJobExecution:
         assert hadoop_jar_step["Jar"] == "command-runner.jar"
 
         args = hadoop_jar_step["Args"]
-        assert "spark-submit" in args
+        # The command is wrapped in bash -c for environment variable export
+        assert args[0] == "bash"
+        assert args[1] == "-c"
+        # The actual command is in the third element
+        command = args[2]
+        assert "spark-submit" in command
         # Check Databricks connector packages
-        assert "--packages" in args
-        packages_idx = args.index("--packages")
-        packages_str = args[packages_idx + 1]
-        assert "databricks-jdbc:2.6.36" in packages_str
-        assert "spark-databricks_2.12:0.2.0" in packages_str
+        assert "--packages" in command
+        assert "databricks-jdbc:2.6.36" in command
         # Check Databricks JDBC URL configuration
-        assert any("spark.databricks.jdbc.url" in arg for arg in args)
+        assert "spark.databricks.jdbc.url" in command
         # Check catalog configuration
-        assert any("spark.databricks.catalog" in arg for arg in args)
+        assert "spark.databricks.catalog" in command
         # Check schema configuration
-        assert any("spark.databricks.schema" in arg for arg in args)
+        assert "spark.databricks.schema" in command
         # Check custom spark args are included
-        assert "--executor-memory" in args
-        assert "8g" in args
+        assert "--executor-memory" in command
+        assert "8g" in command
         # Check main class and jar
-        assert "--class" in args
-        assert "amperity.stitch_standalone.chuck_main" in args
-        assert "s3://bucket/stitch.jar" in args
+        assert "--class" in command
+        assert "amperity.stitch_standalone.chuck_main" in command
+        assert "s3://bucket/stitch.jar" in command
 
     def test_submit_spark_databricks_job_minimal(self, emr_client, mock_emr_client):
         """Test submitting Databricks job with minimal parameters."""
@@ -432,12 +434,15 @@ class TestJobExecution:
         hadoop_jar_step = call_args["Steps"][0]["HadoopJarStep"]
 
         args = hadoop_jar_step["Args"]
+        # The command is wrapped in bash -c for environment variable export
+        assert args[0] == "bash"
+        assert args[1] == "-c"
+        # The actual command is in the third element
+        command = args[2]
         # Should still have packages even without optional params
-        assert "--packages" in args
+        assert "--packages" in command
         # Should have Databricks configuration
-        assert any(
-            "spark.databricks.delta.optimizeWrite.enabled" in arg for arg in args
-        )
+        assert "spark.databricks.delta.optimizeWrite.enabled" in command
 
     def test_describe_step(self, emr_client, mock_emr_client):
         """Test describing a step."""

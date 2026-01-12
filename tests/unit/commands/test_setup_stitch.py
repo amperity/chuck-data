@@ -709,6 +709,8 @@ def test_redshift_execute_job_launch_success():
     from unittest.mock import MagicMock
 
     mock_console = MagicMock()
+    mock_client = MagicMock()  # RedshiftAPIClient mock
+    mock_compute_provider = MagicMock()  # ComputeProvider mock
 
     # Mock all dependencies
     with patch(
@@ -752,6 +754,7 @@ def test_redshift_execute_job_launch_success():
                             ):
                                 result = _redshift_execute_job_launch(
                                     mock_console,
+                                    mock_client,
                                     "test_db",
                                     "test_schema",
                                     {"tables": []},
@@ -761,6 +764,7 @@ def test_redshift_execute_job_launch_success():
                                     "20231224_120000",
                                     [],
                                     [],
+                                    mock_compute_provider,
                                 )
 
     # Verify success
@@ -775,12 +779,15 @@ def test_redshift_execute_job_launch_no_amperity_token():
     from unittest.mock import MagicMock
 
     mock_console = MagicMock()
+    mock_client = MagicMock()
+    mock_compute_provider = MagicMock()
 
     with patch(
         "chuck_data.commands.setup_stitch.get_amperity_token", return_value=None
     ):
         result = _redshift_execute_job_launch(
             mock_console,
+            mock_client,
             "test_db",
             "test_schema",
             {"tables": []},
@@ -790,6 +797,7 @@ def test_redshift_execute_job_launch_no_amperity_token():
             "20231224_120000",
             [],
             [],
+            mock_compute_provider,
         )
 
     # Verify failure
@@ -804,6 +812,8 @@ def test_redshift_execute_job_launch_amperity_api_error():
     from unittest.mock import MagicMock
 
     mock_console = MagicMock()
+    mock_client = MagicMock()
+    mock_compute_provider = MagicMock()
 
     with patch(
         "chuck_data.commands.setup_stitch.get_amperity_token", return_value="test-token"
@@ -819,6 +829,7 @@ def test_redshift_execute_job_launch_amperity_api_error():
 
             result = _redshift_execute_job_launch(
                 mock_console,
+                mock_client,
                 "test_db",
                 "test_schema",
                 {"tables": []},
@@ -828,6 +839,7 @@ def test_redshift_execute_job_launch_amperity_api_error():
                 "20231224_120000",
                 [],
                 [],
+                mock_compute_provider,
             )
 
     # Verify failure
@@ -866,8 +878,12 @@ def test_redshift_execute_job_launch_job_submission_fails():
                         "error": "Databricks cluster not available",
                     },
                 ):
+                    mock_client = MagicMock()
+                    mock_compute_provider = MagicMock()
+
                     result = _redshift_execute_job_launch(
                         mock_console,
+                        mock_client,
                         "test_db",
                         "test_schema",
                         {"tables": []},
@@ -877,6 +893,7 @@ def test_redshift_execute_job_launch_job_submission_fails():
                         "20231224_120000",
                         [],
                         [],
+                        mock_compute_provider,
                     )
 
     # Verify failure
@@ -897,9 +914,13 @@ def test_redshift_phase_2_confirm_handles_cancel():
     context.store_context_data("setup_stitch", "schema_name", "test_schema")
 
     mock_console = MagicMock()
+    mock_client = MagicMock()
+    mock_compute_provider = MagicMock()
 
     # Test cancel
-    result = _redshift_phase_2_confirm(context, mock_console, "cancel")
+    result = _redshift_phase_2_confirm(
+        mock_client, mock_compute_provider, context, mock_console, "cancel"
+    )
 
     # Verify cancellation
     assert result.success is True
@@ -921,9 +942,13 @@ def test_redshift_phase_2_confirm_requires_explicit_confirmation():
     context.store_context_data("setup_stitch", "database", "test_db")
 
     mock_console = MagicMock()
+    mock_client = MagicMock()
+    mock_compute_provider = MagicMock()
 
     # Test invalid input
-    result = _redshift_phase_2_confirm(context, mock_console, "maybe")
+    result = _redshift_phase_2_confirm(
+        mock_client, mock_compute_provider, context, mock_console, "maybe"
+    )
 
     # Verify rejection
     assert result.success is True  # Returns success but waits for correct input

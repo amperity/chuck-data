@@ -219,14 +219,21 @@ class TestRedshiftProviderAdapter:
             database="testdb",
         )
 
-        # Mock the client's execute_sql method
-        adapter.client.execute_sql = Mock(return_value={})
-
         tags = [
             {"table": "users", "column": "email", "semantic_type": "pii/email"},
             {"table": "users", "column": "phone", "semantic_type": "pii/phone"},
             {"table": "customers", "column": "ssn", "semantic_type": "pii/ssn"},
         ]
+
+        # Mock the client's execute_sql method to return count for verification query
+        def mock_execute_sql(sql, **kwargs):
+            # If this is a COUNT query (verification step), return count of 3
+            if "SELECT COUNT(*)" in sql:
+                return {"result": {"Records": [[{"longValue": 3}]]}}
+            # For other queries (CREATE, DELETE, INSERT), return empty dict
+            return {}
+
+        adapter.client.execute_sql = Mock(side_effect=mock_execute_sql)
 
         result = adapter.tag_columns(tags, schema="public")
 
@@ -234,8 +241,8 @@ class TestRedshiftProviderAdapter:
         assert result["tags_applied"] == 3
         assert len(result["errors"]) == 0
 
-        # Verify SQL calls were made (create schema, create table, delete, insert)
-        assert adapter.client.execute_sql.call_count == 4
+        # Verify SQL calls were made (create schema, create table, delete, insert, verify count)
+        assert adapter.client.execute_sql.call_count == 5
 
     def test_tag_columns_with_empty_tags(self):
         """Test handling of empty tags list."""
@@ -246,8 +253,15 @@ class TestRedshiftProviderAdapter:
             cluster_identifier="test-cluster",
         )
 
-        # Mock the client's execute_sql method
-        adapter.client.execute_sql = Mock(return_value={})
+        # Mock the client's execute_sql method to return count for verification query
+        def mock_execute_sql(sql, **kwargs):
+            # If this is a COUNT query (verification step), return count of 0
+            if "SELECT COUNT(*)" in sql:
+                return {"result": {"Records": [[{"longValue": 0}]]}}
+            # For other queries (CREATE, DELETE, INSERT), return empty dict
+            return {}
+
+        adapter.client.execute_sql = Mock(side_effect=mock_execute_sql)
 
         result = adapter.tag_columns([], catalog="testdb", schema="public")
 
@@ -255,8 +269,8 @@ class TestRedshiftProviderAdapter:
         assert result["tags_applied"] == 0
         assert len(result["errors"]) == 0
 
-        # Should still create schema and table, then delete existing
-        assert adapter.client.execute_sql.call_count == 3
+        # Should create schema and table, then return early (no delete, insert, or verify)
+        assert adapter.client.execute_sql.call_count == 2
 
     def test_tag_columns_with_sql_error(self):
         """Test handling of SQL execution error."""
