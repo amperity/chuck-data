@@ -40,6 +40,7 @@ NUMERIC_TYPES = [
     "FLOAT",
     "DECIMAL",
     "NUMERIC",
+    "NUMBER",
 ]
 
 
@@ -209,7 +210,7 @@ def _helper_prepare_stitch_config(
         table_unsupported = []
 
         for col_data in table_pii_data.get("columns", []):
-            if col_data["type"] not in UNSUPPORTED_TYPES:
+            if col_data["type"].upper() not in UNSUPPORTED_TYPES:
                 field_cfg = {
                     "field-name": col_data["name"],
                     "type": col_data["type"],
@@ -417,13 +418,17 @@ def _helper_prepare_multi_location_stitch_config(
 
         table_unsupported = []
         for col_data in table_pii_data.get("columns", []):
-            if col_data["type"] not in UNSUPPORTED_TYPES:
+            if col_data["type"].upper() not in UNSUPPORTED_TYPES:
                 field_cfg = {
                     "field-name": col_data["name"],
                     "type": col_data["type"],
                     "semantics": [],
                 }
-                if col_data.get("semantic"):
+                # Only add semantics for non-numeric types (Stitch doesn't support semantics on LONG, etc.)
+                if (
+                    col_data.get("semantic")
+                    and col_data["type"].upper() not in NUMERIC_TYPES
+                ):
                     field_cfg["semantics"].append(col_data["semantic"])
                 table_cfg["fields"].append(field_cfg)
             else:
