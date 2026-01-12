@@ -17,7 +17,7 @@ def mock_storage_provider():
 @pytest.fixture
 def mock_emr_client():
     """Create a mock EMR client."""
-    with patch("chuck_data.clients.emr.EMRAPIClient") as mock_class:
+    with patch("chuck_data.compute_providers.emr.EMRAPIClient") as mock_class:
         mock_client = Mock()
         mock_client.validate_connection.return_value = True
         mock_client.get_cluster_status.return_value = "WAITING"
@@ -25,6 +25,7 @@ def mock_emr_client():
         mock_client.submit_spark_databricks_job.return_value = "s-DATABRICKS123"
         mock_client.submit_spark_job.return_value = "s-GENERIC123"
         mock_client.get_monitoring_url.return_value = "https://us-west-2.console.aws.amazon.com/emr/home?region=us-west-2#/clusters/j-TEST123"
+        mock_client.submit_bash_script.return_value = "s-INIT123"
         mock_class.return_value = mock_client
         yield mock_client
 
@@ -63,15 +64,16 @@ class TestEMRComputeProviderInit:
 
     def test_init_with_optional_params(self, mock_storage_provider, mock_emr_client):
         """Test initialization with optional parameters."""
-        provider = EMRComputeProvider(
-            region="us-west-2",
-            cluster_id="j-TEST123",
-            storage_provider=mock_storage_provider,
-            aws_profile="my-profile",
-            s3_bucket="my-bucket",
-        )
-        assert provider.aws_profile == "my-profile"
-        assert provider.s3_bucket == "my-bucket"
+        with patch("boto3.Session"):
+            provider = EMRComputeProvider(
+                region="us-west-2",
+                cluster_id="j-TEST123",
+                storage_provider=mock_storage_provider,
+                aws_profile="my-profile",
+                s3_bucket="my-bucket",
+            )
+            assert provider.aws_profile == "my-profile"
+            assert provider.s3_bucket == "my-bucket"
 
 
 class TestLaunchStitchJobRedshift:
@@ -133,7 +135,9 @@ class TestLaunchStitchJobRedshift:
             result = emr_provider.launch_stitch_job(preparation)
 
             # Verify
-            assert result["success"] is True
+            assert (
+                result["success"] is True
+            ), f"Expected success=True, got result={result}"
             assert result["step_id"] == "s-REDSHIFT123"
             assert result["cluster_id"] == "j-TEST123"
             assert result["job_id"] == "job-123"
