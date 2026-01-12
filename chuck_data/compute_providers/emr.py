@@ -483,6 +483,22 @@ class EMRComputeProvider(ComputeProvider):
                     logging.info(
                         f"Recorded job submission: job_id={job_id}, step_id={step_id}"
                     )
+
+                    # Cache the job ID and step ID for quick status lookups
+                    # Store EMR-specific metadata in job_data for later retrieval
+                    from chuck_data.job_cache import cache_job
+
+                    job_cache_data = {
+                        "cluster_id": self.cluster_id,
+                        "region": self.region,
+                        "compute_provider": "aws_emr",
+                    }
+                    cache_job(
+                        job_id=str(job_id), run_id=str(step_id), job_data=job_cache_data
+                    )
+                    logging.debug(
+                        f"Cached EMR job: job_id={job_id}, step_id={step_id}, cluster_id={self.cluster_id}"
+                    )
             except Exception as e:
                 # Log warning but don't fail the launch
                 logging.warning(f"Failed to record job submission with Amperity: {e}")

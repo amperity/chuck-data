@@ -355,8 +355,8 @@ def set_active_database(database_name):
     return _config_manager.update(redshift_database=database_name)
 
 
-def get_redshift_region():
-    """Get AWS region for Redshift from config."""
+def get_aws_region():
+    """Get AWS region from config."""
     return getattr(_config_manager.get_config(), "aws_region", None)
 
 
