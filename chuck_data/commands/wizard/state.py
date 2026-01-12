@@ -21,8 +21,11 @@ class WizardStep(Enum):
     REDSHIFT_CLUSTER_SELECTION = "redshift_cluster_selection"
     S3_BUCKET_INPUT = "s3_bucket_input"
     IAM_ROLE_INPUT = "iam_role_input"
+    INSTANCE_PROFILE_INPUT = "instance_profile_input"
     # Compute provider selection
     COMPUTE_PROVIDER_SELECTION = "compute_provider_selection"
+    # EMR-specific steps
+    EMR_CLUSTER_ID_INPUT = "emr_cluster_id_input"
     # Databricks-specific steps
     WORKSPACE_URL = "workspace_url"
     TOKEN_INPUT = "token_input"
@@ -61,6 +64,7 @@ class WizardState:
     redshift_workgroup_name: Optional[str] = None
     s3_bucket: Optional[str] = None
     iam_role: Optional[str] = None
+    instance_profile_arn: Optional[str] = None
     emr_cluster_id: Optional[str] = None
     # LLM provider fields
     llm_provider: Optional[str] = None
@@ -68,6 +72,9 @@ class WizardState:
     selected_model: Optional[str] = None
     usage_consent: Optional[bool] = None
     error_message: Optional[str] = None
+    # Step tracking for display numbering
+    step_number: int = 1
+    visited_steps: List[WizardStep] = field(default_factory=list)
 
     def is_valid_for_step(self, step: WizardStep) -> bool:
         """Check if current state is valid for the given step."""
@@ -75,11 +82,19 @@ class WizardState:
             return True
         elif step == WizardStep.DATA_PROVIDER_SELECTION:
             return True  # Can always enter data provider selection
-        # AWS Redshift-specific steps
+        # AWS-specific steps (used for Redshift or EMR)
         elif step == WizardStep.AWS_PROFILE_INPUT:
-            return self.data_provider == "aws_redshift"
+            # AWS profile needed for Redshift data provider OR EMR compute provider
+            return (
+                self.data_provider == "aws_redshift"
+                or self.compute_provider == "aws_emr"
+            )
         elif step == WizardStep.AWS_REGION_INPUT:
-            return self.data_provider == "aws_redshift" and self.aws_profile is not None
+            # AWS region needed when we have a profile for Redshift or EMR
+            return (
+                self.data_provider == "aws_redshift"
+                or self.compute_provider == "aws_emr"
+            ) and self.aws_profile is not None
         elif step == WizardStep.AWS_ACCOUNT_ID_INPUT:
             return self.data_provider == "aws_redshift" and self.aws_region is not None
         elif step == WizardStep.REDSHIFT_CLUSTER_SELECTION:
@@ -95,16 +110,39 @@ class WizardState:
             return self.data_provider == "aws_redshift" and self.s3_bucket is not None
         # Compute provider selection
         elif step == WizardStep.COMPUTE_PROVIDER_SELECTION:
-            # For Databricks: just need data_provider set
-            # For AWS Redshift: need AWS config complete (region, cluster, s3)
+            # For Databricks data provider: need workspace URL and token
+            # For Redshift: need AWS config (region, cluster, s3, iam_role)
             if self.data_provider == "databricks":
-                return True
+                return self.workspace_url is not None and self.token is not None
             elif self.data_provider == "aws_redshift":
                 return self.s3_bucket is not None and self.iam_role is not None
             return self.data_provider is not None
+        # EMR-specific steps
+        elif step == WizardStep.EMR_CLUSTER_ID_INPUT:
+            # EMR cluster ID input requires compute provider to be EMR and aws_region to be set
+            return self.compute_provider == "aws_emr" and self.aws_region is not None
         # Databricks-specific steps
+        elif step == WizardStep.INSTANCE_PROFILE_INPUT:
+            # Instance Profile asked after selecting Databricks compute with Redshift data
+            return (
+                self.data_provider == "aws_redshift"
+                and self.compute_provider == "databricks"
+            )
         elif step == WizardStep.WORKSPACE_URL:
-            return self.compute_provider == "databricks"
+            # WORKSPACE_URL can be accessed in multiple scenarios:
+            # 1. Databricks data provider (collect creds immediately)
+            # 2. Redshift data + Databricks compute (need instance profile first)
+            # 3. Databricks data + Databricks compute
+            if self.data_provider == "databricks":
+                # For Databricks data provider, always valid
+                return True
+            elif self.data_provider == "aws_redshift":
+                # For Redshift data + Databricks compute: need instance profile
+                return (
+                    self.compute_provider == "databricks"
+                    and self.instance_profile_arn is not None
+                )
+            return False
         elif step == WizardStep.TOKEN_INPUT:
             return self.workspace_url is not None
         # LLM provider and model selection
@@ -143,6 +181,7 @@ class WizardStateMachine:
             ],
             WizardStep.DATA_PROVIDER_SELECTION: [
                 WizardStep.AWS_PROFILE_INPUT,
+                WizardStep.WORKSPACE_URL,
                 WizardStep.COMPUTE_PROVIDER_SELECTION,
                 WizardStep.DATA_PROVIDER_SELECTION,
             ],
@@ -154,6 +193,7 @@ class WizardStateMachine:
             ],
             WizardStep.AWS_REGION_INPUT: [
                 WizardStep.AWS_ACCOUNT_ID_INPUT,
+                WizardStep.EMR_CLUSTER_ID_INPUT,
                 WizardStep.AWS_REGION_INPUT,
                 WizardStep.AWS_PROFILE_INPUT,
             ],
@@ -178,8 +218,21 @@ class WizardStateMachine:
                 WizardStep.S3_BUCKET_INPUT,
             ],
             WizardStep.COMPUTE_PROVIDER_SELECTION: [
+                WizardStep.INSTANCE_PROFILE_INPUT,
                 WizardStep.WORKSPACE_URL,
+                WizardStep.AWS_PROFILE_INPUT,
+                WizardStep.EMR_CLUSTER_ID_INPUT,
                 WizardStep.LLM_PROVIDER_SELECTION,
+                WizardStep.COMPUTE_PROVIDER_SELECTION,
+            ],
+            WizardStep.INSTANCE_PROFILE_INPUT: [
+                WizardStep.WORKSPACE_URL,
+                WizardStep.INSTANCE_PROFILE_INPUT,
+                WizardStep.COMPUTE_PROVIDER_SELECTION,
+            ],
+            WizardStep.EMR_CLUSTER_ID_INPUT: [
+                WizardStep.LLM_PROVIDER_SELECTION,
+                WizardStep.EMR_CLUSTER_ID_INPUT,
                 WizardStep.COMPUTE_PROVIDER_SELECTION,
             ],
             WizardStep.WORKSPACE_URL: [
@@ -187,6 +240,7 @@ class WizardStateMachine:
                 WizardStep.WORKSPACE_URL,
             ],
             WizardStep.TOKEN_INPUT: [
+                WizardStep.COMPUTE_PROVIDER_SELECTION,
                 WizardStep.LLM_PROVIDER_SELECTION,
                 WizardStep.TOKEN_INPUT,
                 WizardStep.WORKSPACE_URL,
@@ -246,6 +300,14 @@ class WizardStateMachine:
             state.current_step, result.next_step
         ):
             if state.is_valid_for_step(result.next_step):
+                # Track step progression: only increment if moving to a new step
+                if result.next_step != state.current_step:
+                    # Add current step to visited if not already there
+                    if state.current_step not in state.visited_steps:
+                        state.visited_steps.append(state.current_step)
+                    # Increment step number for display
+                    state.step_number += 1
+
                 state.current_step = result.next_step
             else:
                 # Invalid state for next step, set error
@@ -287,10 +349,20 @@ class WizardStateMachine:
         elif current_step == WizardStep.IAM_ROLE_INPUT:
             return WizardStep.COMPUTE_PROVIDER_SELECTION
         elif current_step == WizardStep.COMPUTE_PROVIDER_SELECTION:
-            # For Databricks compute provider, go to workspace config
+            # For Databricks compute provider with Redshift data, need instance profile
             if state.compute_provider == "databricks":
-                return WizardStep.WORKSPACE_URL
-            # For AWS EMR (future) or no computation provider needed, go to LLM
+                if state.data_provider == "aws_redshift":
+                    return WizardStep.INSTANCE_PROFILE_INPUT
+                else:
+                    return WizardStep.WORKSPACE_URL
+            # For AWS EMR, go to EMR cluster ID input
+            elif state.compute_provider == "aws_emr":
+                return WizardStep.EMR_CLUSTER_ID_INPUT
+            # No computation provider needed, go to LLM
+            return WizardStep.LLM_PROVIDER_SELECTION
+        elif current_step == WizardStep.INSTANCE_PROFILE_INPUT:
+            return WizardStep.WORKSPACE_URL
+        elif current_step == WizardStep.EMR_CLUSTER_ID_INPUT:
             return WizardStep.LLM_PROVIDER_SELECTION
         elif current_step == WizardStep.WORKSPACE_URL:
             return WizardStep.TOKEN_INPUT
