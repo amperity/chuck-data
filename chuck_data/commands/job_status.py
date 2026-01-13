@@ -665,17 +665,28 @@ def handle_list_jobs(client=None, **kwargs) -> CommandResult:
                 state = (job_data.get("state") or "").lower().replace(":", "")
                 if state in ["succeeded", "success", "failed", "error"]:
                     _cache_job_data(job_id, run_id, job_data, "terminal state")
+                # For running/pending jobs, cache them too to maintain proper ordering
+                elif state in ["running", "submitted", "pending"]:
+                    _cache_job_data(job_id, run_id, job_data, "active state")
             else:
-                # Job not found, cache as UNKNOWN to avoid retrying
+                # Job not found - only cache as UNKNOWN if not already cached
+                if not cached_job_data:
+                    unknown_data = {"job-id": job_id, "state": "UNKNOWN"}
+                    jobs_with_details.append(unknown_data)
+                    _cache_job_data(job_id, run_id, unknown_data, "not found")
+                else:
+                    # Use existing cached data
+                    jobs_with_details.append(cached_job_data)
+        except Exception as e:
+            # On error - only cache as UNKNOWN if not already cached
+            logging.debug(f"Error fetching job {job_id}: {e}")
+            if not cached_job_data:
                 unknown_data = {"job-id": job_id, "state": "UNKNOWN"}
                 jobs_with_details.append(unknown_data)
-                _cache_job_data(job_id, run_id, unknown_data, "not found")
-        except Exception as e:
-            # On error, cache as UNKNOWN to avoid retrying
-            logging.debug(f"Error fetching job {job_id}: {e}")
-            unknown_data = {"job-id": job_id, "state": "UNKNOWN"}
-            jobs_with_details.append(unknown_data)
-            _cache_job_data(job_id, run_id, unknown_data, "error")
+                _cache_job_data(job_id, run_id, unknown_data, "error")
+            else:
+                # Use existing cached data
+                jobs_with_details.append(cached_job_data)
 
     logging.debug(f"Jobs list: {cache_hits} cache hits, {api_calls} API calls")
 
