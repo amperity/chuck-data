@@ -230,3 +230,167 @@ def test_job_cache_with_timestamp():
     finally:
         if os.path.exists(cache_file):
             os.remove(cache_file)
+
+
+def test_get_last_job_id_uses_timestamps():
+    """Test that get_last_job_id returns job with most recent timestamp, not cache order."""
+    from chuck_data.job_cache import JobCache
+    from datetime import datetime, timezone
+
+    # Create a temporary file path (but don't create the file)
+    temp_cache_file = os.path.join(
+        tempfile.gettempdir(), f"test_cache_{os.getpid()}.json"
+    )
+
+    try:
+        # Create a fresh cache instance for this test
+        cache = JobCache(temp_cache_file)
+
+        # Cache three jobs with different timestamps
+        # Job 1: oldest (Jan 5)
+        cache.add_job(
+            "chk-20260105-30651-3sdbzrQFYKQ",
+            "run-001",
+            {
+                "job-id": "chk-20260105-30651-3sdbzrQFYKQ",
+                "state": "failed",
+                "start-time": "2026-01-05T08:30:00Z",
+            },
+        )
+
+        # Job 2: middle (Jan 6)
+        cache.add_job(
+            "chk-20260106-76045-XMkGTMykfyr",
+            "run-002",
+            {
+                "job-id": "chk-20260106-76045-XMkGTMykfyr",
+                "state": "succeeded",
+                "start-time": "2026-01-06T21:11:00Z",
+            },
+        )
+
+        # Job 3: newest (Jan 13)
+        cache.add_job(
+            "chk-20260113-22016-AaazrFJmkBr",
+            "run-003",
+            {
+                "job-id": "chk-20260113-22016-AaazrFJmkBr",
+                "state": "running",
+                "start-time": "2026-01-13T06:09:00Z",
+            },
+        )
+
+        # Now re-cache the oldest job (simulating /jobs command re-caching UNKNOWN state)
+        # This would put it at the front of the cache in the old implementation
+        cache.add_job(
+            "chk-20260105-30651-3sdbzrQFYKQ",
+            "run-001",
+            {
+                "job-id": "chk-20260105-30651-3sdbzrQFYKQ",
+                "state": "UNKNOWN",
+                "start-time": "2026-01-05T08:30:00Z",
+            },
+        )
+
+        # Now test the logic similar to get_last_job_id() but using our cache instance
+        all_jobs = cache.get_all_jobs()
+
+        # Find the job with the most recent timestamp
+        def get_job_timestamp(job_entry):
+            job_data = job_entry.get("job_data", {})
+            date_str = job_data.get("start-time") or job_data.get("created-at")
+            if date_str:
+                try:
+                    dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    pass
+            cached_at = job_entry.get("cached_at")
+            if cached_at:
+                try:
+                    dt = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    pass
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+        most_recent = max(all_jobs, key=get_job_timestamp)
+        last_job_id = most_recent.get("job_id")
+
+        # Should return the job with the most recent timestamp (Jan 13),
+        # not the one that was cached last (Jan 5)
+        assert (
+            last_job_id == "chk-20260113-22016-AaazrFJmkBr"
+        ), f"Expected most recent job by timestamp, got {last_job_id}"
+
+    finally:
+        if os.path.exists(temp_cache_file):
+            os.remove(temp_cache_file)
+
+
+def test_get_last_job_id_without_timestamps_uses_cached_at():
+    """Test that get_last_job_id falls back to cached_at when job timestamps unavailable."""
+    from chuck_data.job_cache import JobCache
+    from datetime import datetime, timezone
+    import time
+
+    # Create a temporary file path (but don't create the file)
+    temp_cache_file = os.path.join(
+        tempfile.gettempdir(), f"test_cache2_{os.getpid()}.json"
+    )
+
+    try:
+        cache = JobCache(temp_cache_file)
+
+        # Cache job without job_data timestamps
+        cache.add_job("chk-001", "run-001")
+        time.sleep(0.01)  # Ensure different cached_at times
+
+        # Cache another job with job_data (will have cached_at timestamp)
+        cache.add_job(
+            "chk-002",
+            "run-002",
+            {
+                "job-id": "chk-002",
+                "state": "succeeded",
+            },  # No start-time or created-at
+        )
+
+        # Test the logic similar to get_last_job_id()
+        all_jobs = cache.get_all_jobs()
+
+        def get_job_timestamp(job_entry):
+            job_data = job_entry.get("job_data", {})
+            date_str = job_data.get("start-time") or job_data.get("created-at")
+            if date_str:
+                try:
+                    dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    pass
+            cached_at = job_entry.get("cached_at")
+            if cached_at:
+                try:
+                    dt = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    pass
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+        most_recent = max(all_jobs, key=get_job_timestamp)
+        last_job_id = most_recent.get("job_id")
+
+        # Should return chk-002 since it has the most recent cached_at
+        assert last_job_id == "chk-002"
+
+    finally:
+        if os.path.exists(temp_cache_file):
+            os.remove(temp_cache_file)

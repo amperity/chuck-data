@@ -176,13 +176,55 @@ def cache_job(
 
 
 def get_last_job_id() -> Optional[str]:
-    """Get the most recent Chuck job ID from cache.
+    """Get the most recent Chuck job ID from cache based on job timestamps.
+
+    This function finds the most recently started/created job by examining
+    job_data timestamps, rather than relying on cache insertion order.
+    This is more robust when jobs are re-cached during operations like /jobs.
 
     Returns:
         The most recent job ID, or None if cache is empty
     """
-    last_job = _job_cache.get_last_job()
-    return last_job.get("job_id") if last_job else None
+    from datetime import datetime, timezone
+
+    all_jobs = _job_cache.get_all_jobs()
+    if not all_jobs:
+        return None
+
+    # Find the job with the most recent start-time or created-at timestamp
+    def get_job_timestamp(job_entry: Dict[str, Any]) -> datetime:
+        """Extract the most relevant timestamp from a job entry."""
+        job_data = job_entry.get("job_data", {})
+
+        # Prefer start-time (actual job start) over created-at
+        date_str = job_data.get("start-time") or job_data.get("created-at")
+
+        if date_str:
+            try:
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                pass
+
+        # Fallback to cached_at timestamp (when we cached this entry)
+        cached_at = job_entry.get("cached_at")
+        if cached_at:
+            try:
+                dt = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                pass
+
+        # No timestamp available - use epoch
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    # Sort by timestamp and get the most recent
+    most_recent = max(all_jobs, key=get_job_timestamp)
+    return most_recent.get("job_id")
 
 
 def get_last_job_with_run_id() -> Optional[Tuple[str, Optional[str]]]:

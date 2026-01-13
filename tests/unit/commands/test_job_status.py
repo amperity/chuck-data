@@ -1544,8 +1544,12 @@ def test_list_jobs_fetches_fresh_data_for_running_jobs(
 
     # Verify API was called (fresh data fetched)
     mock_client.get_job_status.assert_called_once_with("chk-running", "test-token")
-    # Verify cache_job was NOT called (still running, not terminal)
-    mock_cache_job.assert_not_called()
+    # Verify cache_job WAS called for running state to maintain proper ordering
+    mock_cache_job.assert_called_once_with(
+        "chk-running",
+        "run-running",
+        {"job-id": "chk-running", "state": "running", "record-count": 10000},
+    )
 
 
 @patch("chuck_data.job_cache.cache_job")
