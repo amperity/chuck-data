@@ -24,6 +24,36 @@ from chuck_data.job_cache import (
 UNSET_DATABRICKS_RUN_ID = "UNSET_DATABRICKS_RUN_ID"
 
 
+def _is_emr_step_id(id_value: str) -> bool:
+    """
+    Detect if an ID is an EMR step ID.
+
+    Args:
+        id_value: ID string to check
+
+    Returns:
+        True if ID matches EMR step ID format (s-XXXXXXXXXXXXX), False otherwise
+    """
+    if not id_value or not isinstance(id_value, str):
+        return False
+    return id_value.startswith("s-") and len(id_value) > 2
+
+
+def _is_databricks_run_id(id_value: str) -> bool:
+    """
+    Detect if an ID is a Databricks run ID.
+
+    Args:
+        id_value: ID string to check
+
+    Returns:
+        True if ID is numeric (Databricks run ID format), False otherwise
+    """
+    if not id_value or not isinstance(id_value, str):
+        return False
+    return id_value.isdigit()
+
+
 def _extract_databricks_run_info(result: dict) -> dict:
     """
     Extract and clean Databricks run information.
@@ -77,6 +107,36 @@ def _extract_databricks_run_info(result: dict) -> dict:
         run_info["tasks"] = task_statuses
 
     return run_info
+
+
+def _extract_emr_step_info(result: dict) -> dict:
+    """
+    Extract and clean EMR step information.
+
+    Args:
+        result: Raw result from EMR get_step_status API
+
+    Returns:
+        Cleaned dictionary with structured step information
+    """
+    step_info = {
+        "step_id": result.get("step_id"),
+        "cluster_id": result.get("cluster_id"),
+        "status": result.get("status", "UNKNOWN"),
+        "emr_status": result.get("emr_status", result.get("status", "UNKNOWN")),
+        "state_message": result.get("state_message", ""),
+        "start_time": result.get("start_time"),
+        "end_time": result.get("end_time"),
+        "monitoring_url": result.get("monitoring_url", ""),
+    }
+
+    # Add failure information if available
+    if result.get("failure_reason"):
+        step_info["failure_reason"] = result["failure_reason"]
+    if result.get("failure_message"):
+        step_info["failure_message"] = result["failure_message"]
+
+    return step_info
 
 
 def _format_duration(duration_ms: int) -> str:
@@ -268,6 +328,58 @@ def _format_job_status_message(job_id: str, job_data: dict) -> str:
             label = " • View: "
             lines.append(_format_box_line(f"{label}{url}", BOX_WIDTH))
 
+    # EMR section (only if --live flag was used and it's an EMR job)
+    emr_live = job_data.get("emr_live")
+    if emr_live:
+        lines.append(_format_box_line("", BOX_WIDTH))
+        lines.append(_format_box_line(" EMR:", BOX_WIDTH))
+
+        # Status
+        emr_status = emr_live.get("status", "UNKNOWN")
+        status_text = f" Status: {emr_status}"
+        if emr_live.get("state_message"):
+            status_text += f" - {emr_live['state_message']}"
+        lines.append(_format_box_line(status_text, BOX_WIDTH))
+
+        # Step ID
+        if emr_live.get("step_id"):
+            lines.append(
+                _format_box_line(f" Step ID: {emr_live['step_id']}", BOX_WIDTH)
+            )
+
+        # Cluster ID
+        if emr_live.get("cluster_id"):
+            lines.append(
+                _format_box_line(f" Cluster ID: {emr_live['cluster_id']}", BOX_WIDTH)
+            )
+
+        # Execution time (if available)
+        if emr_live.get("start_time") and emr_live.get("end_time"):
+            try:
+                from datetime import datetime
+
+                start = datetime.fromisoformat(
+                    emr_live["start_time"].replace("Z", "+00:00")
+                )
+                end = datetime.fromisoformat(
+                    emr_live["end_time"].replace("Z", "+00:00")
+                )
+                duration = end - start
+                duration_mins = int(duration.total_seconds() // 60)
+                duration_secs = int(duration.total_seconds() % 60)
+                duration_str = f"{duration_mins}m {duration_secs}s"
+                lines.append(_format_box_line(f" Execution: {duration_str}", BOX_WIDTH))
+            except Exception:
+                pass
+
+        # View URL - keep on single line for clickability
+        if emr_live.get("monitoring_url"):
+            url = emr_live["monitoring_url"]
+            lines.append(_format_box_line("", BOX_WIDTH))
+            # Put label and URL on same line (BOX_WIDTH already adjusted to fit)
+            label = " • View: "
+            lines.append(_format_box_line(f"{label}{url}", BOX_WIDTH))
+
     # Error section if any
     if job_data.get("error"):
         lines.append(_format_box_line("", BOX_WIDTH))
@@ -314,38 +426,64 @@ def _query_by_job_id(
         if workspace_url:
             job_data["workspace_url"] = workspace_url
 
-        # Optionally enrich with live Databricks data
-        databricks_run_id = job_data.get("databricks-run-id")
+        # Optionally enrich with live compute provider data
+        run_or_step_id = job_data.get("databricks-run-id")
 
-        # If Chuck backend returns UNSET, try to use cached run_id
-        if databricks_run_id == UNSET_DATABRICKS_RUN_ID:
-            cached_run_id = find_run_id_for_job(job_id)
-            if cached_run_id:
-                databricks_run_id = cached_run_id
-                # Update job_data so the formatting function sees the cached run_id
-                job_data["databricks-run-id"] = cached_run_id
+        # If Chuck backend returns UNSET, try to use cached run_id/step_id
+        if run_or_step_id == UNSET_DATABRICKS_RUN_ID:
+            cached_id = find_run_id_for_job(job_id)
+            if cached_id:
+                run_or_step_id = cached_id
+                # Update job_data so the formatting function sees the cached ID
+                job_data["databricks-run-id"] = cached_id
 
-        if (
-            fetch_live
-            and databricks_run_id
-            and databricks_run_id != UNSET_DATABRICKS_RUN_ID
-        ):
-            # Create Databricks client if not provided
-            if not client:
-                db_token = get_databricks_token()
-                if workspace_url and db_token:
-                    client = DatabricksAPIClient(workspace_url, db_token)
+        if fetch_live and run_or_step_id and run_or_step_id != UNSET_DATABRICKS_RUN_ID:
+            # Detect compute provider from ID format
+            if _is_emr_step_id(run_or_step_id):
+                # EMR job - fetch live EMR data
+                from chuck_data.config import get_emr_cluster_id, get_aws_region
+                from chuck_data.clients.emr import EMRAPIClient
 
-            if client:
-                try:
-                    databricks_raw = client.get_job_run_status(databricks_run_id)
-                    job_data["databricks_live"] = _extract_databricks_run_info(
-                        databricks_raw
+                cluster_id = get_emr_cluster_id()
+                region = get_aws_region()
+
+                if cluster_id and region:
+                    try:
+                        emr_client = EMRAPIClient(region=region, cluster_id=cluster_id)
+                        emr_raw = emr_client.get_step_status(run_or_step_id, cluster_id)
+                        # Add monitoring URL
+                        emr_raw["monitoring_url"] = emr_client.get_monitoring_url(
+                            cluster_id
+                        )
+                        emr_raw["step_id"] = run_or_step_id
+                        emr_raw["cluster_id"] = cluster_id
+                        job_data["emr_live"] = _extract_emr_step_info(emr_raw)
+                    except Exception as e:
+                        logging.error(
+                            f"Failed to fetch live EMR data: {e}", exc_info=True
+                        )
+                else:
+                    logging.warning(
+                        "Cannot fetch live EMR data: cluster_id or region not configured"
                     )
-                except Exception as e:
-                    logging.error(
-                        f"Failed to fetch live Databricks data: {e}", exc_info=True
-                    )
+            else:
+                # Databricks job (or unknown) - fetch live Databricks data
+                # Default to Databricks if not EMR
+                if not client:
+                    db_token = get_databricks_token()
+                    if workspace_url and db_token:
+                        client = DatabricksAPIClient(workspace_url, db_token)
+
+                if client:
+                    try:
+                        databricks_raw = client.get_job_run_status(run_or_step_id)
+                        job_data["databricks_live"] = _extract_databricks_run_info(
+                            databricks_raw
+                        )
+                    except Exception as e:
+                        logging.error(
+                            f"Failed to fetch live Databricks data: {e}", exc_info=True
+                        )
 
         # Format output message - build a comprehensive summary
         message = _format_job_status_message(job_id, job_data)
@@ -485,7 +623,8 @@ def handle_command(
         **kwargs: Command parameters
             - job_id or job-id: Chuck job identifier (primary)
             - run_id or run-id: Databricks run ID (fallback for legacy)
-            - live: Fetch live Databricks data (optional)
+            - step_id or step-id: EMR step ID (fallback for EMR)
+            - live: Fetch live compute provider data (optional)
 
     Returns:
         CommandResult with job status details if successful
@@ -493,10 +632,11 @@ def handle_command(
     # Support both hyphen and underscore formats
     job_id = kwargs.get("job_id") or kwargs.get("job-id")
     run_id = kwargs.get("run_id") or kwargs.get("run-id")
+    step_id = kwargs.get("step_id") or kwargs.get("step-id")
     fetch_live = kwargs.get("live", False)
 
     # If no parameters provided, try to use cached job ID with live data
-    if not job_id and not run_id:
+    if not job_id and not run_id and not step_id:
         cached_job_id = get_last_job_id()
         if cached_job_id:
             job_id = cached_job_id
@@ -506,7 +646,7 @@ def handle_command(
             return CommandResult(
                 False,
                 message="No job ID provided and no cached job ID available. "
-                "Please specify --job-id or --run-id, or run a job first.",
+                "Please specify --job-id, --run-id, or --step-id, or run a job first.",
             )
 
     try:
@@ -517,6 +657,35 @@ def handle_command(
         # Fallback: Query Databricks API by run-id (legacy)
         elif run_id:
             return _query_by_run_id(run_id, client)
+
+        # Fallback: Query EMR API by step-id
+        elif step_id:
+            # For EMR, we need cluster_id and region from config
+            from chuck_data.config import get_emr_cluster_id, get_aws_region
+            from chuck_data.clients.emr import EMRAPIClient
+
+            cluster_id = get_emr_cluster_id()
+            region = get_aws_region()
+
+            if not cluster_id or not region:
+                return CommandResult(
+                    False,
+                    message="Cannot query EMR step: cluster_id or region not configured. "
+                    "Run setup wizard or provide configuration.",
+                )
+
+            emr_client = EMRAPIClient(region=region, cluster_id=cluster_id)
+            step_status = emr_client.get_step_status(step_id, cluster_id)
+            step_status["monitoring_url"] = emr_client.get_monitoring_url(cluster_id)
+            step_status["step_id"] = step_id
+            step_status["cluster_id"] = cluster_id
+
+            step_info = _extract_emr_step_info(step_status)
+            message = f"EMR Step Status:\n\nStep ID: {step_id}\nCluster: {cluster_id}\nStatus: {step_info['status']}\n"
+            if step_info.get("monitoring_url"):
+                message += f"Console: {step_info['monitoring_url']}\n"
+
+            return CommandResult(True, data=step_info, message=message)
 
         else:
             return CommandResult(
@@ -532,7 +701,7 @@ def handle_command(
 
 DEFINITION = CommandDefinition(
     name="job_status",
-    description="Check status of a Chuck job via backend or Databricks. "
+    description="Check status of a Chuck job via backend or compute provider (Databricks/EMR). "
     "If no parameters provided, uses the last cached job ID.",
     handler=handle_command,
     parameters={
@@ -544,9 +713,13 @@ DEFINITION = CommandDefinition(
             "type": "string",
             "description": "Databricks run ID (legacy fallback).",
         },
+        "step_id": {
+            "type": "string",
+            "description": "EMR step ID (fallback for EMR jobs).",
+        },
         "live": {
             "type": "boolean",
-            "description": "Fetch live Databricks data (optional).",
+            "description": "Fetch live compute provider data (Databricks or EMR, optional).",
         },
     },
     required_params=[],
@@ -554,7 +727,7 @@ DEFINITION = CommandDefinition(
     needs_api_client=True,
     visible_to_user=True,
     visible_to_agent=True,
-    usage_hint="Usage: /job-status [--job-id <job_id>] [--live] OR /job-status --run-id <run_id> OR /job-status (uses cached ID)",
+    usage_hint="Usage: /job-status [--job-id <job_id>] [--live] OR /job-status --run-id <run_id> OR /job-status --step-id <step_id> OR /job-status (uses cached ID)",
     condensed_action="Checking job status",
 )
 

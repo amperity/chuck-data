@@ -253,6 +253,7 @@ def handle_command(
         **kwargs: Command parameters
             - job_id or job-id: Chuck job identifier (optional, uses cached if not provided)
             - run_id or run-id: Databricks run ID (optional, will attempt to find it)
+            - step_id or step-id: EMR step ID (optional, treated same as run_id)
             - poll_interval: Seconds between checks (default: 30)
             - timeout: Maximum seconds to wait (default: 1800 = 30 minutes)
 
@@ -265,8 +266,14 @@ def handle_command(
     # Support both hyphen and underscore formats
     job_id = kwargs.get("job_id") or kwargs.get("job-id")
     run_id = kwargs.get("run_id") or kwargs.get("run-id")
+    step_id = kwargs.get("step_id") or kwargs.get("step-id")
     poll_interval = kwargs.get("poll_interval", 30)
     timeout = kwargs.get("timeout", 1800)
+
+    # Treat step_id as run_id (same field in backend)
+    # If both are provided, step_id takes precedence
+    if step_id:
+        run_id = step_id
 
     # If neither job_id nor run_id provided, try to use cached job ID
     if not job_id and not run_id:
@@ -305,8 +312,8 @@ def handle_command(
         if not run_id:
             return CommandResult(
                 False,
-                message=f"Cannot monitor job {job_id}: Databricks run ID not found. "
-                "Please provide --run-id or ensure the job was launched by chuck.",
+                message=f"Cannot monitor job {job_id}: Run ID not found. "
+                "Please provide --run-id (Databricks) or --step-id (EMR), or ensure the job was launched by chuck.",
             )
     elif run_id and not job_id:
         # Have run_id, try to find job_id (optional, for better status checking)
@@ -320,8 +327,8 @@ def handle_command(
     if not run_id:
         return CommandResult(
             False,
-            message="Cannot monitor job: No Databricks run ID available. "
-            "Please provide --run-id or ensure the job was launched by chuck.",
+            message="Cannot monitor job: No run ID available. "
+            "Please provide --run-id (Databricks) or --step-id (EMR), or ensure the job was launched by chuck.",
         )
 
     try:
@@ -414,16 +421,20 @@ def handle_command(
 DEFINITION = CommandDefinition(
     name="monitor_job",
     description="Monitor a Chuck job with real-time progress updates until completion. "
-    "Provide either --job-id OR --run-id (not both), or omit both to monitor the last launched job.",
+    "Provide --job-id, --run-id (Databricks), or --step-id (EMR), or omit all to monitor the last launched job.",
     handler=handle_command,
     parameters={
         "job_id": {
             "type": "string",
-            "description": "Chuck job ID to monitor. Provide either job-id OR run-id, not both.",
+            "description": "Chuck job ID to monitor.",
         },
         "run_id": {
             "type": "string",
-            "description": "Databricks run ID to monitor. Provide either job-id OR run-id, not both.",
+            "description": "Databricks run ID to monitor.",
+        },
+        "step_id": {
+            "type": "string",
+            "description": "EMR step ID to monitor.",
         },
         "poll_interval": {
             "type": "number",
@@ -439,6 +450,6 @@ DEFINITION = CommandDefinition(
     needs_api_client=False,
     visible_to_user=True,
     visible_to_agent=True,
-    usage_hint="Usage: /monitor-job [--job_id <id> | --run_id <id>] OR /monitor-job (monitors last job)",
+    usage_hint="Usage: /monitor-job [--job_id <id> | --run_id <id> | --step_id <id>] OR /monitor-job (monitors last job)",
     condensed_action="Monitoring job",
 )

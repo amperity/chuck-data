@@ -14,7 +14,7 @@ from chuck_data.config import (
     get_active_database,
     get_active_schema,
     get_active_model,
-    get_redshift_region,
+    get_aws_region,
     get_redshift_cluster_identifier,
     get_redshift_workgroup_name,
 )
@@ -34,7 +34,7 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs) -> CommandResu
 
     try:
         # Get Redshift configuration
-        region = get_redshift_region()
+        region = get_aws_region()
         cluster_id = get_redshift_cluster_identifier()
         workgroup_name = get_redshift_workgroup_name()
 

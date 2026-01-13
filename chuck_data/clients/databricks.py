@@ -608,9 +608,9 @@ class DatabricksAPIClient:
         if init_script_path.startswith("s3://"):
             # S3 init script (for Redshift data source)
             # Get region from config
-            from chuck_data.config import get_redshift_region
+            from chuck_data.config import get_aws_region
 
-            region = get_redshift_region() or "us-west-2"
+            region = get_aws_region() or "us-west-2"
 
             init_scripts_config = [
                 {

@@ -25,7 +25,7 @@ from chuck_data.config import (
     get_redshift_iam_role,
     get_redshift_s3_temp_dir,
     get_s3_bucket,
-    get_redshift_region,
+    get_aws_region,
     get_aws_account_id,
     get_amperity_token,
 )
@@ -388,7 +388,7 @@ def handle_command(
             )
 
         # Get AWS/Redshift configuration for EMR
-        region = get_redshift_region()
+        region = get_aws_region()
         aws_profile = kwargs.get("aws_profile")  # Get from function arguments
 
         if not region:
@@ -1457,9 +1457,9 @@ def _helper_launch_stitch_job_emr_databricks(
         # Upload modified init script to S3
         try:
             import boto3
-            from chuck_data.config import get_redshift_region
+            from chuck_data.config import get_aws_region
 
-            s3_client = boto3.client("s3", region_name=get_redshift_region())
+            s3_client = boto3.client("s3", region_name=get_aws_region())
             s3_client.put_object(
                 Bucket=s3_bucket,
                 Key=f"chuck/init-scripts/chuck-init-{timestamp}.sh",
@@ -1597,9 +1597,9 @@ def _redshift_execute_job_launch(
         # Upload to S3
         try:
             import boto3
-            from chuck_data.config import get_redshift_region
+            from chuck_data.config import get_aws_region
 
-            s3_client = boto3.client("s3", region_name=get_redshift_region())
+            s3_client = boto3.client("s3", region_name=get_aws_region())
             s3_client.put_object(
                 Bucket=s3_bucket,
                 Key=f"chuck/init-scripts/{init_script_filename}",
@@ -2009,7 +2009,7 @@ def _generate_redshift_manifest(
     try:
         from datetime import datetime
         from chuck_data.config import (
-            get_redshift_region,
+            get_aws_region,
             get_redshift_s3_temp_dir,
             get_redshift_iam_role,
             get_s3_bucket,
@@ -2068,7 +2068,7 @@ def _generate_redshift_manifest(
             if client.region:
                 redshift_config["region"] = client.region
         else:
-            region = get_redshift_region()
+            region = get_aws_region()
             if region:
                 redshift_config["region"] = region
 
