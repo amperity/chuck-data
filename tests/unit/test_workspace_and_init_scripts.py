@@ -112,7 +112,7 @@ class TestSubmitJobRunInitScripts:
 
             assert result == {"run_id": 123}
 
-    @patch("chuck_data.config.get_redshift_region")
+    @patch("chuck_data.config.get_aws_region")
     def test_submit_job_run_with_s3_init_script(self, mock_get_region, client):
         """Test submit_job_run uses s3 format for S3 paths."""
         mock_get_region.return_value = "us-east-1"
@@ -146,7 +146,7 @@ class TestSubmitJobRunInitScripts:
 
             assert result == {"run_id": 456}
 
-    @patch("chuck_data.config.get_redshift_region")
+    @patch("chuck_data.config.get_aws_region")
     def test_submit_job_run_s3_default_region(self, mock_get_region, client):
         """Test submit_job_run uses default region when config returns None."""
         mock_get_region.return_value = None
@@ -374,7 +374,7 @@ class TestRedshiftS3Upload:
     """Tests for Redshift init script S3 upload."""
 
     @patch("boto3.client")
-    @patch("chuck_data.commands.setup_stitch.get_redshift_region")
+    @patch("chuck_data.commands.setup_stitch.get_aws_region")
     @patch("chuck_data.clients.amperity.AmperityAPIClient")
     @patch("chuck_data.commands.setup_stitch.get_amperity_token")
     def test_redshift_phase_2_uploads_init_script_to_s3(
