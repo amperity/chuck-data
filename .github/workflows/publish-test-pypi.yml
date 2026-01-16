@@ -35,3 +35,39 @@ jobs:
           user: __token__
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           skip-existing: true
+
+      - name: Get version from package
+        id: get_version
+        run: |
+          VERSION=$(python -c "from chuck_data.version import __version__; print(__version__)")
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+  notify-homebrew-test:
+    runs-on: ubuntu-latest
+    needs: build-and-publish-test  # Only run after TestPyPI publish succeeds
+
+    steps:
+      - name: Check out repository to get version
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Get version from package
+        id: get_version
+        run: |
+          VERSION=$(python -c "from chuck_data.version import __version__; print(__version__)")
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Send dispatch to homebrew-chuck-data
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.RELEASE_UPDATE_TOKEN }}
+          repository: amperity/homebrew-chuck-data
+          event-type: update-chuck-data-test-formula
+          client-payload: |
+            {
+              "version": "${{ steps.get_version.outputs.VERSION }}"
+            }
