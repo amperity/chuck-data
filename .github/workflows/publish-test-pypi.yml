@@ -39,7 +39,7 @@ jobs:
       - name: Get version from package
         id: get_version
         run: |
-          VERSION=$(python -c "from chuck_data.version import __version__; print(__version__)")
+          VERSION=$(grep -oP '__version__ = "\K[^"]+' chuck_data/version.py)
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
   notify-homebrew-test:
@@ -50,15 +50,10 @@ jobs:
       - name: Check out repository to get version
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Get version from package
+      - name: Get version from file
         id: get_version
         run: |
-          VERSION=$(python -c "from chuck_data.version import __version__; print(__version__)")
+          VERSION=$(grep -oP '__version__ = "\K[^"]+' chuck_data/version.py)
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Send dispatch to homebrew-chuck-data
