@@ -1175,6 +1175,10 @@ class RedshiftClusterSelectionStep(SetupStep):
                 "region": state.aws_region,
             }
 
+            # Add AWS profile if available
+            if state.aws_profile:
+                client_config["aws_profile"] = state.aws_profile
+
             # Add explicit credentials if provided
             if aws_access_key and aws_secret_key:
                 client_config["aws_access_key_id"] = aws_access_key

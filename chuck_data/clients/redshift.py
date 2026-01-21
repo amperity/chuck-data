@@ -25,6 +25,7 @@ class RedshiftAPIClient:
         s3_bucket: Optional[str] = None,
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
+        aws_profile: Optional[str] = None,
     ):
         """
         Initialize the Redshift API client.
@@ -37,13 +38,15 @@ class RedshiftAPIClient:
             s3_bucket: S3 bucket for intermediate storage (required for Spark-Redshift connector)
             aws_access_key_id: AWS access key ID (optional, will use boto3 credential discovery if not provided)
             aws_secret_access_key: AWS secret access key (optional, will use boto3 credential discovery if not provided)
+            aws_profile: AWS profile name (optional, will use AWS_PROFILE env var if not provided)
 
         Note: Either cluster_identifier or workgroup_name must be provided.
               If aws_access_key_id and aws_secret_access_key are not provided, boto3 will
-              automatically discover credentials from AWS_PROFILE, ~/.aws/credentials, IAM roles, etc.
+              automatically discover credentials from aws_profile, AWS_PROFILE env var, ~/.aws/credentials, IAM roles, etc.
         """
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
+        self.aws_profile = aws_profile
         self.region = region
         self.cluster_identifier = cluster_identifier
         self.workgroup_name = workgroup_name
@@ -56,16 +59,23 @@ class RedshiftAPIClient:
                 "Either cluster_identifier or workgroup_name must be provided"
             )
 
-        # Build boto3 client kwargs
-        client_kwargs = {"region_name": region}
+        # Create boto3 session
+        # Priority: explicit credentials > aws_profile > default credential chain
         if aws_access_key_id and aws_secret_access_key:
-            client_kwargs["aws_access_key_id"] = aws_access_key_id
-            client_kwargs["aws_secret_access_key"] = aws_secret_access_key
+            session = boto3.Session(
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                region_name=region,
+            )
+        elif aws_profile:
+            session = boto3.Session(profile_name=aws_profile, region_name=region)
+        else:
+            session = boto3.Session(region_name=region)
 
-        # Initialize boto3 clients
-        self.redshift_data = boto3.client("redshift-data", **client_kwargs)
-        self.redshift = boto3.client("redshift", **client_kwargs)
-        self.s3 = boto3.client("s3", **client_kwargs)
+        # Initialize boto3 clients from session
+        self.redshift_data = session.client("redshift-data")
+        self.redshift = session.client("redshift")
+        self.s3 = session.client("s3")
 
     #
     # Connection validation methods

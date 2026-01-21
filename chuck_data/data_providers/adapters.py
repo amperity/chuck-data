@@ -245,6 +245,7 @@ class RedshiftProviderAdapter(DataProvider):
         s3_bucket: Optional[str] = None,
         redshift_iam_role: Optional[str] = None,
         emr_cluster_id: Optional[str] = None,
+        aws_profile: Optional[str] = None,
     ):
         """Initialize Redshift provider adapter.
 
@@ -258,6 +259,7 @@ class RedshiftProviderAdapter(DataProvider):
             s3_bucket: S3 bucket for intermediate storage
             redshift_iam_role: IAM role ARN for Redshift COPY/UNLOAD operations
             emr_cluster_id: EMR cluster ID (optional)
+            aws_profile: AWS profile name (optional)
         """
         self.client = RedshiftAPIClient(
             aws_access_key_id=aws_access_key_id,
@@ -267,6 +269,7 @@ class RedshiftProviderAdapter(DataProvider):
             workgroup_name=workgroup_name,
             database=database,
             s3_bucket=s3_bucket,
+            aws_profile=aws_profile,
         )
         # Store additional config not needed by client
         self.redshift_iam_role = redshift_iam_role

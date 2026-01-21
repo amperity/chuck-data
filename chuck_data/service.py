@@ -74,6 +74,7 @@ class ChuckService:
 
         # Get Redshift configuration
         aws_region = getattr(config, "aws_region", None)
+        aws_profile = getattr(config, "aws_profile", None)
         cluster_id = getattr(config, "redshift_cluster_identifier", None)
         workgroup_name = getattr(config, "redshift_workgroup_name", None)
         s3_bucket = getattr(config, "s3_bucket", None)
@@ -87,6 +88,7 @@ class ChuckService:
         try:
             client = RedshiftAPIClient(
                 region=aws_region,
+                aws_profile=aws_profile,
                 cluster_identifier=cluster_id,
                 workgroup_name=workgroup_name,
                 s3_bucket=s3_bucket,

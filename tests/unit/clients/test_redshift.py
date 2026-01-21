@@ -18,11 +18,56 @@ from botocore.exceptions import ClientError, BotoCoreError
 from chuck_data.clients.redshift import RedshiftAPIClient
 
 
+def setup_mock_session(
+    mock_boto3, mock_redshift_data=None, mock_redshift=None, mock_s3=None
+):
+    """Helper function to setup boto3 Session mock with client mocks.
+
+    Args:
+        mock_boto3: The mocked boto3 module
+        mock_redshift_data: Mock for redshift-data client (optional)
+        mock_redshift: Mock for redshift client (optional)
+        mock_s3: Mock for s3 client (optional)
+
+    Returns:
+        tuple: (mock_session, mock_redshift_data, mock_redshift, mock_s3)
+    """
+    mock_session = Mock()
+
+    # Create default mocks if not provided
+    if mock_redshift_data is None:
+        mock_redshift_data = Mock()
+    if mock_redshift is None:
+        mock_redshift = Mock()
+    if mock_s3 is None:
+        mock_s3 = Mock()
+
+    # Setup session.client() to return appropriate client based on service name
+    def client_side_effect(service_name):
+        if service_name == "redshift-data":
+            return mock_redshift_data
+        elif service_name == "redshift":
+            return mock_redshift
+        elif service_name == "s3":
+            return mock_s3
+        else:
+            return Mock()
+
+    mock_session.client.side_effect = client_side_effect
+    mock_boto3.Session.return_value = mock_session
+
+    return mock_session, mock_redshift_data, mock_redshift, mock_s3
+
+
 class TestRedshiftAPIClientInitialization:
     """Test RedshiftAPIClient initialization."""
 
-    def test_initialization_with_cluster_identifier(self):
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_with_cluster_identifier(self, mock_boto3):
         """Test initialization with cluster identifier."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
             aws_secret_access_key="test-secret",
@@ -37,9 +82,14 @@ class TestRedshiftAPIClientInitialization:
         assert client.cluster_identifier == "test-cluster"
         assert client.workgroup_name is None
         assert client.database == "test_db"
+        assert client.aws_profile is None
 
-    def test_initialization_with_workgroup_name(self):
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_with_workgroup_name(self, mock_boto3):
         """Test initialization with Redshift Serverless workgroup name."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
             aws_secret_access_key="test-secret",
@@ -51,7 +101,8 @@ class TestRedshiftAPIClientInitialization:
         assert client.workgroup_name == "test-workgroup"
         assert client.cluster_identifier is None
 
-    def test_initialization_without_cluster_or_workgroup_fails(self):
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_without_cluster_or_workgroup_fails(self, mock_boto3):
         """Test that initialization fails without cluster_identifier or workgroup_name."""
         with pytest.raises(ValueError) as exc_info:
             RedshiftAPIClient(
@@ -65,8 +116,12 @@ class TestRedshiftAPIClientInitialization:
             exc_info.value
         )
 
-    def test_initialization_with_all_optional_parameters(self):
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_with_all_optional_parameters(self, mock_boto3):
         """Test initialization with all optional parameters."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
             aws_secret_access_key="test-secret",
@@ -78,6 +133,129 @@ class TestRedshiftAPIClientInitialization:
 
         assert client.s3_bucket == "test-bucket"
 
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_with_aws_profile(self, mock_boto3):
+        """Test initialization with AWS profile."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+            aws_profile="my-profile",
+        )
+
+        # Verify Session was created with profile_name
+        mock_boto3.Session.assert_called_once_with(
+            profile_name="my-profile", region_name="us-west-2"
+        )
+        assert client.aws_profile == "my-profile"
+
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_with_explicit_credentials(self, mock_boto3):
+        """Test initialization with explicit AWS credentials."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+        )
+
+        # Verify Session was created with explicit credentials
+        mock_boto3.Session.assert_called_once_with(
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region_name="us-west-2",
+        )
+
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_with_default_credentials(self, mock_boto3):
+        """Test initialization with default credential chain (no profile, no explicit creds)."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+        )
+
+        # Verify Session was created with only region (uses default credential chain)
+        mock_boto3.Session.assert_called_once_with(region_name="us-west-2")
+
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_profile_takes_precedence_over_default(self, mock_boto3):
+        """Test that aws_profile takes precedence over default credential chain."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            workgroup_name="test-workgroup",
+            aws_profile="sales-power",
+        )
+
+        # Verify Session was created with profile_name
+        mock_boto3.Session.assert_called_once_with(
+            profile_name="sales-power", region_name="us-west-2"
+        )
+        assert client.aws_profile == "sales-power"
+
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_initialization_explicit_creds_take_precedence_over_profile(
+        self, mock_boto3
+    ):
+        """Test that explicit credentials take precedence over aws_profile."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+            aws_profile="my-profile",  # This should be ignored
+        )
+
+        # Verify Session was created with explicit credentials (profile ignored)
+        mock_boto3.Session.assert_called_once_with(
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region_name="us-west-2",
+        )
+        # Profile should still be stored for reference
+        assert client.aws_profile == "my-profile"
+
+    @patch("chuck_data.clients.redshift.boto3")
+    def test_session_clients_are_created(self, mock_boto3):
+        """Test that boto3 clients are created from the session."""
+        mock_session = Mock()
+        mock_redshift_data = Mock()
+        mock_redshift = Mock()
+        mock_s3 = Mock()
+
+        mock_session.client.side_effect = [mock_redshift_data, mock_redshift, mock_s3]
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+            aws_profile="my-profile",
+        )
+
+        # Verify all three clients were created from session
+        assert mock_session.client.call_count == 3
+        mock_session.client.assert_any_call("redshift-data")
+        mock_session.client.assert_any_call("redshift")
+        mock_session.client.assert_any_call("s3")
+
+        # Verify clients are assigned
+        assert client.redshift_data == mock_redshift_data
+        assert client.redshift == mock_redshift
+        assert client.s3 == mock_s3
+
 
 class TestConnectionValidation:
     """Test connection validation methods."""
@@ -85,12 +263,12 @@ class TestConnectionValidation:
     @patch("chuck_data.clients.redshift.boto3")
     def test_validate_connection_success(self, mock_boto3):
         """Test successful connection validation."""
-        # Mock boto3 clients
+        # Mock boto3 session and clients
         mock_redshift_data = Mock()
         mock_redshift_data.list_databases.return_value = {
             "Databases": ["dev", "analytics"]
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -104,13 +282,13 @@ class TestConnectionValidation:
     @patch("chuck_data.clients.redshift.boto3")
     def test_validate_connection_failure(self, mock_boto3):
         """Test connection validation failure."""
-        # Mock boto3 client to raise exception
+        # Mock boto3 session and client to raise exception
         mock_redshift_data = Mock()
         mock_redshift_data.list_databases.side_effect = ClientError(
             {"Error": {"Code": "AccessDenied", "Message": "Access denied"}},
             "list_databases",
         )
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -132,7 +310,7 @@ class TestListDatabases:
         mock_redshift_data.list_databases.return_value = {
             "Databases": ["dev", "analytics", "test"]
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -153,7 +331,7 @@ class TestListDatabases:
         """Test listing databases with workgroup name."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_databases.return_value = {"Databases": ["dev"]}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -174,7 +352,7 @@ class TestListDatabases:
         """Test listing databases with empty response."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_databases.return_value = {}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -195,7 +373,7 @@ class TestListDatabases:
             {"Error": {"Code": "AccessDenied", "Message": "Access denied"}},
             "list_databases",
         )
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -214,7 +392,7 @@ class TestListDatabases:
         """Test list_databases with BotoCoreError (connection error)."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_databases.side_effect = BotoCoreError()
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -239,7 +417,7 @@ class TestListSchemas:
         mock_redshift_data.list_schemas.return_value = {
             "Schemas": ["public", "analytics", "staging"]
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -261,7 +439,7 @@ class TestListSchemas:
         """Test listing schemas with specified database."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_schemas.return_value = {"Schemas": ["public"]}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -283,7 +461,7 @@ class TestListSchemas:
         """Test listing schemas with workgroup name."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_schemas.return_value = {"Schemas": ["public"]}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -307,7 +485,7 @@ class TestListSchemas:
             {"Error": {"Code": "InvalidInput", "Message": "Invalid database"}},
             "list_schemas",
         )
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -335,7 +513,7 @@ class TestListTables:
                 {"name": "orders", "type": "TABLE"},
             ]
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -361,7 +539,7 @@ class TestListTables:
         mock_redshift_data.list_tables.return_value = {
             "Tables": [{"name": "customers", "type": "TABLE"}]
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -384,7 +562,7 @@ class TestListTables:
         """Test listing tables with table pattern filter."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_tables.return_value = {"Tables": []}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -407,7 +585,7 @@ class TestListTables:
         """Test listing tables with multiple filters."""
         mock_redshift_data = Mock()
         mock_redshift_data.list_tables.return_value = {"Tables": []}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -436,7 +614,7 @@ class TestListTables:
             {"Error": {"Code": "InvalidInput", "Message": "Invalid schema"}},
             "list_tables",
         )
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -465,7 +643,7 @@ class TestDescribeTable:
                 {"name": "email", "typeName": "varchar"},
             ],
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -491,7 +669,7 @@ class TestDescribeTable:
         """Test describing table with custom database."""
         mock_redshift_data = Mock()
         mock_redshift_data.describe_table.return_value = {"TableName": "orders"}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -515,7 +693,7 @@ class TestDescribeTable:
     @patch("chuck_data.clients.redshift.boto3")
     def test_describe_table_missing_schema(self, mock_boto3):
         """Test describe_table fails without schema."""
-        mock_boto3.client.return_value = Mock()
+        setup_mock_session(mock_boto3)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -532,7 +710,7 @@ class TestDescribeTable:
     @patch("chuck_data.clients.redshift.boto3")
     def test_describe_table_missing_table(self, mock_boto3):
         """Test describe_table fails without table."""
-        mock_boto3.client.return_value = Mock()
+        setup_mock_session(mock_boto3)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -554,7 +732,7 @@ class TestDescribeTable:
             {"Error": {"Code": "ResourceNotFound", "Message": "Table not found"}},
             "describe_table",
         )
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -577,7 +755,7 @@ class TestSQLExecution:
         """Test SQL execution without waiting for completion."""
         mock_redshift_data = Mock()
         mock_redshift_data.execute_statement.return_value = {"Id": "statement-123"}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -605,7 +783,7 @@ class TestSQLExecution:
         mock_redshift_data.get_statement_result.return_value = {
             "Records": [["value1"], ["value2"]]
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -633,7 +811,7 @@ class TestSQLExecution:
             "Status": "FAILED",
             "Error": "Syntax error",
         }
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -653,7 +831,7 @@ class TestSQLExecution:
         """Test SQL execution with custom database."""
         mock_redshift_data = Mock()
         mock_redshift_data.execute_statement.return_value = {"Id": "statement-123"}
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -676,7 +854,7 @@ class TestSQLExecution:
             {"Error": {"Code": "InvalidQuery", "Message": "Syntax error"}},
             "execute_statement",
         )
-        mock_boto3.client.return_value = mock_redshift_data
+        setup_mock_session(mock_boto3, mock_redshift_data=mock_redshift_data)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -698,7 +876,7 @@ class TestS3Operations:
     def test_upload_to_s3_success(self, mock_boto3):
         """Test successful S3 upload."""
         mock_s3 = Mock()
-        mock_boto3.client.return_value = mock_s3
+        setup_mock_session(mock_boto3, mock_s3=mock_s3)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -718,7 +896,7 @@ class TestS3Operations:
     @patch("chuck_data.clients.redshift.boto3")
     def test_upload_to_s3_without_bucket(self, mock_boto3):
         """Test S3 upload without configured bucket."""
-        mock_boto3.client.return_value = Mock()
+        setup_mock_session(mock_boto3)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -739,7 +917,7 @@ class TestS3Operations:
         mock_s3.list_objects_v2.return_value = {
             "Contents": [{"Key": "uploads/file1.txt"}, {"Key": "uploads/file2.txt"}]
         }
-        mock_boto3.client.return_value = mock_s3
+        setup_mock_session(mock_boto3, mock_s3=mock_s3)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
@@ -761,7 +939,7 @@ class TestS3Operations:
         """Test S3 object listing with no results."""
         mock_s3 = Mock()
         mock_s3.list_objects_v2.return_value = {}
-        mock_boto3.client.return_value = mock_s3
+        setup_mock_session(mock_boto3, mock_s3=mock_s3)
 
         client = RedshiftAPIClient(
             aws_access_key_id="test-key",
