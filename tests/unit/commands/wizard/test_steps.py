@@ -323,16 +323,13 @@ class TestS3BucketInputStep:
             redshift_cluster_identifier="my-cluster",
         )
 
-        # Mock boto3 module
-        with patch.dict("sys.modules", {"boto3": MagicMock()}):
-            import sys
-
-            mock_boto3 = sys.modules["boto3"]
-
-            # Mock S3 client to raise exception
+        # Mock boto3 Session to raise exception during S3 access
+        with patch("boto3.Session") as mock_session_class:
+            mock_session = Mock()
             mock_s3 = Mock()
             mock_s3.list_objects_v2.side_effect = Exception("Access Denied")
-            mock_boto3.client.return_value = mock_s3
+            mock_session.client.return_value = mock_s3
+            mock_session_class.return_value = mock_session
 
             result = step.handle_input("my-bucket", state)
 

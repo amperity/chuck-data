@@ -1339,15 +1339,26 @@ class S3BucketInputStep(SetupStep):
             import boto3
             import os
 
-            # Build boto3 client kwargs (let boto3 discover credentials if not explicit)
-            s3_kwargs = {"region_name": state.aws_region}
+            # Build boto3 session with the same credentials used for Redshift
+            # Priority: explicit env credentials > aws_profile > default
             aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
             aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-            if aws_access_key and aws_secret_key:
-                s3_kwargs["aws_access_key_id"] = aws_access_key
-                s3_kwargs["aws_secret_access_key"] = aws_secret_key
 
-            s3 = boto3.client("s3", **s3_kwargs)
+            if aws_access_key and aws_secret_key:
+                session = boto3.Session(
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=state.aws_region,
+                )
+            elif state.aws_profile:
+                session = boto3.Session(
+                    profile_name=state.aws_profile,
+                    region_name=state.aws_region,
+                )
+            else:
+                session = boto3.Session(region_name=state.aws_region)
+
+            s3 = session.client("s3")
 
             # Try to list objects (with max 1) to verify access
             s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
