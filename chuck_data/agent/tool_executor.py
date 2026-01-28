@@ -26,7 +26,6 @@ from chuck_data.clients.databricks import (
 from typing import Dict, Any, Optional, List, Callable
 from jsonschema.exceptions import ValidationError
 
-
 # The display_to_user utility and individual tool implementation functions
 # (like list_models, set_warehouse, tag_pii_columns, scan_schema_for_pii, etc.)
 # that were previously in this file have been removed.
