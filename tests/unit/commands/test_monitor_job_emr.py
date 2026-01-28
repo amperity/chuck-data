@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 
 from chuck_data.commands.monitor_job import handle_command
 
-
 # Tests for --step-id parameter
 
 

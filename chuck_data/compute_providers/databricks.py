@@ -13,7 +13,6 @@ from chuck_data.commands.cluster_init_tools import _helper_upload_cluster_init_l
 from chuck_data.config import get_amperity_token
 from chuck_data.compute_providers.provider import ComputeProvider
 
-
 # Unsupported column types for Stitch (from stitch_tools.py)
 UNSUPPORTED_TYPES = [
     "ARRAY",

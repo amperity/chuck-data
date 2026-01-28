@@ -9,7 +9,6 @@ from chuck_data.commands.job_status import (
     _extract_emr_step_info,
 )
 
-
 # Tests for ID detection functions
 
 

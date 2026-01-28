@@ -19,7 +19,6 @@ from chuck_data.config import (
 )
 from chuck_data.ui.tui import get_chuck_service
 
-
 # Valid data provider + compute provider combinations
 # These match the combinations allowed by chuck-api backend
 VALID_PROVIDER_COMBINATIONS = {

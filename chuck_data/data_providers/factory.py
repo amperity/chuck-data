@@ -13,7 +13,6 @@ from chuck_data.data_providers.adapters import (
     RedshiftProviderAdapter,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
