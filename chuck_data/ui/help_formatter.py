@@ -88,6 +88,7 @@ def format_help_text(
         ],
         "Job Management": [
             "launch-job",
+            "jobs",
             "job-status",
             "monitor-job",
         ],
