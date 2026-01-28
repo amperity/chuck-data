@@ -10,7 +10,6 @@ from chuck_data.commands.list_schemas import handle_command
 from chuck_data.config import set_active_catalog, set_active_schema
 from chuck_data.agent.tool_executor import execute_tool
 
-
 # ===== Parameter Validation Tests =====
 
 

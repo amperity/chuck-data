@@ -11,7 +11,6 @@ from unittest.mock import patch
 from chuck_data.commands.scan_pii import handle_command
 from chuck_data.config import ConfigManager
 
-
 # ===== Parameter Validation Tests =====
 
 

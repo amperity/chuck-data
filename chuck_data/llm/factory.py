@@ -5,7 +5,6 @@ import logging
 from typing import Optional
 from chuck_data.llm.provider import LLMProvider
 
-
 logger = logging.getLogger(__name__)
 
 
