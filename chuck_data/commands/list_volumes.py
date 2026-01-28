@@ -128,4 +128,5 @@ DEFINITION = CommandDefinition(
     visible_to_agent=True,
     agent_display="full",  # Show full volume list in tables
     usage_hint="Usage: /list-volumes [--catalog_name <catalog>] [--schema_name <schema>] [--include_browse true|false]\n(Uses active catalog/schema if not specified)",
+    provider="databricks",  # Databricks-specific command for Unity Catalog volumes
 )

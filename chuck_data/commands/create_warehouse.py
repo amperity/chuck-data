@@ -101,4 +101,5 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     usage_hint="Usage: /create-warehouse --name <name> --size <size> --auto_stop_mins <minutes>",
+    provider="databricks",  # Databricks-specific command for creating SQL warehouses
 )

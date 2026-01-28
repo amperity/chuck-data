@@ -69,4 +69,5 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     usage_hint="Usage: /warehouse --warehouse_id <warehouse_id>",
+    provider="databricks",  # Databricks-specific command for SQL warehouse details
 )

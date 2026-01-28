@@ -69,4 +69,5 @@ DEFINITION = CommandDefinition(
     visible_to_agent=True,
     agent_display="full",  # Show full catalog details to agents
     usage_hint="Usage: /catalog --name <catalog_name>",
+    provider="databricks",  # Databricks-specific command for Unity Catalog details
 )

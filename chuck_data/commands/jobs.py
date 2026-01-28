@@ -88,6 +88,7 @@ LAUNCH_JOB_DEFINITION = CommandDefinition(
     needs_api_client=True,
     visible_to_agent=True,
     tui_aliases=["launch-job"],
+    provider="databricks",  # Databricks-specific command for launching jobs
 )
 
 DEFINITION = LAUNCH_JOB_DEFINITION

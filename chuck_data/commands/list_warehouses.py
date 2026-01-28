@@ -108,4 +108,5 @@ DEFINITION = CommandDefinition(
     ),  # Show full table only when display=True explicitly set
     condensed_action="Listing warehouses",  # Friendly name for condensed display
     usage_hint="Usage: /list-warehouses [--display true|false]",
+    provider="databricks",  # Databricks-specific command for SQL warehouses
 )

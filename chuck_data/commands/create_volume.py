@@ -106,4 +106,5 @@ DEFINITION = CommandDefinition(
     visible_to_user=True,
     visible_to_agent=True,
     usage_hint="Usage: /create-volume --name <volume_name>",
+    provider="databricks",  # Databricks-specific command for Unity Catalog volumes
 )
