@@ -102,17 +102,29 @@ class ChuckTUI:
     def _get_available_commands(self) -> List[str]:
         """
         Get a list of available commands for autocompletion.
+        Respects provider filtering to only show relevant commands.
         """
         # Built-in commands always available
         builtin_commands = ["/exit", "/quit", "/help", "/debug"]
 
-        # Add service commands from the command registry
+        # Add service commands from the command registry (filtered by provider)
         service_commands = []
         try:
-            # Use the command registry instead of hardcoding
-            from chuck_data.command_registry import TUI_COMMAND_MAP
+            # Use provider-filtered commands from registry
+            from chuck_data.command_registry import get_user_commands
+            from chuck_data.config import get_data_provider
 
-            service_commands = list(TUI_COMMAND_MAP.keys())
+            # Get current provider
+            provider = get_data_provider()
+
+            # Get user commands filtered by provider
+            user_commands = get_user_commands(provider=provider)
+
+            # Extract TUI aliases from each command
+            for cmd_name, cmd_def in user_commands.items():
+                # Add all TUI aliases for this command
+                service_commands.extend(cmd_def.tui_aliases)
+
         except Exception as e:
             if self.debug:
                 self.console.print(f"[dim]Error getting commands: {str(e)}[/dim]")
