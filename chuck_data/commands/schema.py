@@ -89,4 +89,5 @@ DEFINITION = CommandDefinition(
     visible_to_agent=True,
     agent_display="full",  # Show full schema details to agents
     usage_hint="Usage: /schema --name <schema_name> [--catalog_name <catalog_name>]",
+    provider="databricks",  # Databricks-specific command for Unity Catalog schema details
 )

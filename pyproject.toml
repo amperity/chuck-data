@@ -12,7 +12,7 @@ license-files = []
 
 [project]
 name = "chuck-data"
-version = "0.3.2"
+version = "0.4.3"
 description = "Command line AI for customer data"
 readme = "README.md"
 requires-python = ">=3.10"

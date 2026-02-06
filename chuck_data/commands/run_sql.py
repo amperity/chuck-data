@@ -419,4 +419,5 @@ DEFINITION = CommandDefinition(
     condensed_action="Running sql",
     output_formatter=format_sql_results_for_agent,
     usage_hint='Usage: /run-sql --query "SELECT * FROM my_table" [--warehouse_id <warehouse_id>] [--catalog <catalog>]\n(Uses active warehouse and catalog if not specified)',
+    provider="databricks",  # Databricks-specific command for executing SQL queries
 )

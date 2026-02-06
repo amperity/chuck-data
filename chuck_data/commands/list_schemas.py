@@ -43,7 +43,7 @@ def handle_command(
     page_token = kwargs.get("page_token")
 
     # Get current schema for highlighting
-    current_schema = get_active_schema()
+    current_schema = get_active_schema() or "not selected"
 
     # If catalog_name not provided, try to use active catalog
     if not catalog_name:
@@ -156,4 +156,5 @@ DEFINITION = CommandDefinition(
     ),  # Show full table only when display=True
     condensed_action="Listing schemas",  # Friendly name for condensed display
     usage_hint="Usage: /list-schemas [--display true|false] [--catalog_name <catalog>]",
+    provider="databricks",  # Databricks Unity Catalog-specific command
 )

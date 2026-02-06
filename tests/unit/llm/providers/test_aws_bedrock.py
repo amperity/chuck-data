@@ -33,6 +33,7 @@ class TestAWSBedrockProvider:
         # Verify boto3 clients were created with credentials
         assert mock_boto3.client.call_count == 2  # bedrock-runtime and bedrock
 
+    @patch.dict("os.environ", {}, clear=True)
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_provider_instantiation_with_defaults(self, mock_boto3):
         """Provider uses sensible defaults when not configured."""

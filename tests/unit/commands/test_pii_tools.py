@@ -58,7 +58,7 @@ def test_tag_pii_columns_logic_success(
             databricks_client_stub,
             configured_llm_client,
             "users",
-            catalog_name_context="mycat",
+            catalog_or_database_context="mycat",
             schema_name_context="myschema",
         )
 

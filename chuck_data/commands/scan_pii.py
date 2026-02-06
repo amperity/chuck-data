@@ -6,28 +6,41 @@ for Personally Identifiable Information (PII).
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.command_registry import CommandDefinition
-from chuck_data.config import get_active_catalog, get_active_schema
+from chuck_data.config import get_active_catalog, get_active_schema, get_active_database
+from chuck_data.data_providers import is_redshift_client
 from .base import CommandResult
 from .pii_tools import _helper_scan_schema_for_pii_logic
 
 
-def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandResult:
+def handle_command(
+    client: Optional[Union[DatabricksAPIClient, RedshiftAPIClient]], **kwargs
+) -> CommandResult:
     """
-    Scan all tables in a schema for PII data.
+    Scan all tables in a schema for PII data (provider-aware).
 
     Args:
-        client: API client instance
+        client: DatabricksAPIClient or RedshiftAPIClient instance
         **kwargs:
-            catalog_name (str, optional): Name of the catalog
-            schema_name (str, optional): Name of the schema
-            show_progress (bool, optional): Show progress display. Defaults to True.
+            For Databricks:
+                catalog_name (str, optional): Name of the catalog
+                schema_name (str, optional): Name of the schema
+            For Redshift:
+                database (str, optional): Name of the database
+                schema_name (str, optional): Name of the schema
+            Common:
+                show_progress (bool, optional): Show progress display. Defaults to True.
     """
+    # Determine provider
+    is_redshift = is_redshift_client(client)
+
     catalog_name_arg: Optional[str] = kwargs.get("catalog_name")
+    database_arg: Optional[str] = kwargs.get("database")
     schema_name_arg: Optional[str] = kwargs.get("schema_name")
     show_progress: bool = kwargs.get("show_progress", True)
 
@@ -35,14 +48,26 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         return CommandResult(False, message="Client is required for bulk PII scan.")
 
     try:
-        effective_catalog = catalog_name_arg or get_active_catalog()
-        effective_schema = schema_name_arg or get_active_schema()
+        if is_redshift:
+            # Redshift path: use database and schema
+            effective_catalog = database_arg or get_active_database()
+            effective_schema = schema_name_arg or get_active_schema()
 
-        if not effective_catalog or not effective_schema:
-            return CommandResult(
-                False,
-                message="Catalog and schema must be specified or active for bulk PII scan.",
-            )
+            if not effective_catalog or not effective_schema:
+                return CommandResult(
+                    False,
+                    message="Database and schema must be specified or active for bulk PII scan.",
+                )
+        else:
+            # Databricks path: use catalog and schema
+            effective_catalog = catalog_name_arg or get_active_catalog()
+            effective_schema = schema_name_arg or get_active_schema()
+
+            if not effective_catalog or not effective_schema:
+                return CommandResult(
+                    False,
+                    message="Catalog and schema must be specified or active for bulk PII scan.",
+                )
 
         # Create a LLM provider instance using factory (respects provider config)
         llm_client = LLMProviderFactory.create()
@@ -70,12 +95,16 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
 
 DEFINITION = CommandDefinition(
     name="scan_schema_for_pii",
-    description="Scan all tables in the current schema (or specified catalog/schema) for PII and/or customer data",
+    description="Scan all tables in the current schema (or specified catalog/database/schema) for PII and/or customer data. For Databricks, use catalog_name and schema_name. For Redshift, use database and schema_name.",
     handler=handle_command,
     parameters={
         "catalog_name": {
             "type": "string",
-            "description": "Optional: Name of the catalog. If not provided, uses the active catalog",
+            "description": "Optional: Name of the catalog (Databricks only). If not provided, uses the active catalog",
+        },
+        "database": {
+            "type": "string",
+            "description": "Optional: Name of the database (Redshift only). If not provided, uses the active database",
         },
         "schema_name": {
             "type": "string",
@@ -92,4 +121,5 @@ DEFINITION = CommandDefinition(
     condensed_action="Scanning for PII in schema",
     visible_to_user=True,
     visible_to_agent=True,
+    needs_api_client=True,
 )

@@ -134,6 +134,7 @@ DEFINITION = CommandDefinition(
     required_params=["table_path"],
     tui_aliases=["/add-stitch-report"],
     visible_to_user=True,
+    provider="databricks",  # Databricks-specific command for creating Stitch report notebooks
     visible_to_agent=True,
     needs_api_client=True,
     usage_hint="/add-stitch-report catalog.schema.table [notebook name]",

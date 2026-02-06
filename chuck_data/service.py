@@ -11,11 +11,14 @@ import traceback
 from typing import Dict, Optional, Any, Tuple, Callable
 
 from chuck_data.clients.databricks import DatabricksAPIClient
+from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.commands.base import CommandResult
 from chuck_data.command_registry import get_command, CommandDefinition
 from chuck_data.config import (
     get_workspace_url,
     get_databricks_token,
+    get_data_provider,
+    get_config_manager,
 )
 from chuck_data.metrics_collector import get_metrics_collector
 
@@ -23,32 +26,76 @@ from chuck_data.metrics_collector import get_metrics_collector
 class ChuckService:
     """Service layer that provides a clean API for the UI to interact with business logic."""
 
-    def __init__(self, client: Optional[DatabricksAPIClient] = None):
+    def __init__(self, client=None):
         """
         Initialize the service with an optional client.
-        If no client is provided, it attempts to initialize one from config.
+        If no client is provided, it attempts to initialize one from config based on data provider.
         """
         self.client = client
         self.init_error: Optional[str] = None  # Store initialization error message
         if not self.client:
             try:
-                token = get_databricks_token()
-                workspace_url = get_workspace_url()
-                if token and workspace_url:  # Only initialize if both are present
-                    self.client = DatabricksAPIClient(workspace_url, token)
-                elif not workspace_url:
-                    self.init_error = "Workspace URL not configured."
-                elif not token:
-                    self.init_error = "Databricks token not configured."
-                # else: both are missing, client remains None, init_error remains None (or set explicitly)
+                data_provider = get_data_provider()
+
+                if data_provider == "aws_redshift":
+                    # Initialize Redshift client
+                    self.client, self.init_error = self._create_redshift_client()
+                else:
+                    # Default to Databricks client
+                    token = get_databricks_token()
+                    workspace_url = get_workspace_url()
+                    if token and workspace_url:  # Only initialize if both are present
+                        self.client = DatabricksAPIClient(workspace_url, token)
+                    elif not workspace_url:
+                        self.init_error = "Workspace URL not configured."
+                    elif not token:
+                        self.init_error = "Databricks token not configured."
 
             except Exception as e:
                 logging.error(
-                    f"Error initializing DatabricksAPIClient in ChuckService: {e}",
+                    f"Error initializing client in ChuckService: {e}",
                     exc_info=True,
                 )
                 self.client = None
                 self.init_error = f"Client initialization failed: {str(e)}"
+
+    def _create_redshift_client(
+        self,
+    ) -> tuple[Optional[RedshiftAPIClient], Optional[str]]:
+        """
+        Create a RedshiftAPIClient from configuration.
+
+        Returns:
+            Tuple of (client, error_message). If successful, client is set and error_message is None.
+            If failed, client is None and error_message contains the reason.
+        """
+        config_manager = get_config_manager()
+        config = config_manager.get_config()
+
+        # Get Redshift configuration
+        aws_region = getattr(config, "aws_region", None)
+        aws_profile = getattr(config, "aws_profile", None)
+        cluster_id = getattr(config, "redshift_cluster_identifier", None)
+        workgroup_name = getattr(config, "redshift_workgroup_name", None)
+        s3_bucket = getattr(config, "s3_bucket", None)
+
+        if not aws_region:
+            return None, "AWS region not configured."
+
+        if not cluster_id and not workgroup_name:
+            return None, "Redshift cluster/workgroup not configured."
+
+        try:
+            client = RedshiftAPIClient(
+                region=aws_region,
+                aws_profile=aws_profile,
+                cluster_identifier=cluster_id,
+                workgroup_name=workgroup_name,
+                s3_bucket=s3_bucket,
+            )
+            return client, None
+        except Exception as e:
+            return None, f"Failed to create Redshift client: {str(e)}"
 
     def _parse_and_validate_tui_args(
         self,
@@ -380,8 +427,11 @@ class ChuckService:
         """
         Execute a command looked up from the registry, with argument parsing and validation.
         """
+        # Get the active provider to filter commands
+        provider = get_data_provider()
+
         command_def = get_command(
-            command_name_from_ui
+            command_name_from_ui, provider=provider
         )  # Handles TUI aliases via registry
 
         if not command_def:
@@ -517,20 +567,38 @@ class ChuckService:
         Reinitialize the API client with current configuration.
         This should be called after settings like token or workspace URL change.
         """
-        logging.info("Attempting to reinitialize DatabricksAPIClient...")
+        logging.info("Attempting to reinitialize client...")
         try:
-            token = get_databricks_token()
-            workspace_url = get_workspace_url()
-            if token and workspace_url:
-                self.client = DatabricksAPIClient(workspace_url, token)
-                self.init_error = None  # Clear previous init error
-                logging.info("DatabricksAPIClient reinitialized successfully.")
-                return True
+            data_provider = get_data_provider()
+
+            if data_provider == "aws_redshift":
+                # Reinitialize Redshift client
+                self.client, error = self._create_redshift_client()
+                if self.client:
+                    self.init_error = None
+                    logging.info("RedshiftAPIClient reinitialized successfully.")
+                    return True
+                else:
+                    self.init_error = (
+                        error
+                        or "Cannot reinitialize Redshift client: Missing configuration."
+                    )
+                    logging.warning(f"{self.init_error}")
+                    return False
             else:
-                self.client = None
-                self.init_error = "Cannot reinitialize client: Workspace URL or token missing from config."
-                logging.warning(f"{self.init_error}")
-                return False
+                # Reinitialize Databricks client
+                token = get_databricks_token()
+                workspace_url = get_workspace_url()
+                if token and workspace_url:
+                    self.client = DatabricksAPIClient(workspace_url, token)
+                    self.init_error = None  # Clear previous init error
+                    logging.info("DatabricksAPIClient reinitialized successfully.")
+                    return True
+                else:
+                    self.client = None
+                    self.init_error = "Cannot reinitialize client: Workspace URL or token missing from config."
+                    logging.warning(f"{self.init_error}")
+                    return False
         except Exception as e:
             self.client = None
             self.init_error = f"Failed to reinitialize client: {str(e)}"

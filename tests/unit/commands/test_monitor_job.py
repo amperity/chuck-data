@@ -32,7 +32,7 @@ def test_handle_command_cached_job_without_run_id(
 
     assert not result.success
     assert "Cannot monitor job chk-123" in result.message
-    assert "Databricks run ID not found" in result.message
+    assert "Run ID not found" in result.message
 
 
 @patch("chuck_data.config.get_amperity_token")
@@ -202,4 +202,4 @@ def test_handle_command_explicit_job_id_no_run_id(mock_find_run_id):
 
     assert not result.success
     assert "Cannot monitor job chk-123" in result.message
-    assert "Databricks run ID not found" in result.message
+    assert "Run ID not found" in result.message

@@ -131,4 +131,5 @@ DEFINITION = CommandDefinition(
     visible_to_agent=True,
     usage_hint="Usage: /upload --local_path <file_path> --destination_path <dbx_path> [--overwrite true|false] [--use_dbfs true|false]\n"
     + 'Or:     /upload --contents "file content" --destination_path <dbx_path> [--overwrite true|false] [--use_dbfs true|false]',
+    provider="databricks",  # Databricks-specific command for uploading to volumes/DBFS
 )

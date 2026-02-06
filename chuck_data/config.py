@@ -46,6 +46,14 @@ class ChuckConfig(BaseModel):
         default=None,
         description="Provider-specific configuration (nested dict by provider name)",
     )
+    data_provider: Optional[str] = Field(
+        default=None,
+        description="Data provider type (databricks, aws_redshift)",
+    )
+    compute_provider: Optional[str] = Field(
+        default=None,
+        description="Compute provider type (databricks, emr)",
+    )
 
     # No validator - use defaults instead of failing
 
@@ -217,9 +225,10 @@ class ConfigManager:
                 kwargs.pop("workspace_url")
 
         # Set values
+        # Note: We use setattr directly instead of checking hasattr because the model
+        # has extra="allow", which allows dynamic fields like aws_account_id, aws_region, etc.
         for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
+            setattr(config, key, value)
 
         return self.save()
 
@@ -335,6 +344,136 @@ def set_databricks_token(token):
     return _config_manager.update(databricks_token=token)
 
 
+def get_active_database():
+    """Get the active Redshift database from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "redshift_database", None)
+
+
+def set_active_database(database_name):
+    """Set the active Redshift database in config."""
+    return _config_manager.update(redshift_database=database_name)
+
+
+def get_aws_region():
+    """Get AWS region from config."""
+    return getattr(_config_manager.get_config(), "aws_region", None)
+
+
+def get_aws_account_id():
+    """Get AWS Account ID from config."""
+    return getattr(_config_manager.get_config(), "aws_account_id", None)
+
+
+def set_aws_account_id(account_id):
+    """Set AWS Account ID in config."""
+    return _config_manager.update(aws_account_id=account_id)
+
+
+def get_redshift_cluster_identifier():
+    """Get Redshift cluster identifier from config."""
+    return getattr(_config_manager.get_config(), "redshift_cluster_identifier", None)
+
+
+def get_redshift_workgroup_name():
+    """Get Redshift Serverless workgroup name from config."""
+    return getattr(_config_manager.get_config(), "redshift_workgroup_name", None)
+
+
+def get_redshift_iam_role():
+    """Get Redshift IAM role ARN from config."""
+    return getattr(_config_manager.get_config(), "redshift_iam_role", None)
+
+
+def get_redshift_s3_temp_dir():
+    """Get S3 temp directory for Redshift operations from config."""
+    return getattr(_config_manager.get_config(), "redshift_s3_temp_dir", None)
+
+
+def get_databricks_instance_profile_arn():
+    """Get Databricks instance profile ARN for AWS access from config."""
+    return getattr(
+        _config_manager.get_config(), "databricks_instance_profile_arn", None
+    )
+
+
+def get_data_provider():
+    """Get the data provider from config (databricks, aws_redshift, etc.)."""
+    config = _config_manager.get_config()
+    return getattr(config, "data_provider", None)
+
+
+def set_data_provider(provider: str):
+    """Set the data provider and reset related configuration.
+
+    When switching data providers, automatically clears provider-specific config:
+    - Switching to Databricks: clears redshift-specific config, sets default schema
+    - Switching to Redshift: clears databricks-specific config (catalogs), sets public schema
+
+    Args:
+        provider: Data provider type ("databricks", "aws_redshift")
+    """
+    current_provider = get_data_provider()
+
+    # If provider hasn't changed, just update it
+    if current_provider == provider:
+        return _config_manager.update(data_provider=provider)
+
+    # Provider is changing - reset related configuration
+    updates = {"data_provider": provider}
+
+    if provider == "databricks":
+        # Switching to Databricks - clear Redshift-specific config
+        updates.update(
+            {
+                "active_schema": None,  # Let user select from actual schemas
+                # Keep active_catalog as user may have set it for Databricks
+            }
+        )
+        # Clear any Redshift-specific config attributes
+        config = _config_manager.get_config()
+        redshift_attrs = [
+            "redshift_cluster_identifier",
+            "redshift_workgroup_name",
+            "redshift_database",
+            "redshift_iam_role",
+            "redshift_s3_temp_dir",
+            "aws_region",
+            "aws_access_key_id",
+            "aws_secret_access_key",
+        ]
+        for attr in redshift_attrs:
+            if hasattr(config, attr):
+                updates[attr] = None
+
+    elif provider == "aws_redshift":
+        # Switching to Redshift - clear Databricks-specific config
+        updates.update(
+            {
+                "active_catalog": None,  # Redshift doesn't use Unity Catalog
+                "active_schema": None,  # Let user select from actual schemas
+                "warehouse_id": None,  # Different warehouse concept
+            }
+        )
+
+    return _config_manager.update(**updates)
+
+
+def get_compute_provider():
+    """Get the compute provider from config (databricks, emr, etc.)."""
+    config = _config_manager.get_config()
+    return getattr(config, "compute_provider", None)
+
+
+def set_compute_provider(provider: str):
+    """Set the compute provider in config.
+
+    Args:
+        provider: Compute provider type ("databricks", "emr")
+    """
+    return _config_manager.update(compute_provider=provider)
+
+
 # For direct access to config manager
 def get_config_manager():
     """Get the global config manager instance"""
@@ -380,3 +519,22 @@ def set_usage_tracking_consent(consent: bool):
         True if successful, False otherwise
     """
     return _config_manager.update(usage_tracking_consent=consent)
+
+
+def get_s3_bucket():
+    """Get the S3 bucket from config."""
+    config = _config_manager.get_config()
+    # Access via __dict__ since s3_bucket is not in the Pydantic schema but allowed via "extra": "allow"
+    return getattr(config, "s3_bucket", None)
+
+
+def get_emr_cluster_id():
+    """Get the EMR cluster ID from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "emr_cluster_id", None)
+
+
+def get_aws_profile():
+    """Get the AWS profile name from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "aws_profile", None)

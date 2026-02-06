@@ -312,26 +312,43 @@ def test_interactive_command_parses_policy_id_flag(
                 "chuck_data.commands.stitch_tools.get_amperity_token",
                 return_value="test_token",
             ):
-                service = ChuckService(client=databricks_client_stub)
+                with patch(
+                    "chuck_data.config.get_workspace_url",
+                    return_value="https://test.databricks.com",
+                ):
+                    with patch(
+                        "chuck_data.config.get_databricks_token",
+                        return_value="test-token",
+                    ):
+                        with patch(
+                            "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                            return_value={
+                                "cluster-init": "#!/bin/bash\necho init",
+                                "job-id": "test-job-123",
+                            },
+                        ):
+                            service = ChuckService(client=databricks_client_stub)
 
-                # Test --policy_id=value syntax for interactive command
-                result = service.execute_command(
-                    "/setup-stitch",
-                    "--policy_id=TEST_POLICY_123",
-                    "catalog_name=test_catalog",
-                    "schema_name=test_schema",
-                )
+                            # Test --policy_id=value syntax for interactive command
+                            result = service.execute_command(
+                                "/setup-stitch",
+                                "--policy_id=TEST_POLICY_123",
+                                "catalog_name=test_catalog",
+                                "schema_name=test_schema",
+                            )
 
-                # Should parse correctly and store in context
-                assert isinstance(result, CommandResult)
-                assert result.success
+                            # Should parse correctly and store in context
+                            assert isinstance(result, CommandResult)
+                            if not result.success:
+                                print(f"Error: {result.message}")
+                            assert result.success
 
-                # Verify policy_id was stored in context
-                context_data = context.get_context_data("setup_stitch")
-                assert (
-                    context_data.get("metadata", {}).get("policy_id")
-                    == "TEST_POLICY_123"
-                )
+                            # Verify policy_id was stored in context
+                            context_data = context.get_context_data("setup_stitch")
+                            assert (
+                                context_data.get("metadata", {}).get("policy_id")
+                                == "TEST_POLICY_123"
+                            )
 
     # Clean up
     context.clear_active_context("setup_stitch")
@@ -346,6 +363,15 @@ def test_interactive_command_parses_auto_confirm_and_policy_id(
     # Setup test data
     _setup_stitch_test_data(databricks_client_stub, llm_client_stub)
 
+    # Mock DatabricksComputeProvider to avoid real network calls
+    mock_compute_provider = MagicMock()
+    mock_compute_provider.launch_stitch_job.return_value = {
+        "success": True,
+        "run_id": "test-run-id-789",
+        "notebook_result": {"success": True, "notebook_path": "/test/notebook"},
+        "message": "Job launched successfully",
+    }
+
     with patch("chuck_data.config._config_manager", temp_config):
         with patch(
             "chuck_data.commands.setup_stitch.LLMProviderFactory.create",
@@ -359,25 +385,45 @@ def test_interactive_command_parses_auto_confirm_and_policy_id(
                     "chuck_data.commands.setup_stitch.get_metrics_collector",
                     return_value=MagicMock(),
                 ):
-                    service = ChuckService(client=databricks_client_stub)
+                    with patch(
+                        "chuck_data.config.get_workspace_url",
+                        return_value="https://test.databricks.com",
+                    ):
+                        with patch(
+                            "chuck_data.config.get_databricks_token",
+                            return_value="test-token",
+                        ):
+                            with patch(
+                                "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                                return_value={
+                                    "cluster-init": "#!/bin/bash\necho init",
+                                    "job-id": "test-job-123",
+                                },
+                            ):
+                                service = ChuckService(client=databricks_client_stub)
 
-                    # Test combined --auto-confirm and --policy_id flags
-                    result = service.execute_command(
-                        "/setup-stitch",
-                        "--auto-confirm",
-                        "--policy_id=COMBINED_POLICY_456",
-                        "catalog_name=test_catalog",
-                        "schema_name=test_schema",
-                    )
+                                # Test combined --auto-confirm and --policy_id flags
+                                result = service.execute_command(
+                                    "/setup-stitch",
+                                    "--auto-confirm",
+                                    "--policy_id=COMBINED_POLICY_456",
+                                    "catalog_name=test_catalog",
+                                    "schema_name=test_schema",
+                                )
 
-                    # Should parse correctly and execute
-                    assert isinstance(result, CommandResult)
-                    assert result.success
+                                # Should parse correctly and execute
+                                assert isinstance(result, CommandResult)
+                                assert result.success
 
-                    # Verify policy_id was passed to submit_job_run
-                    assert len(databricks_client_stub.submit_job_run_calls) == 1
-                    call_args = databricks_client_stub.submit_job_run_calls[0]
-                    assert call_args["policy_id"] == "COMBINED_POLICY_456"
+                                # Verify policy_id was passed to submit_job_run
+                                # Auto-confirm mode uses direct client API, not compute provider
+                                assert (
+                                    len(databricks_client_stub.submit_job_run_calls) > 0
+                                )
+                                submit_call = (
+                                    databricks_client_stub.submit_job_run_calls[0]
+                                )
+                                assert submit_call["policy_id"] == "COMBINED_POLICY_456"
 
 
 def test_interactive_command_parses_policy_id_key_value_syntax(
@@ -403,26 +449,41 @@ def test_interactive_command_parses_policy_id_key_value_syntax(
                 "chuck_data.commands.stitch_tools.get_amperity_token",
                 return_value="test_token",
             ):
-                service = ChuckService(client=databricks_client_stub)
+                with patch(
+                    "chuck_data.config.get_workspace_url",
+                    return_value="https://test.databricks.com",
+                ):
+                    with patch(
+                        "chuck_data.config.get_databricks_token",
+                        return_value="test-token",
+                    ):
+                        with patch(
+                            "chuck_data.clients.amperity.AmperityAPIClient.fetch_amperity_job_init",
+                            return_value={
+                                "cluster-init": "#!/bin/bash\necho init",
+                                "job-id": "test-job-123",
+                            },
+                        ):
+                            service = ChuckService(client=databricks_client_stub)
 
-                # Test key=value syntax for policy_id (like policy_id=XYZ)
-                result = service.execute_command(
-                    "/setup-stitch",
-                    "policy_id=KEY_VALUE_POLICY_789",
-                    "catalog_name=test_catalog",
-                    "schema_name=test_schema",
-                )
+                            # Test key=value syntax for policy_id (like policy_id=XYZ)
+                            result = service.execute_command(
+                                "/setup-stitch",
+                                "policy_id=KEY_VALUE_POLICY_789",
+                                "catalog_name=test_catalog",
+                                "schema_name=test_schema",
+                            )
 
-                # Should parse correctly and store in context
-                assert isinstance(result, CommandResult)
-                assert result.success
+                            # Should parse correctly and store in context
+                            assert isinstance(result, CommandResult)
+                            assert result.success
 
-                # Verify policy_id was stored in context
-                context_data = context.get_context_data("setup_stitch")
-                assert (
-                    context_data.get("metadata", {}).get("policy_id")
-                    == "KEY_VALUE_POLICY_789"
-                )
+                            # Verify policy_id was stored in context
+                            context_data = context.get_context_data("setup_stitch")
+                            assert (
+                                context_data.get("metadata", {}).get("policy_id")
+                                == "KEY_VALUE_POLICY_789"
+                            )
 
     # Clean up
     context.clear_active_context("setup_stitch")

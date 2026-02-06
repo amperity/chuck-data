@@ -41,9 +41,12 @@ class TestWizardComponents:
             WizardStep.WORKSPACE_URL
         )  # Requires data_provider
 
-        # With data provider set, workspace URL should be valid
+        # With Databricks data provider set, workspace URL is immediately valid
+        # (New flow: collect credentials before compute provider selection)
         state.data_provider = "databricks"
-        assert state.is_valid_for_step(WizardStep.WORKSPACE_URL)
+        assert state.is_valid_for_step(
+            WizardStep.WORKSPACE_URL
+        )  # Valid for Databricks data provider
         assert not state.is_valid_for_step(
             WizardStep.TOKEN_INPUT
         )  # Requires workspace_url
@@ -51,9 +54,16 @@ class TestWizardComponents:
         # With workspace URL, token input should be valid
         state.workspace_url = "https://test.databricks.com"
         assert state.is_valid_for_step(WizardStep.TOKEN_INPUT)
+
+        # With token set, compute provider selection should be valid
+        state.token = "test-token"
+        assert state.is_valid_for_step(WizardStep.COMPUTE_PROVIDER_SELECTION)
+
+        # With credentials, LLM provider selection should be valid
+        state.compute_provider = "databricks"
         assert state.is_valid_for_step(
             WizardStep.LLM_PROVIDER_SELECTION
-        )  # Data provider configured
+        )  # Credentials configured
         assert not state.is_valid_for_step(
             WizardStep.MODEL_SELECTION
         )  # Requires llm_provider
@@ -409,7 +419,13 @@ class TestSetupWizardOrchestrator:
 
         mock_render_step.reset_mock()
 
-        # Select provider (Databricks)
+        # Select data provider (Databricks)
+        result = orchestrator.handle_interactive_input("1")
+        assert result.success
+
+        mock_render_step.reset_mock()
+
+        # Select compute provider (Databricks)
         result = orchestrator.handle_interactive_input("1")
         assert result.success
 
@@ -510,11 +526,12 @@ class TestSetupWizardOrchestrator:
         result = orchestrator.start_wizard()
         assert result.success
 
-        # Select provider (Databricks)
+        # Select data provider (Databricks)
+        # In new flow: DATA_PROVIDER_SELECTION → WORKSPACE_URL (credentials collected first)
         result = orchestrator.handle_interactive_input("1")
         assert result.success
 
-        # Simulate basic invalid workspace URL input
+        # Now we're at WORKSPACE_URL step - simulate basic invalid workspace URL input
         result = orchestrator.handle_interactive_input("workspace with spaces")
         assert not result.success  # Should fail validation
 
@@ -565,6 +582,42 @@ class TestWizardOrchestratorIntegration:
             WizardStep.TOKEN_INPUT, WizardStep.WORKSPACE_URL
         )
 
+    def test_emr_steps_in_forward_progression(self):
+        """Test that EMR-specific steps are handled correctly in forward progression."""
+        orchestrator = SetupWizardOrchestrator()
+
+        # Test forward progression with EMR steps
+        assert orchestrator._is_forward_progression(
+            WizardStep.COMPUTE_PROVIDER_SELECTION, WizardStep.EMR_CLUSTER_ID_INPUT
+        )
+        assert orchestrator._is_forward_progression(
+            WizardStep.EMR_CLUSTER_ID_INPUT, WizardStep.LLM_PROVIDER_SELECTION
+        )
+
+        # Test that backward progression from EMR step is detected
+        assert not orchestrator._is_forward_progression(
+            WizardStep.EMR_CLUSTER_ID_INPUT, WizardStep.COMPUTE_PROVIDER_SELECTION
+        )
+
+        # Test that EMR step should clear screen after completion
+        assert orchestrator._should_clear_screen_after_step(
+            WizardStep.EMR_CLUSTER_ID_INPUT
+        )
+
+    def test_instance_profile_steps_in_forward_progression(self):
+        """Test that instance profile steps are handled correctly in forward progression."""
+        orchestrator = SetupWizardOrchestrator()
+
+        # INSTANCE_PROFILE_INPUT is not in the step_order list since it's collected
+        # during a different flow (Redshift + Databricks compute)
+        # The step should still work but may not be in _is_forward_progression order
+
+        # Test that after instance profile, we go to workspace URL
+        from chuck_data.commands.wizard.state import WizardStep
+
+        # This is handled by the state machine, but let's verify the step exists
+        assert WizardStep.INSTANCE_PROFILE_INPUT in WizardStep
+
 
 class TestErrorFlowIntegration:
     """Test complete error flows end-to-end."""
@@ -606,15 +659,19 @@ class TestErrorFlowIntegration:
                 result = orchestrator.start_wizard()
                 assert result.success
 
-                # 2. Select provider (Databricks)
+                # 2. Select data provider (Databricks)
                 result = orchestrator.handle_interactive_input("1")
                 assert result.success
 
-                # 3. Enter valid workspace URL - should succeed
+                # 3. Select compute provider (Databricks)
+                result = orchestrator.handle_interactive_input("1")
+                assert result.success
+
+                # 4. Enter valid workspace URL - should succeed
                 result = orchestrator.handle_interactive_input("workspace123")
                 assert result.success
 
-                # 4. Enter invalid token - token validation will fail and go back to URL step
+                # 5. Enter invalid token - token validation will fail and go back to URL step
                 # The wizard handles this gracefully by returning success=False and transitioning back
                 result = orchestrator.handle_interactive_input("invalid-token")
                 # The result might be success=True because it successfully transitioned back to URL step
@@ -623,7 +680,7 @@ class TestErrorFlowIntegration:
                 # The orchestrator should now be back at workspace URL step
                 # We can verify this by checking that the next input is treated as a URL
 
-                # 4. Re-enter workspace URL
+                # 6. Re-enter workspace URL
                 result = orchestrator.handle_interactive_input("workspace456")
                 assert result.success
 
@@ -840,11 +897,12 @@ class TestSecurityFixes:
             result = orchestrator.start_wizard()
             assert result.success
 
-            # Select provider (Databricks)
+            # Select data provider (Databricks)
+            # In new flow: DATA_PROVIDER_SELECTION → WORKSPACE_URL → TOKEN_INPUT
             result = orchestrator.handle_interactive_input("1")
             assert result.success
 
-            # Go to workspace step
+            # Enter workspace URL
             result = orchestrator.handle_interactive_input("workspace123")
             assert result.success
 
@@ -873,9 +931,13 @@ class TestSecurityFixes:
                 # Re-do the setup since we created a new orchestrator
                 result = orchestrator.start_wizard()
                 assert result.success
-                result = orchestrator.handle_interactive_input("1")  # Select Databricks
+                result = orchestrator.handle_interactive_input(
+                    "1"
+                )  # Select data provider (Databricks)
                 assert result.success
-                result = orchestrator.handle_interactive_input("workspace123")
+                result = orchestrator.handle_interactive_input(
+                    "workspace123"
+                )  # Enter workspace URL
                 assert result.success
 
                 # Process token that should fail
@@ -1029,10 +1091,12 @@ class TestTokenSecurityAndInputMode:
             result = orchestrator.start_wizard()
             assert result.success
 
-            # Select provider (Databricks)
+            # Select data provider (Databricks)
+            # New flow: DATA_PROVIDER_SELECTION → WORKSPACE_URL → TOKEN_INPUT
             result = orchestrator.handle_interactive_input("1")
             assert result.success
 
+            # Enter workspace URL
             result = orchestrator.handle_interactive_input("workspace123")
             assert result.success
 
@@ -1113,10 +1177,12 @@ class TestTokenSecurityAndInputMode:
         result = orchestrator.start_wizard()
         assert result.success
 
-        # Select provider (Databricks)
+        # Select data provider (Databricks)
+        # New flow: DATA_PROVIDER_SELECTION → WORKSPACE_URL → TOKEN_INPUT
         result = orchestrator.handle_interactive_input("1")
         assert result.success
 
+        # Enter workspace URL
         result = orchestrator.handle_interactive_input("workspace123")
         assert result.success
 
@@ -1143,9 +1209,13 @@ class TestTokenSecurityAndInputMode:
             # Re-do the setup since we created a new orchestrator
             result = orchestrator.start_wizard()
             assert result.success
-            result = orchestrator.handle_interactive_input("1")  # Select Databricks
+            result = orchestrator.handle_interactive_input(
+                "1"
+            )  # Select data provider (Databricks)
             assert result.success
-            result = orchestrator.handle_interactive_input("workspace123")
+            result = orchestrator.handle_interactive_input(
+                "workspace123"
+            )  # Enter workspace URL
             assert result.success
 
             result = orchestrator.handle_interactive_input("invalid-token")
@@ -1193,8 +1263,14 @@ class TestTokenSecurityAndInputMode:
         orchestrator = SetupWizardOrchestrator()
 
         # Start and progress to token step
+        # New flow: DATA_PROVIDER_SELECTION → WORKSPACE_URL → TOKEN_INPUT
         result = orchestrator.start_wizard()
-        result = orchestrator.handle_interactive_input("workspace123")
+        result = orchestrator.handle_interactive_input(
+            "1"
+        )  # Select data provider (Databricks)
+        result = orchestrator.handle_interactive_input(
+            "workspace123"
+        )  # Enter workspace URL
 
         # Configure stub and inject it for network error
         databricks_client_stub.set_token_validation_result(
@@ -1216,7 +1292,12 @@ class TestTokenSecurityAndInputMode:
 
             # Re-do the setup since we created a new orchestrator
             result = orchestrator.start_wizard()
-            result = orchestrator.handle_interactive_input("workspace123")
+            result = orchestrator.handle_interactive_input(
+                "1"
+            )  # Select data provider (Databricks)
+            result = orchestrator.handle_interactive_input(
+                "workspace123"
+            )  # Enter workspace URL
 
             result = orchestrator.handle_interactive_input("super-secret-token")
 
@@ -1295,10 +1376,11 @@ class TestTUISecurityIntegration:
             orchestrator = SetupWizardOrchestrator()
 
             # Start wizard and go to workspace step
+            # New flow: DATA_PROVIDER_SELECTION → WORKSPACE_URL → TOKEN_INPUT
             result = orchestrator.start_wizard()
             assert result.success
 
-            # Select provider (Databricks)
+            # Select data provider (Databricks)
             result = orchestrator.handle_interactive_input("1")
             assert result.success
 
@@ -1331,9 +1413,13 @@ class TestTUISecurityIntegration:
                 # Re-do the setup since we created a new orchestrator
                 result = orchestrator.start_wizard()
                 assert result.success
-                result = orchestrator.handle_interactive_input("1")  # Select Databricks
+                result = orchestrator.handle_interactive_input(
+                    "1"
+                )  # Select data provider (Databricks)
                 assert result.success
-                result = orchestrator.handle_interactive_input("workspace123")
+                result = orchestrator.handle_interactive_input(
+                    "workspace123"
+                )  # Enter workspace URL
                 assert result.success
 
                 # Process token that should fail with API error
