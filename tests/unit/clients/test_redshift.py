@@ -229,6 +229,106 @@ class TestRedshiftAPIClientInitialization:
         assert client.aws_profile == "my-profile"
 
     @patch("chuck_data.clients.redshift.boto3")
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_credential_priority_explicit_over_env(self, mock_boto3):
+        """Test that explicit credentials take priority over environment variables."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        # Pass explicit credentials
+        client = RedshiftAPIClient(
+            aws_access_key_id="EXPLICIT_KEY",
+            aws_secret_access_key="EXPLICIT_SECRET",
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+        )
+
+        # Verify explicit credentials were used
+        assert client.aws_access_key_id == "EXPLICIT_KEY"
+        assert client.aws_secret_access_key == "EXPLICIT_SECRET"
+        mock_boto3.Session.assert_called_once_with(
+            aws_access_key_id="EXPLICIT_KEY",
+            aws_secret_access_key="EXPLICIT_SECRET",
+            region_name="us-west-2",
+        )
+
+    @patch("chuck_data.clients.redshift.boto3")
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_credential_priority_env_over_profile(self, mock_boto3):
+        """Test that environment variables take priority over AWS profile."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        # Pass profile but env vars should take precedence
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+            aws_profile="my-profile",
+        )
+
+        # Verify environment variables were used (Session without profile)
+        mock_boto3.Session.assert_called_once_with(region_name="us-west-2")
+
+    @patch("chuck_data.clients.redshift.boto3")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_credential_priority_profile_when_no_env(self, mock_boto3):
+        """Test that profile is used when no environment variables exist."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+            aws_profile="my-profile",
+        )
+
+        # Verify profile was used
+        assert client.aws_profile == "my-profile"
+        mock_boto3.Session.assert_called_once_with(
+            profile_name="my-profile", region_name="us-west-2"
+        )
+
+    @patch("chuck_data.clients.redshift.boto3")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_credential_priority_default_chain(self, mock_boto3):
+        """Test that default credential chain is used when nothing is provided."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        # No credentials, no profile
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+        )
+
+        # Verify default chain is used (Session with only region)
+        mock_boto3.Session.assert_called_once_with(region_name="us-west-2")
+
+    @patch("chuck_data.clients.redshift.boto3")
+    @patch.dict("os.environ", {"AWS_ACCESS_KEY_ID": "ENV_KEY"})
+    def test_credential_priority_env_partial_ignored(self, mock_boto3):
+        """Test that partial env vars (only one set) are ignored, profile is used."""
+        mock_session = Mock()
+        mock_boto3.Session.return_value = mock_session
+
+        client = RedshiftAPIClient(
+            region="us-west-2",
+            cluster_identifier="test-cluster",
+            aws_profile="my-profile",
+        )
+
+        # Verify profile was used (env vars incomplete)
+        mock_boto3.Session.assert_called_once_with(
+            profile_name="my-profile", region_name="us-west-2"
+        )
+
+    @patch("chuck_data.clients.redshift.boto3")
     def test_session_clients_are_created(self, mock_boto3):
         """Test that boto3 clients are created from the session."""
         mock_session = Mock()

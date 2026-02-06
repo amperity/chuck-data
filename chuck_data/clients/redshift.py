@@ -41,8 +41,9 @@ class RedshiftAPIClient:
             aws_profile: AWS profile name (optional, will use AWS_PROFILE env var if not provided)
 
         Note: Either cluster_identifier or workgroup_name must be provided.
-              If aws_access_key_id and aws_secret_access_key are not provided, boto3 will
-              automatically discover credentials from aws_profile, AWS_PROFILE env var, ~/.aws/credentials, IAM roles, etc.
+              If aws_access_key_id and aws_secret_access_key are not provided,
+              boto3 will automatically discover credentials from aws_profile,
+              AWS_PROFILE env var, ~/.aws/credentials, IAM roles, etc.
         """
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
@@ -60,16 +61,32 @@ class RedshiftAPIClient:
             )
 
         # Create boto3 session
-        # Priority: explicit credentials > aws_profile > default credential chain
+        # Credential priority (boto3 standard):
+        # 1. Explicit credentials passed as parameters
+        # 2. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        # 3. AWS profile
+        # 4. Default credential chain (~/.aws/credentials, IAM roles, etc.)
+
+        import os
+
+        env_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        env_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
         if aws_access_key_id and aws_secret_access_key:
+            # Use explicit credentials passed as parameters
             session = boto3.Session(
                 aws_access_key_id=aws_access_key_id,
                 aws_secret_access_key=aws_secret_access_key,
                 region_name=region,
             )
+        elif env_access_key and env_secret_key:
+            # Use environment variable credentials (don't pass profile to allow env vars)
+            session = boto3.Session(region_name=region)
         elif aws_profile:
+            # Use session with profile
             session = boto3.Session(profile_name=aws_profile, region_name=region)
         else:
+            # Use default credential chain
             session = boto3.Session(region_name=region)
 
         # Initialize boto3 clients from session

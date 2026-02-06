@@ -239,15 +239,15 @@ def test_agent_display_setting_validation(tui):
     # Provider-agnostic list commands
     expected_list_commands_no_provider = {
         "list_tables",
-        "list_warehouses",
-        "list_volumes",
         "list_models",
     }
 
-    # Databricks should have catalogs and schemas
+    # Databricks should have catalogs, schemas, warehouses, and volumes
     expected_list_commands_databricks = expected_list_commands_no_provider | {
         "list_catalogs",
         "list_schemas",
+        "list_warehouses",
+        "list_volumes",
     }
 
     # Redshift should have databases and redshift_schemas

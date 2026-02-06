@@ -766,7 +766,10 @@ class AWSProfileInputStep(SetupStep):
     def get_prompt_message(self, state: WizardState) -> str:
         import os
 
-        current_profile = os.getenv("AWS_PROFILE", "default")
+        current_profile = os.getenv("AWS_PROFILE", "not set")
+        has_env_credentials = bool(
+            os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
 
         # Determine which service we're configuring for
         if state.data_provider == "aws_redshift":
@@ -776,29 +779,56 @@ class AWSProfileInputStep(SetupStep):
         else:
             service_name = "AWS services"
 
-        return (
-            f"Current AWS_PROFILE: {current_profile}\n\n"
+        message = f"Current AWS_PROFILE: {current_profile}\n"
+        if has_env_credentials:
+            message += (
+                "Detected AWS credentials in environment variables "
+                "(AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)\n\n"
+            )
+        message += (
             f"Please enter the AWS profile name to use for {service_name} access\n"
-            "(Press Enter to use 'default', or specify a profile from your ~/.aws/config):"
+            "(Press Enter to skip if using environment variables, "
+            "or specify a profile from your ~/.aws/config):"
         )
+        return message
 
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle AWS profile input."""
+        import os
+
         profile = input_text.strip()
 
-        # Default to "default" if empty
-        if not profile:
-            profile = "default"
+        # Check if environment variables are set
+        has_env_credentials = bool(
+            os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
 
-        # Basic validation for profile name (alphanumeric, dash, underscore)
-        if not profile.replace("-", "").replace("_", "").isalnum():
-            return StepResult(
-                success=False,
-                message="Invalid profile name format. Please enter a valid AWS profile name.",
-                action=WizardAction.RETRY,
+        # If empty and env credentials exist, skip profile (use None)
+        if not profile:
+            if has_env_credentials:
+                # Skip profile, use environment variables
+                profile = None
+                message = (
+                    "Using AWS credentials from environment variables. "
+                    "Proceeding to region selection."
+                )
+            else:
+                # Default to "default" profile if no env credentials
+                profile = "default"
+                message = f"AWS profile '{profile}' configured. Proceeding to region selection."
+        else:
+            # Validate provided profile name (alphanumeric, dash, underscore)
+            if not profile.replace("-", "").replace("_", "").isalnum():
+                return StepResult(
+                    success=False,
+                    message="Invalid profile name format. Please enter a valid AWS profile name.",
+                    action=WizardAction.RETRY,
+                )
+            message = (
+                f"AWS profile '{profile}' configured. Proceeding to region selection."
             )
 
-        # Save profile to config
+        # Save profile to config (None is valid for env var credentials)
         try:
             from chuck_data.config import get_config_manager
 
@@ -815,7 +845,7 @@ class AWSProfileInputStep(SetupStep):
             )
             return StepResult(
                 success=True,
-                message=f"AWS profile '{profile}' configured. Proceeding to region selection.",
+                message=message,
                 next_step=WizardStep.AWS_REGION_INPUT,
                 action=WizardAction.CONTINUE,
                 data={"aws_profile": profile},

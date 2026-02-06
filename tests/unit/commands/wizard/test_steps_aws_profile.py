@@ -11,8 +11,9 @@ import pytest
 from unittest.mock import Mock, patch
 from botocore.exceptions import ClientError
 
-from chuck_data.commands.wizard import WizardState, WizardStep
+from chuck_data.commands.wizard import WizardState, WizardStep, WizardAction
 from chuck_data.commands.wizard.steps import (
+    AWSProfileInputStep,
     RedshiftClusterSelectionStep,
     S3BucketInputStep,
 )
@@ -362,6 +363,244 @@ class TestCredentialPriorityConsistency:
             aws_secret_access_key="env-secret",
             region_name="us-west-2",
         )
+
+
+class TestAWSProfileInputStep:
+    """Test AWSProfileInputStep with environment variable detection."""
+
+    @patch("chuck_data.config.get_config_manager")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_empty_input_defaults_to_default_profile_no_env(self, mock_config):
+        """Test that empty input defaults to 'default' profile when no env vars."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+        mock_config.return_value.update.return_value = True
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute with empty input
+        result = step.handle_input("", state)
+
+        # Verify
+        assert result.success
+        assert result.next_step == WizardStep.AWS_REGION_INPUT
+        assert result.action == WizardAction.CONTINUE
+        # Should save "default" profile
+        mock_config.return_value.update.assert_called_once_with(aws_profile="default")
+        assert result.data["aws_profile"] == "default"
+
+    @patch("chuck_data.config.get_config_manager")
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_empty_input_skips_profile_with_env_vars(self, mock_config):
+        """Test that empty input skips profile (None) when env vars are present."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+        mock_config.return_value.update.return_value = True
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute with empty input
+        result = step.handle_input("", state)
+
+        # Verify
+        assert result.success
+        assert result.next_step == WizardStep.AWS_REGION_INPUT
+        assert result.action == WizardAction.CONTINUE
+        # Should save None (no profile, use env vars)
+        mock_config.return_value.update.assert_called_once_with(aws_profile=None)
+        assert result.data["aws_profile"] is None
+        assert "environment variables" in result.message
+
+    @patch("chuck_data.config.get_config_manager")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_explicit_profile_name_is_used(self, mock_config):
+        """Test that explicitly provided profile name is used."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+        mock_config.return_value.update.return_value = True
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute with explicit profile
+        result = step.handle_input("my-custom-profile", state)
+
+        # Verify
+        assert result.success
+        assert result.next_step == WizardStep.AWS_REGION_INPUT
+        mock_config.return_value.update.assert_called_once_with(
+            aws_profile="my-custom-profile"
+        )
+        assert result.data["aws_profile"] == "my-custom-profile"
+
+    @patch("chuck_data.config.get_config_manager")
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_explicit_profile_overrides_env_vars(self, mock_config):
+        """Test that explicit profile is used even when env vars are present."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+        mock_config.return_value.update.return_value = True
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute with explicit profile
+        result = step.handle_input("my-sso-profile", state)
+
+        # Verify
+        assert result.success
+        mock_config.return_value.update.assert_called_once_with(
+            aws_profile="my-sso-profile"
+        )
+        assert result.data["aws_profile"] == "my-sso-profile"
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_invalid_profile_name_rejected(self):
+        """Test that invalid profile names are rejected."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute with invalid profile name
+        result = step.handle_input("invalid profile!", state)
+
+        # Verify
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Invalid profile name" in result.message
+
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_prompt_message_shows_env_var_detection(self):
+        """Test that prompt message indicates env vars are detected."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Get prompt message
+        prompt = step.get_prompt_message(state)
+
+        # Verify
+        assert "Detected AWS credentials in environment variables" in prompt
+        assert "AWS_ACCESS_KEY_ID" in prompt
+        assert "AWS_SECRET_ACCESS_KEY" in prompt
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_prompt_message_no_env_vars(self):
+        """Test that prompt message is normal when no env vars."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Get prompt message
+        prompt = step.get_prompt_message(state)
+
+        # Verify - should NOT mention env vars
+        assert "Detected AWS credentials" not in prompt
+        assert "environment variables" in prompt.lower()  # General instruction
+
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY"},  # Only one env var
+    )
+    def test_partial_env_vars_not_detected(self):
+        """Test that partial env vars (only one set) are not detected."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Get prompt message
+        prompt = step.get_prompt_message(state)
+
+        # Verify - should NOT detect partial env vars
+        assert "Detected AWS credentials in environment variables" not in prompt
+
+    @patch("chuck_data.config.get_config_manager")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_config_save_failure_retries(self, mock_config):
+        """Test that config save failure triggers retry."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+        mock_config.return_value.update.return_value = False  # Simulate failure
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute
+        result = step.handle_input("my-profile", state)
+
+        # Verify
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Failed to save AWS profile" in result.message
+
+    @patch("chuck_data.config.get_config_manager")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_config_save_exception_retries(self, mock_config):
+        """Test that config save exception triggers retry with error message."""
+        # Setup
+        validator = InputValidator()
+        step = AWSProfileInputStep(validator)
+        mock_config.return_value.update.side_effect = Exception("Connection error")
+
+        state = WizardState(
+            current_step=WizardStep.AWS_PROFILE_INPUT,
+            data_provider="aws_redshift",
+        )
+
+        # Execute
+        result = step.handle_input("my-profile", state)
+
+        # Verify
+        assert not result.success
+        assert result.action == WizardAction.RETRY
+        assert "Error saving AWS profile" in result.message
+        assert "Connection error" in result.message
 
 
 if __name__ == "__main__":

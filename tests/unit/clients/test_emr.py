@@ -51,7 +51,96 @@ class TestEMRAPIClientInit:
 
             client = EMRAPIClient(region="us-west-2", aws_profile="my-profile")
             assert client.aws_profile == "my-profile"
-            mock_session.assert_called_once_with(profile_name="my-profile")
+            mock_session.assert_called_once_with(
+                profile_name="my-profile", region_name="us-west-2"
+            )
+
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_credential_priority_explicit_over_env(self):
+        """Test that explicit credentials take priority over environment variables."""
+        with patch("chuck_data.clients.emr.boto3") as mock_boto3:
+            mock_client = Mock()
+            mock_boto3.client.return_value = mock_client
+
+            # Pass explicit credentials
+            client = EMRAPIClient(
+                region="us-west-2",
+                aws_access_key_id="EXPLICIT_KEY",
+                aws_secret_access_key="EXPLICIT_SECRET",
+            )
+
+            # Verify explicit credentials were used
+            assert client.aws_access_key_id == "EXPLICIT_KEY"
+            assert client.aws_secret_access_key == "EXPLICIT_SECRET"
+            mock_boto3.client.assert_called_once()
+            call_kwargs = mock_boto3.client.call_args[1]
+            assert call_kwargs["aws_access_key_id"] == "EXPLICIT_KEY"
+            assert call_kwargs["aws_secret_access_key"] == "EXPLICIT_SECRET"
+
+    @patch.dict(
+        "os.environ",
+        {"AWS_ACCESS_KEY_ID": "ENV_KEY", "AWS_SECRET_ACCESS_KEY": "ENV_SECRET"},
+    )
+    def test_credential_priority_env_over_profile(self):
+        """Test that environment variables take priority over AWS profile."""
+        with patch("chuck_data.clients.emr.boto3") as mock_boto3:
+            mock_client = Mock()
+            mock_boto3.client.return_value = mock_client
+
+            # Pass profile but env vars should take precedence
+            client = EMRAPIClient(region="us-west-2", aws_profile="my-profile")
+
+            # Verify environment variables were used (boto3.client called, not Session)
+            mock_boto3.client.assert_called_once_with("emr", region_name="us-west-2")
+            # Session should NOT be called when env vars are present
+            mock_boto3.Session.assert_not_called()
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_credential_priority_profile_when_no_env(self):
+        """Test that profile is used when no environment variables exist."""
+        with patch("chuck_data.clients.emr.boto3.Session") as mock_session:
+            mock_session_instance = Mock()
+            mock_session.return_value = mock_session_instance
+            mock_session_instance.client.return_value = Mock()
+
+            client = EMRAPIClient(region="us-west-2", aws_profile="my-profile")
+
+            # Verify profile was used
+            assert client.aws_profile == "my-profile"
+            mock_session.assert_called_once_with(
+                profile_name="my-profile", region_name="us-west-2"
+            )
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_credential_priority_default_chain(self):
+        """Test that default credential chain is used when nothing is provided."""
+        with patch("chuck_data.clients.emr.boto3") as mock_boto3:
+            mock_client = Mock()
+            mock_boto3.client.return_value = mock_client
+
+            # No credentials, no profile
+            client = EMRAPIClient(region="us-west-2")
+
+            # Verify default chain is used (boto3.client without credentials)
+            mock_boto3.client.assert_called_once_with("emr", region_name="us-west-2")
+
+    @patch.dict("os.environ", {"AWS_ACCESS_KEY_ID": "ENV_KEY"})
+    def test_credential_priority_env_partial_ignored(self):
+        """Test that partial env vars (only one set) are ignored, profile is used."""
+        with patch("chuck_data.clients.emr.boto3.Session") as mock_session:
+            mock_session_instance = Mock()
+            mock_session.return_value = mock_session_instance
+            mock_session_instance.client.return_value = Mock()
+
+            client = EMRAPIClient(region="us-west-2", aws_profile="my-profile")
+
+            # Verify profile was used (env vars incomplete)
+            mock_session.assert_called_once_with(
+                profile_name="my-profile", region_name="us-west-2"
+            )
 
 
 class TestClusterManagement:

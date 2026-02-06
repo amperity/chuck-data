@@ -8,6 +8,7 @@ Storage operations (S3) are handled by RedshiftAPIClient or S3Storage provider.
 """
 
 import logging
+import os
 import shlex
 import time
 from typing import Dict, List, Optional, Any
@@ -56,14 +57,27 @@ class EMRAPIClient:
         # Build boto3 client kwargs
         client_kwargs = {"region_name": region}
 
-        # Use session with profile if provided
-        if aws_profile:
-            session = boto3.Session(profile_name=aws_profile)
-            self.emr = session.client("emr")
-        elif aws_access_key_id and aws_secret_access_key:
+        # Credential priority (matching Redshift and boto3 standard):
+        # 1. Explicit credentials passed as parameters
+        # 2. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        # 3. AWS profile
+        # 4. Default credential chain (~/.aws/credentials, IAM roles, etc.)
+
+        env_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        env_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+        if aws_access_key_id and aws_secret_access_key:
+            # Use explicit credentials passed as parameters
             client_kwargs["aws_access_key_id"] = aws_access_key_id
             client_kwargs["aws_secret_access_key"] = aws_secret_access_key
             self.emr = boto3.client("emr", **client_kwargs)
+        elif env_access_key and env_secret_key:
+            # Use environment variable credentials (don't pass profile to allow env vars)
+            self.emr = boto3.client("emr", **client_kwargs)
+        elif aws_profile:
+            # Use session with profile
+            session = boto3.Session(profile_name=aws_profile, region_name=region)
+            self.emr = session.client("emr")
         else:
             # Use default credential chain
             self.emr = boto3.client("emr", **client_kwargs)
