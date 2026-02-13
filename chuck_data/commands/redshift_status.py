@@ -59,7 +59,8 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs) -> CommandResu
         if client:
             try:
                 # Test connection by attempting to list databases
-                databases = client.list_databases()
+                databases_result = client.list_databases()
+                databases = databases_result.get("databases", [])
                 data["connection_status"] = (
                     f"Connected (found {len(databases)} database(s))."
                 )

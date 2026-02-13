@@ -39,7 +39,9 @@ class TestRedshiftClusterSelectionWithProfile:
 
         # Mock successful connection
         mock_client_instance = Mock()
-        mock_client_instance.list_databases.return_value = ["dev", "analytics"]
+        mock_client_instance.list_databases.return_value = {
+            "databases": [{"name": "dev"}, {"name": "analytics"}]
+        }
         mock_redshift_client.return_value = mock_client_instance
 
         # Execute
@@ -72,7 +74,9 @@ class TestRedshiftClusterSelectionWithProfile:
 
         # Mock successful connection
         mock_client_instance = Mock()
-        mock_client_instance.list_databases.return_value = ["dev"]
+        mock_client_instance.list_databases.return_value = {
+            "databases": [{"name": "dev"}]
+        }
         mock_redshift_client.return_value = mock_client_instance
 
         # Execute
@@ -103,7 +107,9 @@ class TestRedshiftClusterSelectionWithProfile:
 
         # Mock successful connection
         mock_client_instance = Mock()
-        mock_client_instance.list_databases.return_value = ["dev"]
+        mock_client_instance.list_databases.return_value = {
+            "databases": [{"name": "dev"}]
+        }
         mock_redshift_client.return_value = mock_client_instance
 
         # Execute
@@ -329,7 +335,9 @@ class TestCredentialPriorityConsistency:
         # Test Redshift step
         redshift_step = RedshiftClusterSelectionStep(validator)
         mock_client_instance = Mock()
-        mock_client_instance.list_databases.return_value = ["dev"]
+        mock_client_instance.list_databases.return_value = {
+            "databases": [{"name": "dev"}]
+        }
         mock_redshift_client.return_value = mock_client_instance
 
         redshift_result = redshift_step.handle_input("test-cluster", state)

@@ -98,6 +98,7 @@ DEFINITION = [
         needs_api_client=False,
         visible_to_user=True,
         visible_to_agent=False,
+        provider="databricks",
     ),
     CommandDefinition(
         name="logout",

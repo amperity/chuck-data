@@ -77,15 +77,16 @@ class TestLLMProviderFactory:
 
         with patch("chuck_data.config.get_config_manager") as mock_config:
             # Mock config with AWS provider settings
-            mock_config.return_value.get_config.return_value = MagicMock(
-                llm_provider="aws_bedrock",
-                llm_provider_config={
-                    "aws_bedrock": {
-                        "region": "us-west-2",
-                        "model_id": "anthropic.claude-3-haiku-20240307-v1:0",
-                    }
-                },
-            )
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider = "aws_bedrock"
+            mock_config_obj.llm_provider_config = {
+                "aws_bedrock": {
+                    "region": "us-west-2",
+                    "model_id": "anthropic.claude-3-haiku-20240307-v1:0",
+                }
+            }
+            mock_config_obj.active_model = None  # Explicitly set to None
+            mock_config.return_value.get_config.return_value = mock_config_obj
 
             provider = LLMProviderFactory.create("aws_bedrock")
 

@@ -1224,7 +1224,8 @@ class RedshiftClusterSelectionStep(SetupStep):
                 )
                 serverless_config = {**client_config, "workgroup_name": identifier}
                 client = RedshiftAPIClient(**serverless_config)
-                databases = client.list_databases()
+                databases_result = client.list_databases()
+                databases = databases_result.get("databases", [])
                 logging.info(
                     f"Successfully connected to Redshift Serverless workgroup. Found {len(databases)} databases."
                 )
@@ -1242,7 +1243,8 @@ class RedshiftClusterSelectionStep(SetupStep):
                     )
                     cluster_config = {**client_config, "cluster_identifier": identifier}
                     client = RedshiftAPIClient(**cluster_config)
-                    databases = client.list_databases()
+                    databases_result = client.list_databases()
+                    databases = databases_result.get("databases", [])
                     logging.info(
                         f"Successfully connected to Redshift provisioned cluster. Found {len(databases)} databases."
                     )

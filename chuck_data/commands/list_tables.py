@@ -128,6 +128,37 @@ def handle_command(
                             }
                             logging.info(f"Table {table_name}: {column_count} columns")
 
+                    # If the SQL query succeeded but returned no rows, fall back to describe_table
+                    # This can happen if pg_table_def is not accessible or empty
+                    if not table_metadata:
+                        logging.warning(
+                            f"SQL query to pg_table_def returned 0 rows, falling back to describe_table for each table"
+                        )
+                        for table in result_tables:
+                            table_name = table.get("name")
+                            try:
+                                table_details = client.describe_table(
+                                    database=database,
+                                    schema=schema_name,
+                                    table=table_name,
+                                )
+                                columns = table_details.get("ColumnList", [])
+                                table_metadata[table_name] = {
+                                    "column_count": len(columns),
+                                    "row_count": "-",
+                                }
+                                logging.info(
+                                    f"Table {table_name}: {len(columns)} columns (from describe_table)"
+                                )
+                            except Exception as e2:
+                                logging.error(
+                                    f"Failed to fetch columns for table {table_name}: {str(e2)}"
+                                )
+                                table_metadata[table_name] = {
+                                    "column_count": 0,
+                                    "row_count": "-",
+                                }
+                    else:
                         # Note: Redshift doesn't provide table creation/modification timestamps
                         # in accessible system tables without special permissions (STL_DDLTEXT requires elevated access)
 
@@ -138,7 +169,7 @@ def handle_command(
                         )
                         for table_name in table_metadata.keys():
                             try:
-                                count_sql = f'SELECT COUNT(*) as row_count FROM "{database}"."{schema_name}"."{table_name}"'
+                                count_sql = f'SELECT COUNT(*) as row_count FROM "{schema_name}"."{table_name}"'
                                 count_result = client.execute_sql(
                                     count_sql, database=database
                                 )

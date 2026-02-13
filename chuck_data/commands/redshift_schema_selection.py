@@ -100,7 +100,10 @@ def handle_command(
             tool_output_callback,
         )
 
-        schemas = client.list_schemas(database=database)
+        schemas_result = client.list_schemas(database=database)
+        schema_dicts = schemas_result.get("schemas", [])
+        schemas = [s.get("name") for s in schema_dicts]
+
         if not schemas:
             return CommandResult(
                 False,

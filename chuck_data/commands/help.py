@@ -14,6 +14,8 @@ from chuck_data.command_registry import (
     get_user_commands,
     TUI_COMMAND_MAP,
 )
+from chuck_data.config import get_data_provider
+from chuck_data.ui.help_formatter import format_help_text
 from .base import CommandResult
 
 
@@ -26,10 +28,14 @@ def handle_command(client: Optional[DatabricksAPIClient], **kwargs) -> CommandRe
         **kwargs: No parameters required
     """
     try:
-        from chuck_data.ui.help_formatter import format_help_text
 
-        user_commands = get_user_commands()
-        help_text = format_help_text(user_commands, TUI_COMMAND_MAP)
+        # Get current provider to filter commands appropriately
+        current_provider = get_data_provider()
+
+        user_commands = get_user_commands(provider=current_provider)
+        help_text = format_help_text(
+            user_commands, TUI_COMMAND_MAP, provider=current_provider
+        )
         return CommandResult(True, data={"help_text": help_text})
     except Exception as e:
         logging.error(f"Error generating help: {e}", exc_info=True)

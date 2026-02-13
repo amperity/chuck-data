@@ -6,11 +6,17 @@ based on the registered commands in the command registry.
 """
 
 from typing import Dict
-from chuck_data.command_registry import CommandDefinition
+from chuck_data.command_registry import (
+    CommandDefinition,
+    _is_command_available_for_provider,
+)
+from chuck_data.config import get_data_provider
 
 
 def format_help_text(
-    commands: Dict[str, CommandDefinition], tui_map: Dict[str, str]
+    commands: Dict[str, CommandDefinition],
+    tui_map: Dict[str, str],
+    provider: str = None,
 ) -> str:
     """
     Format help text for TUI display based on available commands.
@@ -18,10 +24,13 @@ def format_help_text(
     Args:
         commands: Dictionary of command definitions from the registry
         tui_map: Mapping of TUI commands to registry commands
+        provider: Optional provider to use for filtering (defaults to current config provider)
 
     Returns:
         Formatted help text as a string
     """
+    # Get current data provider to filter commands (use provided or from config)
+    current_provider = provider if provider is not None else get_data_provider()
     # Create reverse mapping of registry names to TUI aliases for easy lookup
     registry_to_tui = {}
     for tui_cmd, registry_name in tui_map.items():
@@ -38,26 +47,35 @@ def format_help_text(
         clean_name = tui_cmd[1:] if tui_cmd.startswith("/") else tui_cmd
         tui_to_registry[clean_name] = registry_name
 
-    # Group commands by category as per new format
+    # Group commands by category with provider-specific commands
+    # Commands will be filtered based on current_provider
     categories = {
-        "Authentication & Workspace": [
-            "workspace-selection",
-            "select-workspace",
-            "databricks-login",
-            "amperity-login",
-            "logout",
-            "status",
-            "setup-wizard",
+        "Authentication & Setup": [
+            "workspace-selection",  # Databricks
+            "select-workspace",  # Databricks
+            "databricks-login",  # Databricks
+            "amperity-login",  # Amperity (provider-agnostic)
+            "logout",  # Provider-agnostic
+            "status",  # Provider-agnostic (shows Databricks status)
+            "redshift_status",  # Redshift (note: uses underscores in registry)
+            "setup-wizard",  # Provider-agnostic
         ],
-        "Catalog & Schema Management": [
+        "Database & Schema Management": [
+            # Databricks
             "list-catalogs",
             "catalog",
             "catalog-selection",
             "select-catalog",
-            "list-schemas",
+            # Redshift (note: Redshift commands use underscores in registry)
+            "list_databases",
+            "select_database",
+            # Both
+            "list-schemas",  # Databricks
+            "list_redshift_schemas",  # Redshift
             "schema",
             "schema-selection",
             "select-schema",
+            "select_redshift_schema",  # Redshift
             "list-tables",
             "table",
         ],
@@ -81,6 +99,7 @@ def format_help_text(
         ],
         "PII & Data Management": [
             "scan-schema-for-pii",
+            "tag-pii",  # Redshift shorthand for bulk-tag-pii
             "bulk-tag-pii",
             "tag-pii-columns",
             "setup-stitch",
@@ -116,6 +135,10 @@ def format_help_text(
         if not cmd:
             return ""
 
+        # Filter by provider - only show commands for current provider
+        if not _is_command_available_for_provider(cmd, current_provider):
+            return ""
+
         # Get TUI aliases for this command
         tui_aliases = registry_to_tui.get(cmd.name, [])
         if not tui_aliases:
@@ -144,9 +167,19 @@ def format_help_text(
             alias = f"{alias} <catalog_name>"
         elif cmd_name == "set-catalog" or cmd.name == "set-catalog":
             alias = f"{alias} <catalog_name>"
+        elif cmd_name == "select_database" or cmd.name == "select_database":
+            alias = f"{alias} <database_name>"
+        elif cmd_name == "select-database" or cmd.name == "select-database":
+            alias = f"{alias} <database_name>"
+        elif (
+            cmd_name == "select_redshift_schema" or cmd.name == "select_redshift_schema"
+        ):
+            alias = f"{alias} <schema_name>"
         elif cmd_name == "schema-selection" or cmd.name == "schema-selection":
             alias = f"{alias} <schema_name>"
         elif cmd_name == "set-schema" or cmd.name == "set-schema":
+            alias = f"{alias} <schema_name>"
+        elif cmd_name == "select-schema" or cmd.name == "select-schema":
             alias = f"{alias} <schema_name>"
         elif cmd_name == "model-selection" or cmd.name == "model-selection":
             alias = f"{alias} <model_name>"

@@ -235,12 +235,19 @@ def test_needs_setup_method(config_setup):
         amperity_token="test-amperity-token",
         databricks_token="test-databricks-token",
         active_model="test-model",
+        data_provider="databricks",  # Add provider to satisfy provider-aware check
     )
     assert not config_manager.needs_setup()
 
     # Test with environment variable
     with patch.dict(os.environ, {"CHUCK_WORKSPACE_URL": "env-workspace"}):
         fresh_manager = ConfigManager(config_path)
+        fresh_manager.update(
+            amperity_token="test-amperity-token",
+            databricks_token="test-databricks-token",
+            active_model="test-model",
+            data_provider="databricks",
+        )
         assert not fresh_manager.needs_setup()
 
 

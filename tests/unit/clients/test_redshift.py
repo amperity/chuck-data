@@ -421,7 +421,9 @@ class TestListDatabases:
 
         databases = client.list_databases()
 
-        assert databases == ["dev", "analytics", "test"]
+        assert databases == {
+            "databases": [{"name": "dev"}, {"name": "analytics"}, {"name": "test"}]
+        }
         mock_redshift_data.list_databases.assert_called_once_with(
             Database="dev", ClusterIdentifier="test-cluster"
         )
@@ -442,7 +444,7 @@ class TestListDatabases:
 
         databases = client.list_databases()
 
-        assert databases == ["dev"]
+        assert databases == {"databases": [{"name": "dev"}]}
         mock_redshift_data.list_databases.assert_called_once_with(
             Database="dev", WorkgroupName="test-workgroup"
         )
@@ -463,7 +465,7 @@ class TestListDatabases:
 
         databases = client.list_databases()
 
-        assert databases == []
+        assert databases == {"databases": []}
 
     @patch("chuck_data.clients.redshift.boto3")
     def test_list_databases_client_error(self, mock_boto3):
@@ -529,7 +531,9 @@ class TestListSchemas:
 
         schemas = client.list_schemas()
 
-        assert schemas == ["public", "analytics", "staging"]
+        assert schemas == {
+            "schemas": [{"name": "public"}, {"name": "analytics"}, {"name": "staging"}]
+        }
         mock_redshift_data.list_schemas.assert_called_once_with(
             Database="analytics", ClusterIdentifier="test-cluster"
         )
@@ -551,7 +555,7 @@ class TestListSchemas:
 
         schemas = client.list_schemas(database="custom_db")
 
-        assert schemas == ["public"]
+        assert schemas == {"schemas": [{"name": "public"}]}
         mock_redshift_data.list_schemas.assert_called_once_with(
             Database="custom_db", ClusterIdentifier="test-cluster"
         )

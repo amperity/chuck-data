@@ -49,7 +49,8 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs: Any) -> Comman
 
     try:
         # List schemas in the database
-        schemas = client.list_schemas(database=database)
+        schemas_result = client.list_schemas(database=database)
+        schemas = schemas_result.get("schemas", [])
 
         if not schemas:
             return CommandResult(
@@ -64,11 +65,11 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs: Any) -> Comman
                 },
             )
 
-        # Format schema information for display
+        # Format schema information for display (add database to each schema)
         formatted_schemas = []
-        for schema_name in schemas:
+        for schema_dict in schemas:
             formatted_schema = {
-                "name": schema_name,
+                "name": schema_dict.get("name"),
                 "database": database,
             }
             formatted_schemas.append(formatted_schema)

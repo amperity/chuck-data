@@ -72,4 +72,5 @@ DEFINITION = CommandDefinition(
     tui_aliases=["/select-workspace"],
     visible_to_user=True,
     visible_to_agent=False,  # Agent doesn't need to select workspace
+    provider="databricks",
 )

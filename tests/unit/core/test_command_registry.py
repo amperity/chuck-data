@@ -56,10 +56,8 @@ class TestCommandRegistryProviderFiltering:
         "help",
         "setup_wizard",
         "agent",
-        "databricks-login",
-        "amperity-login",
+        "amperity-login",  # Note: databricks-login and select_workspace are provider-specific (databricks only)
         "logout",
-        "select_workspace",
         "select_model",
         "list_models",
         "bug",
