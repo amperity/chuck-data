@@ -199,7 +199,9 @@ class TestRedshiftClusterSelectionStep:
 
         # Mock successful connection
         mock_client = Mock()
-        mock_client.list_databases.return_value = ["dev", "prod"]
+        mock_client.list_databases.return_value = {
+            "databases": [{"name": "dev"}, {"name": "prod"}]
+        }
         mock_client_class.return_value = mock_client
         mock_config.return_value.update.return_value = True
 
@@ -229,7 +231,9 @@ class TestRedshiftClusterSelectionStep:
         )
 
         mock_client_provisioned = Mock()
-        mock_client_provisioned.list_databases.return_value = ["dev"]
+        mock_client_provisioned.list_databases.return_value = {
+            "databases": [{"name": "dev"}]
+        }
 
         mock_client_class.side_effect = [
             mock_client_serverless,

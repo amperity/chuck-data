@@ -36,7 +36,8 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs: Any) -> Comman
 
     try:
         # List databases in Redshift
-        databases = client.list_databases()
+        databases_result = client.list_databases()
+        databases = databases_result.get("databases", [])
 
         if not databases:
             return CommandResult(
@@ -50,13 +51,8 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs: Any) -> Comman
                 },
             )
 
-        # Format database information for display
-        formatted_databases = []
-        for db_name in databases:
-            formatted_database = {
-                "name": db_name,
-            }
-            formatted_databases.append(formatted_database)
+        # Format database information for display (databases already have "name" key)
+        formatted_databases = databases
 
         return CommandResult(
             True,

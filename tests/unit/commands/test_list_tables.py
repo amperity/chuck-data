@@ -4,7 +4,7 @@ Tests for list_tables command handler.
 This module contains tests for the list_tables command handler.
 """
 
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from chuck_data.commands.list_tables import handle_command
 from tests.fixtures.databricks.client import DatabricksClientStub
@@ -195,3 +195,251 @@ def test_list_tables_with_display_false(temp_config):
         assert result.success
         assert not result.data.get("display")
         assert len(result.data.get("tables", [])) == 1
+
+
+# Redshift Tests
+
+
+def test_redshift_list_tables_with_sql_metadata(temp_config):
+    """Test Redshift list tables with successful SQL metadata query."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        from chuck_data.config import set_active_database, set_active_schema
+
+        # Create mock Redshift client
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "RedshiftAPIClient"
+
+        # Mock list_tables response
+        mock_client.list_tables.return_value = {
+            "tables": [
+                {"name": "customers", "type": "TABLE"},
+                {"name": "orders", "type": "TABLE"},
+            ]
+        }
+
+        # Mock execute_sql response for metadata query
+        mock_client.execute_sql.return_value = {
+            "statement_id": "test-id",
+            "status": "FINISHED",
+            "result": {
+                "Records": [
+                    [
+                        {"stringValue": "customers"},
+                        {"longValue": 5},
+                    ],
+                    [
+                        {"stringValue": "orders"},
+                        {"longValue": 8},
+                    ],
+                ],
+                "ColumnMetadata": [
+                    {"name": "table_name", "type": "varchar"},
+                    {"name": "column_count", "type": "bigint"},
+                ],
+            },
+        }
+
+        # Set active database and schema
+        set_active_database("testdb")
+        set_active_schema("public")
+
+        # Call function
+        result = handle_command(mock_client)
+
+        # Verify results
+        assert result.success
+        assert len(result.data["tables"]) == 2
+        assert result.data["database"] == "testdb"
+        assert result.data["schema_name"] == "public"
+
+        # Verify column counts were set correctly
+        tables_by_name = {t["name"]: t for t in result.data["tables"]}
+        assert tables_by_name["customers"]["column_count"] == 5
+        assert tables_by_name["orders"]["column_count"] == 8
+
+
+def test_redshift_list_tables_sql_returns_empty_fallback_to_describe(temp_config):
+    """Test Redshift list tables when SQL returns 0 rows, falls back to describe_table."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        from chuck_data.config import set_active_database, set_active_schema
+
+        # Create mock Redshift client
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "RedshiftAPIClient"
+
+        # Mock list_tables response
+        mock_client.list_tables.return_value = {
+            "tables": [
+                {"name": "customers", "type": "TABLE"},
+                {"name": "orders", "type": "TABLE"},
+            ]
+        }
+
+        # Mock execute_sql response - SQL succeeds but returns 0 rows (empty Records)
+        mock_client.execute_sql.return_value = {
+            "statement_id": "test-id",
+            "status": "FINISHED",
+            "result": {
+                "Records": [],  # Empty result - this is the bug scenario
+                "ColumnMetadata": [
+                    {"name": "table_name", "type": "varchar"},
+                    {"name": "column_count", "type": "bigint"},
+                ],
+            },
+        }
+
+        # Mock describe_table responses for fallback
+        def mock_describe_table(database, schema, table):
+            if table == "customers":
+                return {
+                    "ColumnList": [
+                        {"name": "id", "typeName": "bigint"},
+                        {"name": "name", "typeName": "varchar"},
+                        {"name": "email", "typeName": "varchar"},
+                    ]
+                }
+            elif table == "orders":
+                return {
+                    "ColumnList": [
+                        {"name": "order_id", "typeName": "bigint"},
+                        {"name": "customer_id", "typeName": "bigint"},
+                    ]
+                }
+
+        mock_client.describe_table.side_effect = mock_describe_table
+
+        # Set active database and schema
+        set_active_database("testdb")
+        set_active_schema("public")
+
+        # Call function
+        result = handle_command(mock_client)
+
+        # Verify results
+        assert result.success
+        assert len(result.data["tables"]) == 2
+
+        # Verify describe_table was called for each table (fallback)
+        assert mock_client.describe_table.call_count == 2
+
+        # Verify column counts were set correctly from describe_table
+        tables_by_name = {t["name"]: t for t in result.data["tables"]}
+        assert tables_by_name["customers"]["column_count"] == 3
+        assert tables_by_name["orders"]["column_count"] == 2
+
+
+def test_redshift_list_tables_sql_exception_fallback_to_describe(temp_config):
+    """Test Redshift list tables when SQL throws exception, falls back to describe_table."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        from chuck_data.config import set_active_database, set_active_schema
+
+        # Create mock Redshift client
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "RedshiftAPIClient"
+
+        # Mock list_tables response
+        mock_client.list_tables.return_value = {
+            "tables": [
+                {"name": "customers", "type": "TABLE"},
+            ]
+        }
+
+        # Mock execute_sql to raise exception
+        mock_client.execute_sql.side_effect = Exception("SQL permission denied")
+
+        # Mock describe_table for fallback
+        mock_client.describe_table.return_value = {
+            "ColumnList": [
+                {"name": "id", "typeName": "bigint"},
+                {"name": "name", "typeName": "varchar"},
+            ]
+        }
+
+        # Set active database and schema
+        set_active_database("testdb")
+        set_active_schema("public")
+
+        # Call function
+        result = handle_command(mock_client)
+
+        # Verify results
+        assert result.success
+        assert len(result.data["tables"]) == 1
+
+        # Verify describe_table was called (fallback due to SQL exception)
+        assert mock_client.describe_table.call_count == 1
+
+        # Verify column count was set from describe_table
+        assert result.data["tables"][0]["column_count"] == 2
+
+
+def test_redshift_no_active_database(temp_config):
+    """Test Redshift list tables with no active database."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "RedshiftAPIClient"
+
+        # Call function without setting active database
+        result = handle_command(mock_client)
+
+        # Verify error
+        assert not result.success
+        assert "No database specified and no active database selected" in result.message
+
+
+def test_redshift_no_active_schema(temp_config):
+    """Test Redshift list tables with no active schema."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        from chuck_data.config import set_active_database
+
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "RedshiftAPIClient"
+
+        # Set database but not schema
+        set_active_database("testdb")
+
+        # Call function
+        result = handle_command(mock_client)
+
+        # Verify error
+        assert not result.success
+        assert "No schema specified and no active schema selected" in result.message
+
+
+def test_redshift_describe_table_fails_sets_zero_columns(temp_config):
+    """Test Redshift when both SQL and describe_table fail, sets column_count to 0."""
+    with patch("chuck_data.config._config_manager", temp_config):
+        from chuck_data.config import set_active_database, set_active_schema
+
+        # Create mock Redshift client
+        mock_client = Mock()
+        mock_client.__class__.__name__ = "RedshiftAPIClient"
+
+        # Mock list_tables response
+        mock_client.list_tables.return_value = {
+            "tables": [
+                {"name": "customers", "type": "TABLE"},
+            ]
+        }
+
+        # Mock execute_sql to return empty results (SQL succeeds but no rows)
+        mock_client.execute_sql.return_value = {
+            "statement_id": "test-id",
+            "status": "FINISHED",
+            "result": {"Records": [], "ColumnMetadata": []},
+        }
+
+        # Mock describe_table to raise exception
+        mock_client.describe_table.side_effect = Exception("Access denied")
+
+        # Set active database and schema
+        set_active_database("testdb")
+        set_active_schema("public")
+
+        # Call function
+        result = handle_command(mock_client)
+
+        # Verify results - should succeed but with 0 columns
+        assert result.success
+        assert len(result.data["tables"]) == 1
+        assert result.data["tables"][0]["column_count"] == 0

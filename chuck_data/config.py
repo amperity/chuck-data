@@ -202,15 +202,57 @@ class ConfigManager:
         return self.load()
 
     def needs_setup(self) -> bool:
-        """Check if first-time setup is needed based on missing critical configuration"""
+        """Check if first-time setup is needed based on missing critical configuration.
+
+        This function is provider-aware and only checks for configs relevant to the
+        configured data provider. If no provider is set, it returns True (needs setup).
+        """
         config = self.load()
-        critical_configs = [
-            config.amperity_token,
-            config.databricks_token,
-            config.workspace_url,
-            config.active_model,
-        ]
-        return any(item is None or item == "" for item in critical_configs)
+
+        # FIRST: Check if logged in (amperity_token)
+        # This is required regardless of provider
+        if not config.amperity_token or config.amperity_token == "":
+            return True
+
+        # Always check for model
+        if not config.active_model:
+            return True
+
+        # If no data provider is set, we definitely need setup
+        provider = config.data_provider
+        if not provider:
+            return True
+
+        # Check provider-specific configs
+        if provider == "databricks":
+            # Databricks requires workspace_url and databricks_token
+            workspace_url = getattr(config, "workspace_url", None)
+            databricks_token = getattr(config, "databricks_token", None)
+
+            critical_configs = [workspace_url, databricks_token]
+            return any(item is None or item == "" for item in critical_configs)
+
+        elif provider == "aws_redshift":
+            # Redshift requires AWS configs and (optionally) amperity_token
+            # Check required AWS configs
+            aws_region = getattr(config, "aws_region", None)
+            if not aws_region or aws_region == "":
+                return True
+
+            # Either cluster_identifier or workgroup_name must be set
+            cluster_id = getattr(config, "redshift_cluster_identifier", None)
+            workgroup = getattr(config, "redshift_workgroup_name", None)
+
+            has_cluster_or_workgroup = (cluster_id and cluster_id != "") or (
+                workgroup and workgroup != ""
+            )
+            if not has_cluster_or_workgroup:
+                return True
+
+            return False
+
+        # Unknown provider - needs setup
+        return True
 
     def update(self, **kwargs) -> bool:
         """Update configuration values"""

@@ -954,11 +954,20 @@ class ChuckTUI:
 
         # Process the table data for display
         for table in tables:
-            # Convert columns list to count if present
+            # Convert columns list to count if present (only for Databricks tables that include column details)
             if "columns" in table and isinstance(table["columns"], list):
                 table["column_count"] = len(table["columns"])
-            else:
+            elif "column_count" not in table:
+                # Only set to 0 if column_count doesn't already exist
+                # (Redshift tables have column_count set directly from metadata)
                 table["column_count"] = 0
+
+            # Log the final column_count for debugging
+            import logging
+
+            logging.info(
+                f"TUI display: table {table.get('name')} has column_count={table.get('column_count')}"
+            )
 
             # Format timestamps if present
             for ts_field in ["created_at", "updated_at"]:

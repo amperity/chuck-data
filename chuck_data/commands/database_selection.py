@@ -84,7 +84,10 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs) -> CommandResu
             f"Looking for database matching '{database}'", tool_output_callback
         )
 
-        databases = client.list_databases()
+        databases_result = client.list_databases()
+        database_dicts = databases_result.get("databases", [])
+        databases = [db.get("name") for db in database_dicts]
+
         if not databases:
             return CommandResult(
                 False, message="No databases found in Redshift cluster/workgroup."

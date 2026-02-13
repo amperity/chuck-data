@@ -251,7 +251,7 @@ class RedshiftAPIClient:
     # Database/Schema/Table metadata methods (parallel to DatabricksAPIClient)
     #
 
-    def list_databases(self, database: Optional[str] = None) -> List[str]:
+    def list_databases(self, database: Optional[str] = None) -> Dict:
         """
         List Redshift databases.
 
@@ -261,7 +261,7 @@ class RedshiftAPIClient:
             database: Database name to connect to for listing (uses default if not specified)
 
         Returns:
-            List of database names
+            Dictionary containing databases list in format: {"databases": [{"name": "db1"}, ...]}
 
         Raises:
             ValueError: If an error occurs
@@ -279,7 +279,8 @@ class RedshiftAPIClient:
                 params["WorkgroupName"] = self.workgroup_name
 
             response = self.redshift_data.list_databases(**params)
-            return [db for db in response.get("Databases", [])]
+            # Return in same format as Databricks for consistency
+            return {"databases": [{"name": db} for db in response.get("Databases", [])]}
 
         except ClientError as e:
             logging.debug(f"Error listing databases: {e}")
@@ -288,7 +289,7 @@ class RedshiftAPIClient:
             logging.debug(f"Connection error: {e}")
             raise ConnectionError(f"Connection error occurred: {e}")
 
-    def list_schemas(self, database: Optional[str] = None) -> List[str]:
+    def list_schemas(self, database: Optional[str] = None) -> Dict:
         """
         List schemas in a database.
 
@@ -298,7 +299,7 @@ class RedshiftAPIClient:
             database: Database name (uses default if not specified)
 
         Returns:
-            List of schema names
+            Dictionary containing schemas list in format: {"schemas": [{"name": "schema1"}, ...]}
 
         Raises:
             ValueError: If an error occurs
@@ -316,7 +317,10 @@ class RedshiftAPIClient:
                 params["WorkgroupName"] = self.workgroup_name
 
             response = self.redshift_data.list_schemas(**params)
-            return [schema for schema in response.get("Schemas", [])]
+            # Return in same format as Databricks for consistency
+            return {
+                "schemas": [{"name": schema} for schema in response.get("Schemas", [])]
+            }
 
         except ClientError as e:
             logging.debug(f"Error listing schemas: {e}")

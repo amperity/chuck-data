@@ -74,10 +74,20 @@ class LLMProviderFactory:
             from chuck_data.config import get_config_manager
 
             chuck_config = get_config_manager().get_config()
+
+            # Get provider-specific config (if any)
             if hasattr(chuck_config, "llm_provider_config"):
                 provider_configs = chuck_config.llm_provider_config or {}
                 config = provider_configs.get(provider_name, {})
                 logger.debug(f"Loaded config for {provider_name}")
+
+            # Add active_model to config if set (overrides provider-specific model_id)
+            if hasattr(chuck_config, "active_model") and chuck_config.active_model:
+                config["model_id"] = chuck_config.active_model
+                logger.debug(
+                    f"Using active_model from config: {chuck_config.active_model}"
+                )
+
         except Exception as e:
             logger.debug(f"Could not load provider config: {e}")
 
