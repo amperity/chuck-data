@@ -25,6 +25,7 @@ from chuck_data.config import (
     get_redshift_iam_role,
     get_redshift_s3_temp_dir,
     get_s3_bucket,
+    get_aws_profile,
     get_aws_region,
     get_aws_account_id,
     get_amperity_token,
@@ -47,6 +48,34 @@ from .stitch_tools import (
 )
 
 
+def _create_s3_client_with_profile():
+    """
+    Create an S3 client using AWS profile and region from config.
+
+    Returns:
+        boto3 S3 client configured with profile/region from config
+    """
+    import boto3
+
+    aws_profile = get_aws_profile()
+    aws_region = get_aws_region()
+
+    # Create boto3 session with profile and region
+    if aws_profile:
+        session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
+        s3_client = session.client("s3")
+        logging.debug(
+            f"Using AWS profile '{aws_profile}' and region '{aws_region}' for S3 access"
+        )
+    else:
+        s3_client = boto3.client("s3", region_name=aws_region)
+        logging.debug(
+            f"Using default AWS credentials with region '{aws_region}' for S3 access"
+        )
+
+    return s3_client
+
+
 def _ensure_s3_temp_dir_exists(s3_temp_dir: str) -> bool:
     """
     Ensures the S3 temp directory exists by creating it if necessary.
@@ -57,7 +86,6 @@ def _ensure_s3_temp_dir_exists(s3_temp_dir: str) -> bool:
     Returns:
         True if directory exists or was created successfully, False otherwise
     """
-    import boto3
     from botocore.exceptions import ClientError
 
     try:
@@ -75,7 +103,8 @@ def _ensure_s3_temp_dir_exists(s3_temp_dir: str) -> bool:
         if prefix and not prefix.endswith("/"):
             prefix = prefix + "/"
 
-        s3_client = boto3.client("s3")
+        # Create S3 client with AWS profile from config
+        s3_client = _create_s3_client_with_profile()
 
         # Check if bucket exists and is accessible
         try:
@@ -389,7 +418,7 @@ def handle_command(
 
         # Get AWS/Redshift configuration for EMR
         region = get_aws_region()
-        aws_profile = kwargs.get("aws_profile")  # Get from function arguments
+        aws_profile = kwargs.get("aws_profile") or get_aws_profile()
 
         if not region:
             return CommandResult(
@@ -1263,7 +1292,7 @@ def _redshift_prepare_manifest(
         }
 
     s3_path = f"s3://{s3_bucket}/chuck/manifests/{manifest_filename}"
-    aws_profile = kwargs.get("aws_profile")
+    aws_profile = kwargs.get("aws_profile") or get_aws_profile()
 
     if not upload_manifest_to_s3(manifest, s3_path, aws_profile):
         return {"success": False, "error": f"Failed to upload manifest to {s3_path}"}
@@ -1349,7 +1378,9 @@ def _redshift_phase_1_prepare(
     context.store_context_data("setup_stitch", "timestamp", timestamp)
     context.store_context_data("setup_stitch", "tables", tables)
     context.store_context_data("setup_stitch", "semantic_tags", semantic_tags)
-    context.store_context_data("setup_stitch", "aws_profile", kwargs.get("aws_profile"))
+    context.store_context_data(
+        "setup_stitch", "aws_profile", kwargs.get("aws_profile") or get_aws_profile()
+    )
 
     # Display confirmation prompt
     console.print(
@@ -1456,10 +1487,9 @@ def _helper_launch_stitch_job_emr_databricks(
 
         # Upload modified init script to S3
         try:
-            import boto3
-            from chuck_data.config import get_aws_region
+            # Create S3 client with AWS profile from config
+            s3_client = _create_s3_client_with_profile()
 
-            s3_client = boto3.client("s3", region_name=get_aws_region())
             s3_client.put_object(
                 Bucket=s3_bucket,
                 Key=f"chuck/init-scripts/chuck-init-{timestamp}.sh",
@@ -1596,10 +1626,9 @@ def _redshift_execute_job_launch(
 
         # Upload to S3
         try:
-            import boto3
-            from chuck_data.config import get_aws_region
+            # Create S3 client with AWS profile from config
+            s3_client = _create_s3_client_with_profile()
 
-            s3_client = boto3.client("s3", region_name=get_aws_region())
             s3_client.put_object(
                 Bucket=s3_bucket,
                 Key=f"chuck/init-scripts/{init_script_filename}",
