@@ -105,7 +105,11 @@ class LLMProviderFactory:
             try:
                 from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
 
-                return AWSBedrockProvider(**config)
+                # AWSBedrockProvider uses 'model_id' instead of 'model'
+                bedrock_config = {**config}
+                if "model" in bedrock_config:
+                    bedrock_config["model_id"] = bedrock_config.pop("model")
+                return AWSBedrockProvider(**bedrock_config)
             except ImportError as e:
                 raise ImportError(
                     "AWS Bedrock provider requires boto3: pip install boto3"

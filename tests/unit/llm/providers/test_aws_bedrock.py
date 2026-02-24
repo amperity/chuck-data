@@ -647,6 +647,41 @@ class TestAWSBedrockProvider:
         assert response.choices[0].message.content == "Response"
 
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_databricks_context_size_suffix_stripped_from_model_id(self, mock_boto3):
+        """Databricks-style ':200k' context size suffix is stripped from model ID at init."""
+        mock_boto3.client.return_value = MagicMock()
+
+        provider = AWSBedrockProvider(
+            model_id="anthropic.claude-3-5-sonnet-20241022-v2:0:200k"
+        )
+
+        # Suffix must be stripped so Bedrock API calls use a valid model ID
+        assert provider.default_model == "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_various_context_size_suffixes_are_stripped(self, mock_boto3):
+        """All common Databricks context window suffixes (':32k', ':100k', etc.) are stripped."""
+        mock_boto3.client.return_value = MagicMock()
+
+        base_id = "amazon.nova-pro-v1:0"
+        for suffix in [":32k", ":100k", ":128K", ":200k"]:
+            provider = AWSBedrockProvider(model_id=f"{base_id}{suffix}")
+            assert provider.default_model == base_id, (
+                f"Expected suffix '{suffix}' to be stripped, "
+                f"got '{provider.default_model}'"
+            )
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_valid_model_id_without_suffix_is_unchanged(self, mock_boto3):
+        """Model IDs that are already valid Bedrock IDs are not modified."""
+        mock_boto3.client.return_value = MagicMock()
+
+        clean_id = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        provider = AWSBedrockProvider(model_id=clean_id)
+
+        assert provider.default_model == clean_id
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_streaming_not_yet_implemented(self, mock_boto3):
         """Streaming parameter is acknowledged but falls back to non-streaming."""
         mock_bedrock_runtime = MagicMock()

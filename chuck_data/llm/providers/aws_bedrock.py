@@ -16,6 +16,7 @@ higher throughput and better resilience.
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Literal, Optional
 
@@ -125,7 +126,17 @@ class AWSBedrockProvider:
 
         # Default model - Amazon Nova Pro
         # Nova Pro is AWS's most capable foundation model with strong performance
-        self.default_model = model_id or "amazon.nova-pro-v1:0"
+        resolved_model_id = model_id or "amazon.nova-pro-v1:0"
+        # Strip Databricks-style context window suffixes (e.g. ":200k", ":32k")
+        # that are appended to model names in Databricks model serving endpoints
+        # but are not valid Bedrock model IDs.
+        cleaned = re.sub(r":\d+k$", "", resolved_model_id, flags=re.IGNORECASE)
+        if cleaned != resolved_model_id:
+            logger.warning(
+                f"Stripped Databricks context size suffix from model ID: "
+                f"'{resolved_model_id}' -> '{cleaned}'"
+            )
+        self.default_model = cleaned
 
         logger.info(
             f"Initialized AWS Bedrock provider in {self.region} with model {self.default_model}"
