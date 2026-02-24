@@ -6,6 +6,7 @@ from .tool_executor import get_tool_schemas, execute_tool
 from chuck_data.config import (
     get_active_catalog,
     get_active_schema,
+    get_active_database,
     get_warehouse_id,
     get_workspace_url,
     get_data_provider,
@@ -189,6 +190,7 @@ class AgentManager:
             # Get current configuration state
             active_catalog = get_active_catalog() or "Not set"
             active_schema = get_active_schema() or "Not set"
+            active_database = get_active_database() or "Not set"
             warehouse_id = get_warehouse_id() or "Not set"
             workspace_url = (
                 get_workspace_url() or "Not set"
@@ -198,6 +200,7 @@ class AgentManager:
                 f"\n\n--- CURRENT CONTEXT ---\n"
                 f"Workspace URL: {workspace_url}\n"
                 f"Active Catalog: {active_catalog}\n"
+                f"Active Database: {active_database}\n"
                 f"Active Schema: {active_schema}\n"
                 f"Active Warehouse ID: {warehouse_id}\n"
                 f"-----------------------"
