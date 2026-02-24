@@ -157,3 +157,55 @@ class TestLLMProviderFactory:
         with patch("chuck_data.llm.providers.aws_bedrock.boto3", None):
             with pytest.raises(ImportError, match="boto3"):
                 LLMProviderFactory.create("aws_bedrock")
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_create_aws_bedrock_provider_active_model_translated_to_model_id(
+        self, mock_boto3
+    ):
+        """active_model ('model' key) is translated to 'model_id' for AWSBedrockProvider.
+
+        DatabricksProvider uses 'model' but AWSBedrockProvider uses 'model_id'.
+        The factory must translate the key when creating a Bedrock provider.
+        """
+        mock_boto3.client.return_value = MagicMock()
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider_config = {}
+            mock_config_obj.active_model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+            mock_config.return_value.get_config.return_value = mock_config_obj
+
+            provider = LLMProviderFactory.create("aws_bedrock")
+
+            from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+
+            assert isinstance(provider, AWSBedrockProvider)
+            assert provider.default_model == "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    @patch("chuck_data.llm.providers.aws_bedrock.boto3")
+    def test_create_aws_bedrock_provider_active_model_with_databricks_suffix(
+        self, mock_boto3
+    ):
+        """active_model with Databricks ':200k' suffix is translated and stripped.
+
+        When a user selects a model from the Databricks model list (which includes
+        context window sizes like ':200k'), that suffix must be stripped before
+        passing to the Bedrock API.
+        """
+        mock_boto3.client.return_value = MagicMock()
+
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider_config = {}
+            mock_config_obj.active_model = (
+                "anthropic.claude-3-5-sonnet-20241022-v2:0:200k"
+            )
+            mock_config.return_value.get_config.return_value = mock_config_obj
+
+            provider = LLMProviderFactory.create("aws_bedrock")
+
+            from chuck_data.llm.providers.aws_bedrock import AWSBedrockProvider
+
+            assert isinstance(provider, AWSBedrockProvider)
+            # Both key translation (model→model_id) and suffix stripping must work together
+            assert provider.default_model == "anthropic.claude-3-5-sonnet-20241022-v2:0"
