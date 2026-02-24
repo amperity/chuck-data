@@ -57,6 +57,60 @@ class TestLLMProviderFactory:
             config = LLMProviderFactory._get_provider_config("databricks")
             assert config == {}
 
+    def test_get_provider_config_active_model_uses_model_key(self):
+        """active_model is passed as 'model', not 'model_id', so providers accept it."""
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider_config = {}
+            mock_config_obj.active_model = "databricks-claude-3-7-sonnet"
+            mock_config.return_value.get_config.return_value = mock_config_obj
+
+            config = LLMProviderFactory._get_provider_config("databricks")
+
+            assert config.get("model") == "databricks-claude-3-7-sonnet"
+            assert "model_id" not in config
+
+    def test_get_provider_config_active_model_overrides_provider_specific_model(self):
+        """active_model overrides any model set in provider-specific config."""
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider_config = {"databricks": {"model": "old-model"}}
+            mock_config_obj.active_model = "databricks-claude-3-7-sonnet"
+            mock_config.return_value.get_config.return_value = mock_config_obj
+
+            config = LLMProviderFactory._get_provider_config("databricks")
+
+            assert config.get("model") == "databricks-claude-3-7-sonnet"
+
+    def test_get_provider_config_no_active_model_returns_provider_config(self):
+        """Without active_model, provider-specific config is returned unchanged."""
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider_config = {
+                "databricks": {"model": "some-default-model"}
+            }
+            mock_config_obj.active_model = None
+            mock_config.return_value.get_config.return_value = mock_config_obj
+
+            config = LLMProviderFactory._get_provider_config("databricks")
+
+            assert config.get("model") == "some-default-model"
+
+    def test_create_databricks_provider_with_active_model(self):
+        """Factory creates DatabricksProvider with active_model passed as 'model'."""
+        with patch("chuck_data.config.get_config_manager") as mock_config:
+            mock_config_obj = MagicMock()
+            mock_config_obj.llm_provider_config = {}
+            mock_config_obj.active_model = "databricks-claude-3-7-sonnet"
+            mock_config.return_value.get_config.return_value = mock_config_obj
+
+            from chuck_data.llm.providers.databricks import DatabricksProvider
+
+            provider = LLMProviderFactory.create("databricks")
+
+            assert isinstance(provider, DatabricksProvider)
+            assert provider.default_model == "databricks-claude-3-7-sonnet"
+
     @patch("chuck_data.llm.providers.aws_bedrock.boto3")
     def test_create_aws_bedrock_provider(self, mock_boto3):
         """Factory can create AWS Bedrock provider."""

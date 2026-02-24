@@ -81,9 +81,9 @@ class LLMProviderFactory:
                 config = provider_configs.get(provider_name, {})
                 logger.debug(f"Loaded config for {provider_name}")
 
-            # Add active_model to config if set (overrides provider-specific model_id)
+            # Add active_model to config if set (overrides provider-specific model)
             if hasattr(chuck_config, "active_model") and chuck_config.active_model:
-                config["model_id"] = chuck_config.active_model
+                config["model"] = chuck_config.active_model
                 logger.debug(
                     f"Using active_model from config: {chuck_config.active_model}"
                 )
