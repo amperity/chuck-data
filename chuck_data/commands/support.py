@@ -39,7 +39,7 @@ Run [bold]/discord[/bold] to get an invitation link
 
 [bold]3. Email Support[/bold]
 Contact our dedicated support team directly:
-chuck-support@amperity.com
+chuck-team@amperity.com
 
 [bold]4. Bug Reports[/bold]
 Let Chuck submit a bug report automatically with:
