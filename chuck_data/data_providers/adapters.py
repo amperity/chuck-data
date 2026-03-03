@@ -6,6 +6,7 @@ These adapters wrap existing clients to conform to the DataProvider protocol.
 from typing import List, Dict, Optional, Any
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.clients.snowflake import SnowflakeAPIClient
 from chuck_data.data_providers.provider import DataProvider
 
 
@@ -536,3 +537,220 @@ class RedshiftProviderAdapter(DataProvider):
             logging.error(f"Error storing PII tags in Redshift: {str(e)}")
             logging.error(traceback.format_exc())
             return {"success": False, "tags_applied": 0, "errors": [{"error": str(e)}]}
+
+
+class SnowflakeProviderAdapter(DataProvider):
+    """Adapter for SnowflakeAPIClient to conform to DataProvider protocol.
+
+    Snowflake does not expose column tags through the Spark connector, so
+    semantic tags are stored in a metadata table (chuck_metadata.semantic_tags)
+    using the same pattern as RedshiftProviderAdapter.
+    """
+
+    def __init__(
+        self,
+        account: str,
+        user: str,
+        database: str = "SNOWFLAKE",
+        schema: Optional[str] = None,
+        warehouse: Optional[str] = None,
+        role: Optional[str] = None,
+        password: Optional[str] = None,
+        private_key_path: Optional[str] = None,
+    ):
+        """Initialize Snowflake provider adapter.
+
+        Args:
+            account: Snowflake account identifier (e.g. 'myorg-myaccount')
+            user: Snowflake user login name
+            database: Default database
+            schema: Default schema (optional)
+            warehouse: Virtual warehouse to use (optional)
+            role: Snowflake role (optional)
+            password: Password auth (mutually exclusive with private_key_path)
+            private_key_path: Path to RSA private key PEM file
+        """
+        self.client = SnowflakeAPIClient(
+            account=account,
+            user=user,
+            database=database,
+            schema=schema,
+            warehouse=warehouse,
+            role=role,
+            password=password,
+            private_key_path=private_key_path,
+        )
+
+    def validate_connection(self) -> bool:
+        """Validate Snowflake connection."""
+        return self.client.validate_connection()
+
+    def list_databases(self) -> List[str]:
+        """List Snowflake databases visible to the current user."""
+        result = self.client.list_databases()
+        return [db["name"] for db in result.get("databases", [])]
+
+    def list_schemas(self, catalog: Optional[str] = None) -> List[str]:
+        """List schemas in a database.
+
+        Args:
+            catalog: Database name (uses client default if not specified)
+        """
+        result = self.client.list_schemas(database=catalog)
+        return [s["name"] for s in result.get("schemas", [])]
+
+    def list_tables(
+        self, catalog: Optional[str] = None, schema: Optional[str] = None, **kwargs: Any
+    ) -> List[Dict]:
+        """List tables in a schema.
+
+        Args:
+            catalog: Database name (uses client default if not specified)
+            schema: Schema name to filter by (optional)
+        """
+        result = self.client.list_tables(
+            database=catalog, schema_pattern=schema, **kwargs
+        )
+        return result.get("tables", [])
+
+    def get_table(
+        self,
+        catalog: Optional[str] = None,
+        schema: Optional[str] = None,
+        table: Optional[str] = None,
+    ) -> Dict:
+        """Get table column metadata.
+
+        Args:
+            catalog: Database name (uses client default if not specified)
+            schema: Schema name (required)
+            table: Table name (required)
+        """
+        return self.client.describe_table(database=catalog, schema=schema, table=table)
+
+    def execute_query(
+        self, query: str, catalog: Optional[str] = None, **kwargs: Any
+    ) -> Dict:
+        """Execute SQL query.
+
+        Args:
+            query: SQL query to execute
+            catalog: Database context (optional)
+        """
+        return self.client.execute_sql(sql=query, database=catalog)
+
+    def tag_columns(
+        self,
+        tags: List[Dict[str, str]],
+        catalog: Optional[str] = None,
+        schema: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict:
+        """Apply semantic tags to Snowflake columns using native Snowflake object tags.
+
+        Mirrors the Databricks Unity Catalog approach — no metadata tables or extra
+        schemas. Creates a TAG object in the target schema (required by Snowflake
+        before tags can be applied) then sets it on each column:
+
+            CREATE TAG IF NOT EXISTS {db}.{schema}.semantic_type;
+            ALTER TABLE {db}.{schema}.{table}
+            MODIFY COLUMN {column}
+            SET TAG {db}.{schema}.semantic_type = '{semantic_value}';
+
+        Tags are visible in the Snowflake dashboard under each column's metadata.
+
+        Args:
+            tags: List of tag dicts with 'table', 'column', 'semantic_type' keys
+            catalog: Database name (uses client default if not specified)
+            schema: Schema name (required)
+        """
+        import logging as _logging
+
+        if not schema:
+            raise ValueError("Snowflake tag_columns requires 'schema' parameter")
+
+        if not tags:
+            return {"success": True, "tags_applied": 0, "errors": []}
+
+        default_database = catalog or self.client.database
+
+        tags_applied = 0
+        errors = []
+
+        # Resolve the (db, schema, table) triple for every tag.
+        # The `table` field in each tag dict may be:
+        #   - bare name:           "CUSTOMERS"           → use catalog/schema params
+        #   - schema-qualified:    "CHUCK_DATA.CUSTOMERS" → use catalog param + embedded schema
+        #   - fully qualified:     "DEV.CHUCK_DATA.CUSTOMERS" → extract all three
+        resolved = []
+        for tag in tags:
+            tbl_raw = tag.get("table") or ""
+            col = tag.get("column") or ""
+            sem = (tag.get("semantic_type") or "").replace("'", "''")
+
+            if not tbl_raw or not col or not sem:
+                errors.append(
+                    {
+                        "table": tbl_raw or "unknown",
+                        "column": col or "unknown",
+                        "error": "Missing table, column, or semantic_type",
+                    }
+                )
+                continue
+
+            parts = tbl_raw.split(".")
+            if len(parts) == 3:
+                db, sch, tbl = parts
+            elif len(parts) == 2:
+                db, sch, tbl = default_database, parts[0], parts[1]
+            else:
+                db, sch, tbl = default_database, schema, tbl_raw
+
+            resolved.append((db, sch, tbl, col, sem))
+
+        # Ensure the tag object exists in every unique (database, schema) pair.
+        # This handles cross-schema and cross-database stitch jobs where tables
+        # live in different schemas — each schema needs its own tag object.
+        unique_schemas = {(db, sch) for db, sch, *_ in resolved}
+        for db, sch in unique_schemas:
+            tag_ref = f"{db}.{sch}.semantic_type"
+            try:
+                self.client.execute_sql(
+                    f"CREATE TAG IF NOT EXISTS {tag_ref}",
+                    database=db,
+                )
+            except Exception as e:
+                _logging.error(
+                    "Error creating Snowflake tag object %s: %s", tag_ref, str(e)
+                )
+                # Mark all tags in this schema as failed and skip them
+                for r in resolved:
+                    if r[0] == db and r[1] == sch:
+                        errors.append({"table": r[2], "column": r[3], "error": str(e)})
+                resolved = [r for r in resolved if not (r[0] == db and r[1] == sch)]
+
+        for db, sch, tbl, col, sem in resolved:
+            tag_ref = f"{db}.{sch}.semantic_type"
+            try:
+                # Double-quote the column name to preserve case.
+                # Snowflake stores quoted identifiers case-sensitively (e.g. "name_prefix"
+                # stays lowercase). Using the name unquoted would uppercase it and fail
+                # if the column was originally created with double quotes.
+                self.client.execute_sql(
+                    f"ALTER TABLE {db}.{sch}.{tbl} "
+                    f'MODIFY COLUMN "{col}" '
+                    f"SET TAG {tag_ref} = '{sem}'",
+                    database=db,
+                )
+                tags_applied += 1
+            except Exception as e:
+                _logging.error(
+                    "Error tagging %s.%s.%s.%s: %s", db, sch, tbl, col, str(e)
+                )
+                errors.append({"table": tbl, "column": col, "error": str(e)})
+
+        return {
+            "success": len(errors) == 0,
+            "tags_applied": tags_applied,
+            "errors": errors,
+        }

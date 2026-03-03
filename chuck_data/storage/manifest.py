@@ -155,6 +155,162 @@ def generate_manifest_from_scan(
     return manifest
 
 
+def generate_snowflake_manifest(
+    database: str,
+    schema: str,
+    tables: List[Dict[str, Any]],
+    semantic_tags: List[Dict[str, str]],
+    snowflake_config: Dict[str, str],
+    compute_provider: Optional[str] = "databricks",
+    output_database: Optional[str] = None,
+    output_schema: Optional[str] = "stitch_outputs",
+) -> Dict[str, Any]:
+    """Generate a stitch-standalone manifest for Snowflake data.
+
+    Reads semantic tags that were applied as native Snowflake column tags and
+    builds the manifest JSON consumed by stitch-standalone's SnowflakeTableStore.
+
+    Args:
+        database: Snowflake database name (source data)
+        schema: Snowflake schema name (source data)
+        tables: List of {'table_name': str, 'columns': [{'name', 'type'}]}
+                from SnowflakeAPIClient.read_table_schemas_for_stitch()
+        semantic_tags: List of {'table': str, 'column': str, 'semantic': str}
+                       from SnowflakeAPIClient.read_snowflake_semantic_tags()
+        snowflake_config: Dict with account, user, warehouse, and optionally role
+        compute_provider: "databricks" or "aws_emr"
+        output_database: Database where Stitch writes results (defaults to `database`)
+        output_schema: Schema where Stitch writes results (default "stitch_outputs")
+
+    Returns:
+        Manifest dict compatible with stitch-standalone generic_main.
+    """
+    output_database = output_database or database
+
+    # Determine whether tables span multiple schemas (multi-schema stitch job).
+    # Each table_info may carry a 'schema' key added by _snowflake_prepare_manifest.
+    table_schemas = {t.get("table_name", ""): t.get("schema", schema) for t in tables}
+    unique_schemas = set(table_schemas.values())
+    multi_schema = len(unique_schemas) > 1
+
+    # Build a quick lookup keyed by (table_name) since schema is tracked separately.
+    # Also build a (schema, table) → {column: semantic} map for the tag lookups.
+    tag_lookup: Dict[str, Dict[str, str]] = {}  # table_name → {col_name: semantic}
+    for tag in semantic_tags:
+        tbl = tag.get("table", "")
+        col = tag.get("column", "")
+        sem = tag.get("semantic", "")
+        if tbl and col and sem:
+            tag_lookup.setdefault(tbl, {})[col] = sem
+
+    tagged_table_names = set(tag_lookup.keys())
+
+    manifest_tables = []
+    for table_info in tables:
+        table_name = table_info.get("table_name", "")
+        if table_name not in tagged_table_names:
+            continue
+
+        tbl_schema = table_info.get("schema", schema)
+        columns = table_info.get("columns", [])
+        col_tags = tag_lookup.get(table_name, {})
+
+        fields = []
+        for col in columns:
+            col_name = col.get("name", "")
+            col_type = _normalize_type(col.get("type", "string"))
+            semantic = col_tags.get(col_name)
+
+            field: Dict[str, Any] = {
+                "field-name": col_name,
+                "type": col_type,
+                "semantics": [semantic, "pii"] if semantic else [],
+            }
+            fields.append(field)
+
+        if fields:
+            # Always use schema.table as the path so stitch-standalone can correctly
+            # resolve which Snowflake schema each table lives in. This is especially
+            # important for multi-schema jobs but harmless for single-schema jobs.
+            path = f"{tbl_schema}.{table_name}"
+            manifest_tables.append({"path": path, "fields": fields})
+
+    # Build auth section — only include the key that is set
+    auth: Dict[str, str] = {}
+    if snowflake_config.get("password"):
+        auth["snowflake_password"] = snowflake_config["password"]
+    elif snowflake_config.get("private_key"):
+        auth["snowflake_private_key"] = snowflake_config["private_key"]
+
+    manifest: Dict[str, Any] = {
+        "tables": manifest_tables,
+        "settings": {
+            "data_provider": "snowflake",
+            "compute_provider": compute_provider or "databricks",
+            "snowflake_config": {
+                "account": snowflake_config.get("account", ""),
+                "user": snowflake_config.get("user", ""),
+                "database": database,
+                "schema": schema,
+                "warehouse": snowflake_config.get("warehouse", ""),
+                **(
+                    {"role": snowflake_config["role"]}
+                    if snowflake_config.get("role")
+                    else {}
+                ),
+            },
+            "output_database_name": output_database,
+            "output_schema_name": output_schema,
+            **auth,
+        },
+    }
+    return manifest
+
+
+def validate_snowflake_manifest(manifest: Dict[str, Any]):
+    """Validate a Snowflake stitch manifest.
+
+    Returns:
+        (True, None) if valid, (False, error_message) if invalid.
+    """
+    if "tables" not in manifest:
+        return False, "Missing 'tables' key"
+    if "settings" not in manifest:
+        return False, "Missing 'settings' key"
+
+    settings = manifest["settings"]
+    if "snowflake_config" not in settings:
+        return False, "Missing 'settings.snowflake_config'"
+    if "output_database_name" not in settings:
+        return False, "Missing 'settings.output_database_name'"
+    if "output_schema_name" not in settings:
+        return False, "Missing 'settings.output_schema_name'"
+
+    sf = settings["snowflake_config"]
+    for key in ("account", "user", "database", "schema", "warehouse"):
+        if not sf.get(key):
+            return False, f"Missing 'settings.snowflake_config.{key}'"
+
+    if not settings.get("snowflake_password") and not settings.get(
+        "snowflake_private_key"
+    ):
+        return (
+            False,
+            "Missing auth: set 'snowflake_password' or 'snowflake_private_key'",
+        )
+
+    if not manifest["tables"]:
+        return False, "No tables with semantic tags found in manifest"
+
+    for table in manifest["tables"]:
+        if not table.get("path"):
+            return False, "A table entry is missing 'path'"
+        if not table.get("fields"):
+            return False, f"Table '{table.get('path')}' has no fields"
+
+    return True, None
+
+
 def _normalize_type(type_str: str) -> str:
     """
     Normalize database types to simple types for manifest.

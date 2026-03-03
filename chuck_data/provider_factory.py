@@ -19,6 +19,7 @@ from chuck_data.storage_providers import (
     StorageProvider,
     DatabricksVolumeStorage,
     S3Storage,
+    SnowflakeStorageProvider,
 )
 
 
@@ -96,16 +97,30 @@ class ProviderFactory:
                     "in config or DATABRICKS_WORKSPACE_URL and DATABRICKS_TOKEN env vars"
                 )
 
-            # Determine appropriate storage provider based on data provider type
+            # Storage provider is determined by the DATA provider — each data provider
+            # has a natural storage backend for manifests and init scripts.
             data_provider_type = config.get("data_provider_type", "databricks")
 
             if data_provider_type == "redshift":
-                # Redshift data → use S3 for manifest and init script storage
+                # Redshift is AWS-native → S3
                 storage_provider = ProviderFactory.create_storage_provider(
                     "s3",
                     {
                         "region": config.get("aws_region", "us-east-1"),
                         "aws_profile": config.get("aws_profile"),
+                    },
+                )
+            elif data_provider_type == "snowflake":
+                # Snowflake data + Databricks compute: artifacts (manifests, init
+                # scripts) must live in Databricks Volumes. Databricks cluster init
+                # scripts cannot be loaded from Snowflake internal stages — only from
+                # Volumes, S3, DBFS, or ADLS. Use DatabricksVolumeStorage so that
+                # both the manifest and the init script are accessible to the cluster.
+                storage_provider = ProviderFactory.create_storage_provider(
+                    "databricks",
+                    {
+                        "workspace_url": workspace_url,
+                        "token": token,
                     },
                 )
             else:
@@ -233,8 +248,23 @@ class ProviderFactory:
                 aws_secret_access_key=config.get("aws_secret_access_key"),
             )
 
+        elif provider_type == "snowflake":
+            # Snowflake's natural storage: internal stage in the Snowflake account.
+            # Artifacts are uploaded via PUT and read by stitch-standalone
+            # using the Snowflake connector (@stage path in manifest_io.clj).
+            return SnowflakeStorageProvider(
+                account=config.get("account") or "",
+                user=config.get("user") or "",
+                warehouse=config.get("warehouse") or "",
+                database=config.get("database") or "",
+                schema=config.get("schema") or "",
+                role=config.get("role"),
+                password=config.get("password"),
+                private_key_path=config.get("private_key_path"),
+            )
+
         else:
             raise ValueError(
                 f"Unknown storage provider: {provider_type}. "
-                f"Supported providers: databricks, s3"
+                f"Supported providers: databricks, s3, snowflake"
             )

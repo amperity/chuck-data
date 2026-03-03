@@ -11,6 +11,7 @@ from chuck_data.data_providers.provider import DataProvider
 from chuck_data.data_providers.adapters import (
     DatabricksProviderAdapter,
     RedshiftProviderAdapter,
+    SnowflakeProviderAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class DataProviderFactory:
     implemented in a later PR.
     """
 
-    _SUPPORTED_PROVIDERS = ["databricks", "aws_redshift"]
+    _SUPPORTED_PROVIDERS = ["databricks", "aws_redshift", "snowflake"]
 
     @staticmethod
     def create(provider_name: Optional[str] = None, **kwargs) -> DataProvider:
@@ -116,6 +117,28 @@ class DataProviderFactory:
                 s3_bucket=config.get("s3_bucket"),
                 redshift_iam_role=config.get("redshift_iam_role"),
                 emr_cluster_id=config.get("emr_cluster_id"),
+            )
+
+        elif provider_name == "snowflake":
+            account = config.get("account")
+            user = config.get("user")
+            if not account or not user:
+                raise ValueError(
+                    "Snowflake provider requires 'account' and 'user' in config"
+                )
+            if not config.get("password") and not config.get("private_key_path"):
+                raise ValueError(
+                    "Snowflake provider requires 'password' or 'private_key_path'"
+                )
+            return SnowflakeProviderAdapter(
+                account=account,
+                user=user,
+                database=config.get("database", "SNOWFLAKE"),
+                schema=config.get("schema"),
+                warehouse=config.get("warehouse"),
+                role=config.get("role"),
+                password=config.get("password"),
+                private_key_path=config.get("private_key_path"),
             )
 
         else:

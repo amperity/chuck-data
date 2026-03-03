@@ -23,6 +23,7 @@ from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.data_providers import (
     get_provider_adapter,
     is_redshift_client,
+    is_snowflake_client,
 )
 
 
@@ -75,6 +76,10 @@ def _validate_parameters(client, **kwargs):
     """Comprehensive parameter validation (provider-aware)."""
     errors = []
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
+    uses_database = (
+        is_redshift or is_snowflake
+    )  # providers using database.schema hierarchy
 
     # Get catalog/database name (explicit or from config)
     catalog_name = kwargs.get("catalog_name") or kwargs.get("database")
@@ -82,16 +87,16 @@ def _validate_parameters(client, **kwargs):
         try:
             catalog_name = (
                 config.get_active_database()
-                if is_redshift
+                if uses_database
                 else config.get_active_catalog()
             )
             if not catalog_name:
-                resource_type = "database" if is_redshift else "catalog"
+                resource_type = "database" if uses_database else "catalog"
                 errors.append(
                     f"No {resource_type} specified and no active {resource_type} configured"
                 )
         except Exception:
-            resource_type = "database" if is_redshift else "catalog"
+            resource_type = "database" if uses_database else "catalog"
             errors.append(
                 f"No {resource_type} specified and no active {resource_type} configured"
             )
@@ -107,7 +112,7 @@ def _validate_parameters(client, **kwargs):
             errors.append("No schema specified and no active schema configured")
 
     # Check warehouse configuration for SQL operations (Databricks only)
-    if not is_redshift:
+    if not is_redshift and not is_snowflake:
         try:
             warehouse_id = config.get_warehouse_id()
             if not warehouse_id:
@@ -126,8 +131,8 @@ def _validate_parameters(client, **kwargs):
 
     # Validate catalog/database and schema exist (provider-specific)
     # Note: Validation is best-effort - if we can't validate, we proceed anyway
-    if is_redshift:
-        # For Redshift: validate database and schema (best-effort)
+    if is_redshift or is_snowflake:
+        # For Redshift/Snowflake: validate database and schema (best-effort)
         try:
             databases = client.list_databases()
             if not any(
@@ -142,7 +147,6 @@ def _validate_parameters(client, **kwargs):
                     message=f"Database '{catalog_name}' not found. Available databases: {available}",
                 )
         except Exception as e:
-            # If we can't list databases (e.g., connection issues), log and proceed
             import logging
 
             logging.warning(
@@ -161,7 +165,6 @@ def _validate_parameters(client, **kwargs):
                     message=f"Schema '{schema_name}' not found. Available schemas: {available}",
                 )
         except Exception as e:
-            # If we can't list schemas (e.g., connection issues), log and proceed
             import logging
 
             logging.warning(f"Unable to validate schema (proceeding anyway): {str(e)}")
@@ -210,10 +213,14 @@ def _execute_directly(client, **kwargs):
     """Execute workflow directly without interaction."""
     # Get parameters (validated already) - provider-aware
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
+    uses_database = is_redshift or is_snowflake
     catalog_name = kwargs.get("catalog_name") or kwargs.get("database")
     if not catalog_name:
         catalog_name = (
-            config.get_active_database() if is_redshift else config.get_active_catalog()
+            config.get_active_database()
+            if uses_database
+            else config.get_active_catalog()
         )
     schema_name = kwargs.get("schema_name") or config.get_active_schema()
     tool_output_callback = kwargs.get("tool_output_callback")
@@ -355,6 +362,7 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
     # Get data provider adapter
     provider = get_provider_adapter(client)
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
 
     # Determine catalog and schema from scan summary
     results_detail = scan_summary_data.get("results_detail", [])
@@ -369,8 +377,9 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
     full_name = first_table.get("full_name", "")
     parts = full_name.split(".")
 
-    # For Databricks: catalog.schema.table (3 parts)
-    # For Redshift: schema.table (2 parts, database from config)
+    # Name conventions in full_name:
+    #   Databricks / Snowflake: catalog.schema.table  (3 parts)
+    #   Redshift:                schema.table          (2 parts, database from config)
     if is_redshift:
         catalog = config.get_active_database()
         schema = parts[0] if len(parts) >= 2 else None
@@ -378,9 +387,10 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
         catalog = parts[0] if len(parts) >= 3 else None
         schema = parts[1] if len(parts) >= 3 else None
 
-    # Group PII columns by table for progress reporting
-    # For Databricks: use fully qualified table name (catalog.schema.table)
-    # For Redshift: use just table name (table metadata stored separately)
+    # Group PII columns by table for progress reporting.
+    # tag_table_ref is what gets passed as `table` inside each tag dict:
+    #   Redshift:            table name only  (metadata table stores full context)
+    #   Databricks/Snowflake: just table name (catalog+schema passed separately to tag_columns)
     tables_with_pii = []
     all_tagging_results = []
 
@@ -392,14 +402,10 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
         ):
             continue
 
-        table_name = table_result.get("table_name")  # Just the table name
-        full_table_name = table_result.get("full_name")  # Fully qualified name
+        table_name = table_result.get("table_name")  # bare table name
         pii_columns = table_result.get("pii_columns", [])
+        tag_table_ref = table_name  # all providers now use bare table name here
 
-        # Use table_name for Redshift, full_table_name for Databricks
-        tag_table_ref = table_name if is_redshift else full_table_name
-
-        # Prepare tags for this table
         table_tags = []
         for column in pii_columns:
             column_name = column.get("name")
@@ -428,8 +434,8 @@ def _execute_bulk_tagging(client, scan_summary_data, tool_output_callback=None):
 
     # Prepare provider-specific parameters
     tag_kwargs = {}
-    if not is_redshift:
-        # Databricks requires warehouse_id
+    if not is_redshift and not is_snowflake:
+        # Databricks requires warehouse_id for SQL execution
         warehouse_id = config.get_warehouse_id()
         if not warehouse_id:
             return [
@@ -605,10 +611,14 @@ def _start_interactive_mode(client, **kwargs):
     """Start interactive workflow - Phase 1: Scan and Preview."""
     # Get parameters (validated already) - provider-aware
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
+    uses_database = is_redshift or is_snowflake
     catalog_name = kwargs.get("catalog_name") or kwargs.get("database")
     if not catalog_name:
         catalog_name = (
-            config.get_active_database() if is_redshift else config.get_active_catalog()
+            config.get_active_database()
+            if uses_database
+            else config.get_active_catalog()
         )
     schema_name = kwargs.get("schema_name") or config.get_active_schema()
 
