@@ -27,6 +27,10 @@ VALID_PROVIDER_COMBINATIONS = {
         "databricks",
         "aws_emr",
     ],  # Redshift data → Databricks or EMR compute
+    "snowflake": [
+        "databricks",
+        "aws_emr",
+    ],  # Snowflake data → Databricks or EMR compute
 }
 
 
@@ -138,14 +142,18 @@ class DataProviderSelectionStep(SetupStep):
         return "Data Provider Selection"
 
     def get_prompt_message(self, state: WizardState) -> str:
-        return "Please select your data provider:\n  1. Databricks (Unity Catalog)\n  2. AWS Redshift\nEnter the number or name of the provider:"
+        return (
+            "Please select your data provider:\n"
+            "  1. Databricks (Unity Catalog)\n"
+            "  2. AWS Redshift\n"
+            "  3. Snowflake\n"
+            "Enter the number or name of the provider:"
+        )
 
     def handle_input(self, input_text: str, state: WizardState) -> StepResult:
         """Handle data provider selection input."""
-        # Normalize input
         input_normalized = input_text.strip().lower()
 
-        # Map inputs to provider names
         if input_normalized in ["1", "databricks"]:
             provider = "databricks"
             next_step = WizardStep.WORKSPACE_URL
@@ -154,10 +162,19 @@ class DataProviderSelectionStep(SetupStep):
             provider = "aws_redshift"
             next_step = WizardStep.AWS_PROFILE_INPUT
             message = "AWS Redshift selected. Please configure AWS settings."
+        elif input_normalized in ["3", "snowflake"]:
+            provider = "snowflake"
+            next_step = WizardStep.SNOWFLAKE_ACCOUNT_INPUT
+            message = (
+                "Snowflake selected. Please enter your Snowflake account identifier."
+            )
         else:
             return StepResult(
                 success=False,
-                message="Invalid selection. Please enter 1 (Databricks) or 2 (AWS Redshift).",
+                message=(
+                    "Invalid selection. Please enter 1 (Databricks), "
+                    "2 (AWS Redshift), or 3 (Snowflake)."
+                ),
                 action=WizardAction.RETRY,
             )
 
@@ -1642,6 +1659,194 @@ class UsageConsentStep(SetupStep):
             )
 
 
+# ---------------------------------------------------------------------------
+# Snowflake-specific setup steps
+# ---------------------------------------------------------------------------
+
+
+class SnowflakeAccountInputStep(SetupStep):
+    """Collect the Snowflake account identifier."""
+
+    def get_step_title(self) -> str:
+        return "Snowflake Account"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please enter your Snowflake account identifier.\n"
+            "Format: <org>-<account>  (e.g. myorg-myaccount)\n"
+            "You can find this in the Snowflake URL: "
+            "https://<account>.snowflakecomputing.com\n"
+            "Snowflake Account:"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        account = input_text.strip()
+        if not account:
+            return StepResult(
+                success=False,
+                message="Account identifier cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+        try:
+            from chuck_data.config import get_config_manager
+
+            get_config_manager().update(snowflake_account=account)
+            return StepResult(
+                success=True,
+                message=f"Snowflake account '{account}' saved. Please enter your username.",
+                next_step=WizardStep.SNOWFLAKE_USER_INPUT,
+                action=WizardAction.CONTINUE,
+                data={"snowflake_account": account},
+            )
+        except Exception as e:
+            logging.error(f"Error saving Snowflake account: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving Snowflake account: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class SnowflakeUserInputStep(SetupStep):
+    """Collect the Snowflake user login name."""
+
+    def get_step_title(self) -> str:
+        return "Snowflake User"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return "Please enter your Snowflake user login name:\nSnowflake User:"
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        user = input_text.strip()
+        if not user:
+            return StepResult(
+                success=False,
+                message="User name cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+        try:
+            from chuck_data.config import get_config_manager
+
+            get_config_manager().update(snowflake_user=user)
+            return StepResult(
+                success=True,
+                message=(
+                    f"User '{user}' saved. "
+                    "Please enter your password or the path to your private key file."
+                ),
+                next_step=WizardStep.SNOWFLAKE_AUTH_INPUT,
+                action=WizardAction.CONTINUE,
+                data={"snowflake_user": user},
+            )
+        except Exception as e:
+            logging.error(f"Error saving Snowflake user: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving Snowflake user: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class SnowflakeAuthInputStep(SetupStep):
+    """Collect Snowflake authentication — password or path to a private key file."""
+
+    def get_step_title(self) -> str:
+        return "Snowflake Authentication"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please enter your Snowflake authentication.\n"
+            "  - Type your password, OR\n"
+            "  - Type the path to an unencrypted RSA private key PEM file "
+            "(e.g. /home/user/.snowflake/rsa_key.p8)\n"
+            "Password or key path:"
+        )
+
+    def should_hide_input(self, state: WizardState) -> bool:
+        return True
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        value = input_text.strip()
+        if not value:
+            return StepResult(
+                success=False,
+                message="Authentication value cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+        try:
+            import os
+            from chuck_data.config import get_config_manager
+
+            # Heuristic: if the value looks like a file path, treat it as a key
+            if os.path.sep in value or value.endswith(".p8") or value.endswith(".pem"):
+                get_config_manager().update(snowflake_private_key_path=value)
+                data = {"snowflake_private_key_path": value}
+                msg = "Private key path saved."
+            else:
+                get_config_manager().update(snowflake_password=value)
+                data = {"snowflake_password": value}
+                msg = "Password saved."
+
+            return StepResult(
+                success=True,
+                message=f"{msg} Please enter your Snowflake virtual warehouse.",
+                next_step=WizardStep.SNOWFLAKE_WAREHOUSE_INPUT,
+                action=WizardAction.CONTINUE,
+                data=data,
+            )
+        except Exception as e:
+            logging.error(f"Error saving Snowflake auth: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving Snowflake auth: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
+class SnowflakeWarehouseInputStep(SetupStep):
+    """Collect the Snowflake virtual warehouse name."""
+
+    def get_step_title(self) -> str:
+        return "Snowflake Warehouse"
+
+    def get_prompt_message(self, state: WizardState) -> str:
+        return (
+            "Please enter the name of the Snowflake virtual warehouse to use.\n"
+            "This warehouse will be used for data export/import during Stitch.\n"
+            "Snowflake Warehouse:"
+        )
+
+    def handle_input(self, input_text: str, state: WizardState) -> StepResult:
+        warehouse = input_text.strip()
+        if not warehouse:
+            return StepResult(
+                success=False,
+                message="Warehouse name cannot be empty.",
+                action=WizardAction.RETRY,
+            )
+        try:
+            from chuck_data.config import get_config_manager
+
+            get_config_manager().update(snowflake_warehouse=warehouse)
+            return StepResult(
+                success=True,
+                message=(
+                    f"Warehouse '{warehouse}' saved. "
+                    "Please select a compute provider for running Stitch."
+                ),
+                next_step=WizardStep.COMPUTE_PROVIDER_SELECTION,
+                action=WizardAction.CONTINUE,
+                data={"snowflake_warehouse": warehouse},
+            )
+        except Exception as e:
+            logging.error(f"Error saving Snowflake warehouse: {e}")
+            return StepResult(
+                success=False,
+                message=f"Error saving Snowflake warehouse: {str(e)}",
+                action=WizardAction.RETRY,
+            )
+
+
 # Step factory
 def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
     """Factory function to create step handlers."""
@@ -1662,6 +1867,11 @@ def create_step(step_type: WizardStep, validator: InputValidator) -> SetupStep:
         WizardStep.IAM_ROLE_INPUT: IAMRoleInputStep,
         WizardStep.INSTANCE_PROFILE_INPUT: InstanceProfileInputStep,
         WizardStep.USAGE_CONSENT: UsageConsentStep,
+        # Snowflake-specific steps
+        WizardStep.SNOWFLAKE_ACCOUNT_INPUT: SnowflakeAccountInputStep,
+        WizardStep.SNOWFLAKE_USER_INPUT: SnowflakeUserInputStep,
+        WizardStep.SNOWFLAKE_AUTH_INPUT: SnowflakeAuthInputStep,
+        WizardStep.SNOWFLAKE_WAREHOUSE_INPUT: SnowflakeWarehouseInputStep,
     }
 
     step_class = step_map.get(step_type)

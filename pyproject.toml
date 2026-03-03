@@ -43,6 +43,7 @@ dependencies = [
     "pydantic>=2.11.3",
     "readchar>=4.2.1",
     "requests>=2.32.3",
+    "snowflake-connector-python>=3.0.0",
     "textual>=0.40.0",
 ]
 
