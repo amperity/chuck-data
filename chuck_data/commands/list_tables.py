@@ -5,10 +5,11 @@ Command for listing tables in a schema (works with both Databricks and Redshift)
 from typing import Optional, Any, Union
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.clients.snowflake import SnowflakeAPIClient
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.commands.base import CommandResult
 from chuck_data.config import get_active_catalog, get_active_schema, get_active_database
-from chuck_data.data_providers import is_redshift_client
+from chuck_data.data_providers import is_redshift_client, is_snowflake_client
 import logging
 
 
@@ -48,13 +49,60 @@ def handle_command(
 
     # Determine which provider we're using
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
 
     # Extract common parameters
     schema_name = kwargs.get("schema_name")
     omit_columns = kwargs.get("omit_columns", False)
 
     try:
-        if is_redshift:
+        if is_snowflake:
+            # Snowflake path: database.schema model (same hierarchy as Redshift)
+            database = kwargs.get("database") or get_active_database()
+            if not database:
+                return CommandResult(
+                    False,
+                    message="No database specified and no active database set. Use /select-database first.",
+                )
+            if not schema_name:
+                schema_name = get_active_schema()
+                if not schema_name:
+                    return CommandResult(
+                        False,
+                        message="No schema specified and no active schema set. Use /select-schema first.",
+                    )
+
+            result = client.list_tables(database=database, schema_pattern=schema_name)
+            raw_tables = result.get("tables", [])
+
+            formatted = []
+            for t in raw_tables:
+                # SHOW TABLES returns dict rows; extract name and kind
+                name = t.get("name") or t.get("table_name", "")
+                kind = t.get("kind", "TABLE")
+                formatted.append(
+                    {
+                        "name": name,
+                        "catalog_name": database,
+                        "schema_name": schema_name,
+                        "table_type": kind,
+                        "column_count": "-",
+                    }
+                )
+
+            return CommandResult(
+                True,
+                data={
+                    "tables": formatted,
+                    "total_count": len(formatted),
+                    "display": display,
+                    "schema_name": schema_name,
+                    "database": database,
+                },
+                message=f"Found {len(formatted)} table(s) in {database}.{schema_name}.",
+            )
+
+        elif is_redshift:
             # Redshift path: use database and schema
             database = kwargs.get("database")
 

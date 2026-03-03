@@ -8,7 +8,15 @@ class DataProvider(Protocol):
     """Protocol that all data providers must implement.
 
     Data providers enable browsing and querying data tables
-    from different platforms (Databricks, AWS Redshift, etc.)
+    from different platforms (Databricks, AWS Redshift, Snowflake, etc.)
+
+    Naming convention for the `catalog` parameter:
+    - Databricks: Unity Catalog catalog  (catalog.schema.table)
+    - Redshift:   Database               (database.schema.table)
+    - Snowflake:  Database               (database.schema.table)
+
+    The parameter is named `catalog` for historical reasons; treat it as
+    "the top-level namespace container" for whichever provider is in use.
     """
 
     def validate_connection(self) -> bool:
@@ -31,10 +39,11 @@ class DataProvider(Protocol):
         ...
 
     def list_schemas(self, catalog: Optional[str] = None) -> List[str]:
-        """List schemas in a catalog.
+        """List schemas in a catalog or database.
 
         Args:
-            catalog: Catalog/database name (uses default if not specified)
+            catalog: Catalog name (Databricks) / database name (Redshift, Snowflake).
+                     Uses the provider's default if not specified.
 
         Returns:
             List of schema names
@@ -47,7 +56,8 @@ class DataProvider(Protocol):
         """List tables in a schema.
 
         Args:
-            catalog: Catalog/database name (uses default if not specified)
+            catalog: Catalog (Databricks) / database (Redshift, Snowflake).
+                     Uses the provider's default if not specified.
             schema: Schema name (optional, may filter by pattern)
             **kwargs: Provider-specific filters (e.g., table_pattern)
 
@@ -98,17 +108,20 @@ class DataProvider(Protocol):
     ) -> Dict:
         """Apply semantic tags to columns.
 
-        For Databricks: Uses ALTER TABLE ... SET TAGS SQL statements
-        For Redshift: Stores tags in chuck_metadata.semantic_tags table
-        (Redshift doesn't support native column tags)
+        For Databricks: Uses ALTER TABLE ... ALTER COLUMN ... SET TAGS
+        For Snowflake:  Uses ALTER TABLE ... MODIFY COLUMN ... SET TAG
+                        (tag object created in the same schema as the table)
+        For Redshift:   Stores tags in chuck_metadata.semantic_tags table
+                        (Redshift doesn't support native column tags)
 
         Args:
             tags: List of tag dictionaries with keys:
-                - table: Table name
+                - table: Table name (bare, schema-qualified, or fully qualified)
                 - column: Column name
                 - semantic_type: Semantic type (e.g., 'pii/email', 'pii/phone')
-            catalog: Catalog/database name (uses default if not specified)
-            schema: Schema name (optional for Databricks, required for Redshift)
+            catalog: Catalog (Databricks) / database (Redshift, Snowflake).
+                     Uses the provider's default if not specified.
+            schema: Schema name (optional for Databricks, required for Redshift/Snowflake)
             **kwargs: Provider-specific options (e.g., warehouse_id for Databricks)
 
         Returns:

@@ -523,7 +523,7 @@ class ChuckTUI:
                 self._display_sql_results(result.data)
             elif cmd == "/scan-pii":
                 self._display_pii_scan_results(result.data)
-            elif cmd == "/status":
+            elif cmd in ["/status", "/snowflake-status", "/sf-status"]:
                 self._display_status(result.data)
             elif cmd == "/auth" and "permissions" in result.data:
                 self._display_permissions(result.data["permissions"])
@@ -1524,10 +1524,37 @@ class ChuckTUI:
         """Display current status information including connection status and permissions."""
         from chuck_data.ui.table_formatter import display_table
 
-        # Check if this is Redshift or Databricks status based on data keys
-        is_redshift = "region" in data or "redshift_resource" in data
+        # Determine which provider this status data belongs to based on keys
+        is_snowflake = "account" in data and "warehouse" in data
+        is_redshift = not is_snowflake and (
+            "region" in data or "redshift_resource" in data
+        )
 
-        if is_redshift:
+        if is_snowflake:
+            # Snowflake status display
+            status_items = [
+                {"setting": "Account", "value": data.get("account", "Not set")},
+                {"setting": "User", "value": data.get("user", "Not set")},
+                {"setting": "Warehouse", "value": data.get("warehouse", "Not set")},
+                {"setting": "Role", "value": data.get("role", "default")},
+                {
+                    "setting": "Active Database",
+                    "value": data.get("active_database", "Not set"),
+                },
+                {
+                    "setting": "Active Schema",
+                    "value": data.get("active_schema", "Not set"),
+                },
+                {
+                    "setting": "Active Model",
+                    "value": data.get("active_model", "Not set"),
+                },
+                {
+                    "setting": "Connection Status",
+                    "value": data.get("connection_status", "Unknown"),
+                },
+            ]
+        elif is_redshift:
             # Redshift status display
             region = data.get("region", "Not set")
             redshift_resource = data.get("redshift_resource", "Not set")
@@ -1568,9 +1595,13 @@ class ChuckTUI:
 
             # Special handling for connection status
             if setting == "Connection Status":
-                if value == "Connected - token is valid":
+                if value in ("Connected - token is valid", "Connected"):
                     return "green"
-                elif "Invalid" in value or "Not connected" in value:
+                elif (
+                    "Invalid" in value
+                    or "Not connected" in value
+                    or "failed" in value.lower()
+                ):
                     return "red"
                 else:
                     return "yellow"

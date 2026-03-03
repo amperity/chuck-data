@@ -22,6 +22,14 @@ class WizardStep(Enum):
     S3_BUCKET_INPUT = "s3_bucket_input"
     IAM_ROLE_INPUT = "iam_role_input"
     INSTANCE_PROFILE_INPUT = "instance_profile_input"
+    # Snowflake-specific steps
+    SNOWFLAKE_ACCOUNT_INPUT = "snowflake_account_input"
+    SNOWFLAKE_USER_INPUT = "snowflake_user_input"
+    SNOWFLAKE_AUTH_INPUT = "snowflake_auth_input"
+    SNOWFLAKE_WAREHOUSE_INPUT = "snowflake_warehouse_input"
+    # Databricks Volume location steps (Snowflake data + Databricks compute only)
+    DATABRICKS_VOLUME_CATALOG_INPUT = "databricks_volume_catalog_input"
+    DATABRICKS_VOLUME_SCHEMA_INPUT = "databricks_volume_schema_input"
     # Compute provider selection
     COMPUTE_PROVIDER_SELECTION = "compute_provider_selection"
     # EMR-specific steps
@@ -56,6 +64,17 @@ class WizardState:
     # Databricks-specific fields
     workspace_url: Optional[str] = None
     token: Optional[str] = None
+    # Snowflake-specific fields
+    snowflake_account: Optional[str] = None
+    # Databricks Volume location (Snowflake data + Databricks compute)
+    volume_catalog: Optional[str] = None
+    volume_schema: Optional[str] = None
+    snowflake_user: Optional[str] = None
+    snowflake_password: Optional[str] = None
+    snowflake_private_key_path: Optional[str] = None
+    snowflake_warehouse: Optional[str] = None
+    snowflake_database: Optional[str] = None
+    snowflake_schema: Optional[str] = None
     # AWS-specific fields
     aws_profile: Optional[str] = None
     aws_region: Optional[str] = None
@@ -108,14 +127,44 @@ class WizardState:
             )
         elif step == WizardStep.IAM_ROLE_INPUT:
             return self.data_provider == "aws_redshift" and self.s3_bucket is not None
+        # Snowflake-specific steps
+        elif step == WizardStep.SNOWFLAKE_ACCOUNT_INPUT:
+            return self.data_provider == "snowflake"
+        elif step == WizardStep.SNOWFLAKE_USER_INPUT:
+            return (
+                self.data_provider == "snowflake" and self.snowflake_account is not None
+            )
+        elif step == WizardStep.SNOWFLAKE_AUTH_INPUT:
+            return self.data_provider == "snowflake" and self.snowflake_user is not None
+        elif step == WizardStep.SNOWFLAKE_WAREHOUSE_INPUT:
+            return self.data_provider == "snowflake" and (
+                self.snowflake_password is not None
+                or self.snowflake_private_key_path is not None
+            )
+        elif step == WizardStep.DATABRICKS_VOLUME_CATALOG_INPUT:
+            # Asked after the Databricks token when data is Snowflake
+            return (
+                self.data_provider == "snowflake"
+                and self.compute_provider == "databricks"
+                and self.token is not None
+            )
+        elif step == WizardStep.DATABRICKS_VOLUME_SCHEMA_INPUT:
+            return (
+                self.data_provider == "snowflake"
+                and self.compute_provider == "databricks"
+                and self.volume_catalog is not None
+            )
         # Compute provider selection
         elif step == WizardStep.COMPUTE_PROVIDER_SELECTION:
             # For Databricks data provider: need workspace URL and token
             # For Redshift: need AWS config (region, cluster, s3, iam_role)
+            # For Snowflake: need account, user, auth, and warehouse
             if self.data_provider == "databricks":
                 return self.workspace_url is not None and self.token is not None
             elif self.data_provider == "aws_redshift":
                 return self.s3_bucket is not None and self.iam_role is not None
+            elif self.data_provider == "snowflake":
+                return self.snowflake_warehouse is not None
             return self.data_provider is not None
         # EMR-specific steps
         elif step == WizardStep.EMR_CLUSTER_ID_INPUT:
@@ -132,16 +181,16 @@ class WizardState:
             # WORKSPACE_URL can be accessed in multiple scenarios:
             # 1. Databricks data provider (collect creds immediately)
             # 2. Redshift data + Databricks compute (need instance profile first)
-            # 3. Databricks data + Databricks compute
+            # 3. Snowflake data + Databricks compute (no instance profile needed)
             if self.data_provider == "databricks":
-                # For Databricks data provider, always valid
                 return True
             elif self.data_provider == "aws_redshift":
-                # For Redshift data + Databricks compute: need instance profile
                 return (
                     self.compute_provider == "databricks"
                     and self.instance_profile_arn is not None
                 )
+            elif self.data_provider == "snowflake":
+                return self.compute_provider == "databricks"
             return False
         elif step == WizardStep.TOKEN_INPUT:
             return self.workspace_url is not None
@@ -183,7 +232,25 @@ class WizardStateMachine:
                 WizardStep.AWS_PROFILE_INPUT,
                 WizardStep.WORKSPACE_URL,
                 WizardStep.COMPUTE_PROVIDER_SELECTION,
+                WizardStep.SNOWFLAKE_ACCOUNT_INPUT,
                 WizardStep.DATA_PROVIDER_SELECTION,
+            ],
+            # Snowflake-specific steps
+            WizardStep.SNOWFLAKE_ACCOUNT_INPUT: [
+                WizardStep.SNOWFLAKE_USER_INPUT,
+                WizardStep.SNOWFLAKE_ACCOUNT_INPUT,
+            ],
+            WizardStep.SNOWFLAKE_USER_INPUT: [
+                WizardStep.SNOWFLAKE_AUTH_INPUT,
+                WizardStep.SNOWFLAKE_USER_INPUT,
+            ],
+            WizardStep.SNOWFLAKE_AUTH_INPUT: [
+                WizardStep.SNOWFLAKE_WAREHOUSE_INPUT,
+                WizardStep.SNOWFLAKE_AUTH_INPUT,
+            ],
+            WizardStep.SNOWFLAKE_WAREHOUSE_INPUT: [
+                WizardStep.COMPUTE_PROVIDER_SELECTION,
+                WizardStep.SNOWFLAKE_WAREHOUSE_INPUT,
             ],
             # AWS Redshift-specific steps
             WizardStep.AWS_PROFILE_INPUT: [
@@ -242,8 +309,17 @@ class WizardStateMachine:
             WizardStep.TOKEN_INPUT: [
                 WizardStep.COMPUTE_PROVIDER_SELECTION,
                 WizardStep.LLM_PROVIDER_SELECTION,
+                WizardStep.DATABRICKS_VOLUME_CATALOG_INPUT,
                 WizardStep.TOKEN_INPUT,
                 WizardStep.WORKSPACE_URL,
+            ],
+            WizardStep.DATABRICKS_VOLUME_CATALOG_INPUT: [
+                WizardStep.DATABRICKS_VOLUME_SCHEMA_INPUT,
+                WizardStep.DATABRICKS_VOLUME_CATALOG_INPUT,
+            ],
+            WizardStep.DATABRICKS_VOLUME_SCHEMA_INPUT: [
+                WizardStep.LLM_PROVIDER_SELECTION,
+                WizardStep.DATABRICKS_VOLUME_SCHEMA_INPUT,
             ],
             WizardStep.LLM_PROVIDER_SELECTION: [
                 WizardStep.MODEL_SELECTION,
@@ -329,11 +405,21 @@ class WizardStateMachine:
         if current_step == WizardStep.AMPERITY_AUTH:
             return WizardStep.DATA_PROVIDER_SELECTION
         elif current_step == WizardStep.DATA_PROVIDER_SELECTION:
-            # Route to provider-specific configuration
             if state.data_provider == "aws_redshift":
                 return WizardStep.AWS_PROFILE_INPUT
+            elif state.data_provider == "snowflake":
+                return WizardStep.SNOWFLAKE_ACCOUNT_INPUT
             elif state.data_provider == "databricks":
                 return WizardStep.COMPUTE_PROVIDER_SELECTION
+            return WizardStep.COMPUTE_PROVIDER_SELECTION
+        # Snowflake-specific steps
+        elif current_step == WizardStep.SNOWFLAKE_ACCOUNT_INPUT:
+            return WizardStep.SNOWFLAKE_USER_INPUT
+        elif current_step == WizardStep.SNOWFLAKE_USER_INPUT:
+            return WizardStep.SNOWFLAKE_AUTH_INPUT
+        elif current_step == WizardStep.SNOWFLAKE_AUTH_INPUT:
+            return WizardStep.SNOWFLAKE_WAREHOUSE_INPUT
+        elif current_step == WizardStep.SNOWFLAKE_WAREHOUSE_INPUT:
             return WizardStep.COMPUTE_PROVIDER_SELECTION
         # AWS Redshift-specific steps
         elif current_step == WizardStep.AWS_PROFILE_INPUT:
@@ -367,7 +453,14 @@ class WizardStateMachine:
         elif current_step == WizardStep.WORKSPACE_URL:
             return WizardStep.TOKEN_INPUT
         elif current_step == WizardStep.TOKEN_INPUT:
-            # After data provider config, go to LLM provider selection
+            # Snowflake data + Databricks compute: collect the Volume location next
+            if state.data_provider == "snowflake":
+                return WizardStep.DATABRICKS_VOLUME_CATALOG_INPUT
+            # All other cases: go to LLM provider selection
+            return WizardStep.LLM_PROVIDER_SELECTION
+        elif current_step == WizardStep.DATABRICKS_VOLUME_CATALOG_INPUT:
+            return WizardStep.DATABRICKS_VOLUME_SCHEMA_INPUT
+        elif current_step == WizardStep.DATABRICKS_VOLUME_SCHEMA_INPUT:
             return WizardStep.LLM_PROVIDER_SELECTION
         elif current_step == WizardStep.LLM_PROVIDER_SELECTION:
             return WizardStep.MODEL_SELECTION

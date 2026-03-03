@@ -156,3 +156,38 @@ def test_post_connection_error(mock_post, databricks_api_client):
         databricks_api_client.post("/test-endpoint", {"data": "test"})
 
     assert "Connection error occurred" in str(exc_info.value)
+
+
+class TestBuildLibraries:
+    """Tests for DatabricksAPIClient._build_libraries."""
+
+    def test_snowflake_adds_snowflake_connector(self, databricks_api_client):
+        """Snowflake data provider gets the Snowflake Spark connector."""
+        libs = databricks_api_client._build_libraries(data_provider="snowflake")
+        coordinates = [lib["maven"]["coordinates"] for lib in libs if "maven" in lib]
+        assert any("spark-snowflake" in c for c in coordinates)
+
+    def test_snowflake_excludes_redshift_connector(self, databricks_api_client):
+        """Snowflake data provider does not include the Redshift connector."""
+        libs = databricks_api_client._build_libraries(data_provider="snowflake")
+        coordinates = [lib["maven"]["coordinates"] for lib in libs if "maven" in lib]
+        assert not any("spark-redshift" in c for c in coordinates)
+
+    def test_default_adds_redshift_connector(self, databricks_api_client):
+        """Default (no data_provider) includes the Redshift connector."""
+        libs = databricks_api_client._build_libraries()
+        coordinates = [lib["maven"]["coordinates"] for lib in libs if "maven" in lib]
+        assert any("spark-redshift" in c for c in coordinates)
+
+    def test_default_excludes_snowflake_connector(self, databricks_api_client):
+        """Default does not include the Snowflake connector."""
+        libs = databricks_api_client._build_libraries()
+        coordinates = [lib["maven"]["coordinates"] for lib in libs if "maven" in lib]
+        assert not any("spark-snowflake" in c for c in coordinates)
+
+    def test_main_jar_always_present(self, databricks_api_client):
+        """The main Stitch JAR is always included regardless of data provider."""
+        for dp in (None, "snowflake", "aws_redshift", "databricks"):
+            libs = databricks_api_client._build_libraries(data_provider=dp)
+            jar_paths = [lib["jar"] for lib in libs if "jar" in lib]
+            assert any("job.jar" in p for p in jar_paths), f"JAR missing for {dp}"

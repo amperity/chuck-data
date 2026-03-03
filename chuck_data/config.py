@@ -48,11 +48,64 @@ class ChuckConfig(BaseModel):
     )
     data_provider: Optional[str] = Field(
         default=None,
-        description="Data provider type (databricks, aws_redshift)",
+        description="Data provider type (databricks, aws_redshift, snowflake)",
     )
     compute_provider: Optional[str] = Field(
         default=None,
         description="Compute provider type (databricks, emr)",
+    )
+
+    # Provider-agnostic active database/schema selection
+    # Used by any Data provider that has a database → schema → table hierarchy.
+    active_database: Optional[str] = Field(
+        default=None,
+        description="Currently active database (shared across Data providers)",
+    )
+
+    # Snowflake connection settings
+    snowflake_account: Optional[str] = Field(
+        default=None,
+        description="Snowflake account identifier (e.g. 'myorg-myaccount')",
+    )
+    snowflake_user: Optional[str] = Field(
+        default=None,
+        description="Snowflake user login name",
+    )
+    snowflake_password: Optional[str] = Field(
+        default=None,
+        description="Snowflake password (mutually exclusive with snowflake_private_key_path)",
+    )
+    snowflake_private_key_path: Optional[str] = Field(
+        default=None,
+        description="Path to RSA private key PEM file for Snowflake key-pair auth",
+    )
+    snowflake_warehouse: Optional[str] = Field(
+        default=None,
+        description="Snowflake virtual warehouse to use",
+    )
+    snowflake_database: Optional[str] = Field(
+        default=None,
+        description="Snowflake default database",
+    )
+    snowflake_schema: Optional[str] = Field(
+        default=None,
+        description="Snowflake default schema",
+    )
+    snowflake_role: Optional[str] = Field(
+        default=None,
+        description="Snowflake role to use (optional)",
+    )
+
+    # Databricks Volume location for Snowflake + Databricks compute setups.
+    # Stitch manifests and cluster init scripts are stored here so that
+    # Databricks clusters can read them at startup.
+    volume_catalog: Optional[str] = Field(
+        default=None,
+        description="Databricks catalog containing the 'chuck' volume for Stitch artifacts",
+    )
+    volume_schema: Optional[str] = Field(
+        default=None,
+        description="Databricks schema containing the 'chuck' volume for Stitch artifacts",
     )
 
     # No validator - use defaults instead of failing
@@ -251,6 +304,22 @@ class ConfigManager:
 
             return False
 
+        elif provider == "snowflake":
+            # Snowflake requires account, user, auth (password or key), and warehouse
+            account = getattr(config, "snowflake_account", None)
+            user = getattr(config, "snowflake_user", None)
+            warehouse = getattr(config, "snowflake_warehouse", None)
+            password = getattr(config, "snowflake_password", None)
+            private_key_path = getattr(config, "snowflake_private_key_path", None)
+
+            if not account or not user or not warehouse:
+                return True
+
+            has_auth = (password and password != "") or (
+                private_key_path and private_key_path != ""
+            )
+            return not has_auth
+
         # Unknown provider - needs setup
         return True
 
@@ -387,9 +456,16 @@ def set_databricks_token(token):
 
 
 def get_active_database():
-    """Get the active Redshift database from config."""
+    """Get the currently active database for the configured Data provider.
+
+    Reads from active_database (the provider-agnostic field). Falls back to
+    redshift_database for backward compatibility with existing Redshift configs
+    that pre-date this field.
+    """
     config = _config_manager.get_config()
-    return getattr(config, "redshift_database", None)
+    return getattr(config, "active_database", None) or getattr(
+        config, "redshift_database", None
+    )
 
 
 def set_active_database(database_name):
@@ -580,3 +656,44 @@ def get_aws_profile():
     """Get the AWS profile name from config."""
     config = _config_manager.get_config()
     return getattr(config, "aws_profile", None)
+
+
+# ---------------------------------------------------------------------------
+# Snowflake config getters
+# ---------------------------------------------------------------------------
+
+
+def get_snowflake_account():
+    """Get the Snowflake account identifier from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "snowflake_account", None)
+
+
+def get_snowflake_user():
+    """Get the Snowflake user login name from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "snowflake_user", None)
+
+
+def get_snowflake_warehouse():
+    """Get the Snowflake virtual warehouse name from config."""
+    config = _config_manager.get_config()
+    return getattr(config, "snowflake_warehouse", None)
+
+
+def get_snowflake_role():
+    """Get the Snowflake role from config (optional)."""
+    config = _config_manager.get_config()
+    return getattr(config, "snowflake_role", None)
+
+
+def get_volume_catalog():
+    """Get the Databricks catalog used for the chuck volume (Snowflake+Databricks setups)."""
+    config = _config_manager.get_config()
+    return getattr(config, "volume_catalog", None)
+
+
+def get_volume_schema():
+    """Get the Databricks schema used for the chuck volume (Snowflake+Databricks setups)."""
+    config = _config_manager.get_config()
+    return getattr(config, "volume_schema", None)

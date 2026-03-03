@@ -283,11 +283,12 @@ class TestCommandRegistryProviderFiltering:
     def test_all_registered_commands_have_provider_or_are_agnostic(self):
         """Test that all commands are either provider-specific or agnostic."""
         for cmd_name, cmd_def in COMMAND_REGISTRY.items():
-            # Provider should be None, "databricks", or "aws_redshift"
+            # Provider should be None, "databricks", "aws_redshift", or "snowflake"
             assert cmd_def.provider in [
                 None,
                 "databricks",
                 "aws_redshift",
+                "snowflake",
             ], f"Command '{cmd_name}' has invalid provider: {cmd_def.provider}"
 
     def test_databricks_commands_are_tagged_correctly(self):
