@@ -8,6 +8,18 @@ Check us out at [chuckdata.ai](https://chuckdata.ai).
 
 Join our community on [Discord](https://discord.gg/f3UZwyuQqe).
 
+## Getting Started
+
+[Resources](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d)
+
+### Video Tutorials
+
+[Databricks](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=68fbbccf1b429bdc4d335930) | [AWS](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=691139582d8c72405c216316) | [How to Use](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=68fbbcefb9491dc7795c3617) | [How to Copy Sample Data](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=68fbbca9edd0c709507c8d99)
+
+### How-To Guides
+
+[Databricks](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=68fbbccf1b429bdc4d335939#1) | [AWS](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=691139582d8c72405c21630d#1) | [How to Use](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=68fbbcefb9491dc7795c3620#1) | [How to Copy Sample Data](https://view-su2.highspot.com/viewer/31cbc21c46718851d84fc37fc6f5b16d?iid=68fbbca9edd0c709507c8da2#1)
+
 ## Features
 
 - Interactive TUI for data engineering — type `/commands` or ask in plain English
