@@ -15,7 +15,8 @@ from typing import Optional, List, Any, Dict, Union
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
-from chuck_data.data_providers import is_redshift_client
+from chuck_data.clients.snowflake import SnowflakeAPIClient
+from chuck_data.data_providers import is_redshift_client, is_snowflake_client
 from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.config import (
@@ -29,6 +30,8 @@ from chuck_data.config import (
     get_aws_region,
     get_aws_account_id,
     get_amperity_token,
+    get_volume_catalog,
+    get_volume_schema,
 )
 from chuck_data.metrics_collector import get_metrics_collector
 from chuck_data.interactive_context import InteractiveContext
@@ -38,6 +41,8 @@ from chuck_data.storage.manifest import (
     save_manifest_to_file,
     upload_manifest_to_s3,
     validate_manifest,
+    generate_snowflake_manifest,
+    validate_snowflake_manifest,
 )
 from .base import CommandResult
 from .stitch_tools import (
@@ -389,6 +394,7 @@ def handle_command(
 
     # Detect data provider
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
 
     # Create compute provider based on configuration
     from chuck_data.provider_factory import ProviderFactory
@@ -402,7 +408,12 @@ def handle_command(
     compute_provider_name = get_compute_provider() or "databricks"
 
     # Determine data provider type for storage provider selection
-    data_provider_type = "redshift" if is_redshift else "databricks"
+    if is_redshift:
+        data_provider_type = "redshift"
+    elif is_snowflake:
+        data_provider_type = "snowflake"
+    else:
+        data_provider_type = "databricks"
 
     # Create appropriate compute provider
     if compute_provider_name == "aws_emr":
@@ -456,6 +467,15 @@ def handle_command(
     if is_redshift:
         return _handle_redshift_stitch_setup(
             client, compute_provider, interactive_input, auto_confirm, **kwargs
+        )
+    elif is_snowflake:
+        return _handle_snowflake_stitch_setup(
+            client,
+            compute_provider,
+            compute_provider_name,
+            interactive_input,
+            auto_confirm,
+            **kwargs,
         )
     else:
         # Databricks Unity Catalog path
@@ -2188,6 +2208,645 @@ def normalize_redshift_type(redshift_type: str) -> str:
         return "timestamp"
 
     return "string"
+
+
+# ---------------------------------------------------------------------------
+# Snowflake Stitch Setup
+# ---------------------------------------------------------------------------
+
+
+def _snowflake_prepare_manifest(
+    client: SnowflakeAPIClient,
+    console,
+    locations: List[tuple],  # list of (database, schema) pairs
+    compute_provider_name: str = "databricks",
+    storage_provider=None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """Prepare Snowflake manifest: read native column tags across one or more schemas.
+
+    `locations` is a list of (database, schema) tuples. A single schema is the
+    common case; multiple schemas are supported for cross-schema stitch jobs.
+
+    Steps:
+      1. For each (db, schema): read native Snowflake column tags
+      2. For each (db, schema): read table schemas for tagged tables
+      3. Generate manifest JSON (tables keyed as schema.table for disambiguation)
+      4. Validate manifest
+      5. Save manifest locally
+      6. Upload manifest to Databricks Volumes (Databricks compute) or S3 (EMR compute)
+    """
+    from chuck_data.config import (
+        get_snowflake_account,
+        get_snowflake_user,
+        get_snowflake_warehouse,
+        get_snowflake_role,
+    )
+
+    # The "primary" database drives the manifest settings and output location
+    primary_database = locations[0][0] if locations else ""
+
+    location_labels = ", ".join(f"{db}.{sch}" for db, sch in locations)
+    console.print(
+        f"\nStep 1: Reading native Snowflake column tags from {location_labels}..."
+    )
+
+    # Collect tags and tables across all locations, tracking schema per table
+    all_semantic_tags: List[Dict] = []  # [{table, column, semantic, schema, database}]
+    all_tables_with_schema: List[Dict] = []  # [{table_name, schema, database, columns}]
+
+    for db, sch in locations:
+        tags_result = client.read_snowflake_semantic_tags(db, sch)
+        if not tags_result["success"]:
+            return {
+                "success": False,
+                "error": f"Failed to read tags from {db}.{sch}: {tags_result.get('error')}",
+            }
+
+        loc_tags = tags_result["tags"]
+        for t in loc_tags:
+            t["schema"] = sch
+            t["database"] = db
+        all_semantic_tags.extend(loc_tags)
+
+    if not all_semantic_tags:
+        return {
+            "success": False,
+            "error": (
+                f"No semantic tags found in {location_labels}. "
+                "Please run /scan-pii and tag PII columns first."
+            ),
+        }
+
+    total_tables = len(
+        {(t["database"], t["schema"], t["table"]) for t in all_semantic_tags}
+    )
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Found {len(all_semantic_tags)} tagged columns across "
+        f"{total_tables} tables[/{SUCCESS_STYLE}]"
+    )
+
+    console.print("\nStep 2: Reading table schemas...")
+    for db, sch in locations:
+        tagged_in_schema = list(
+            {
+                t["table"]
+                for t in all_semantic_tags
+                if t["database"] == db and t["schema"] == sch
+            }
+        )
+        if not tagged_in_schema:
+            continue
+        schema_result = client.read_table_schemas_for_stitch(db, sch, tagged_in_schema)
+        if not schema_result["success"]:
+            return {"success": False, "error": schema_result.get("error")}
+        for tbl in schema_result["tables"]:
+            tbl["schema"] = sch
+            tbl["database"] = db
+        all_tables_with_schema.extend(schema_result["tables"])
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Read schemas for {len(all_tables_with_schema)} tables[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 3: Generate manifest
+    console.print("\nStep 3: Generating manifest...")
+    snowflake_conn = {
+        "account": getattr(client, "account", get_snowflake_account() or ""),
+        "user": getattr(client, "user", get_snowflake_user() or ""),
+        "warehouse": getattr(client, "warehouse", get_snowflake_warehouse() or ""),
+        "role": getattr(client, "role", get_snowflake_role() or ""),
+        "password": getattr(client, "_password", None),
+        "private_key": getattr(client, "_pem_private_key", None),
+    }
+
+    manifest = generate_snowflake_manifest(
+        database=primary_database,
+        schema=locations[0][1] if locations else "",
+        tables=all_tables_with_schema,
+        semantic_tags=all_semantic_tags,
+        snowflake_config=snowflake_conn,
+        compute_provider=compute_provider_name,
+        output_database=primary_database,
+        output_schema="stitch_outputs",
+    )
+
+    is_valid, error = validate_snowflake_manifest(manifest)
+    if not is_valid:
+        return {"success": False, "error": f"Generated manifest is invalid: {error}"}
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Manifest generated ({len(manifest['tables'])} tables)[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 4: Save manifest locally
+    console.print("\nStep 4: Saving manifest locally...")
+    manifest_dir = os.path.expanduser("~/.chuck/manifests")
+    os.makedirs(manifest_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_label = "_".join(f"{db}_{sch}" for db, sch in locations[:2])
+    manifest_filename = f"snowflake_{safe_label}_{timestamp}.json"
+    manifest_path = os.path.join(manifest_dir, manifest_filename)
+
+    if not save_manifest_to_file(manifest, manifest_path):
+        return {
+            "success": False,
+            "error": f"Failed to save manifest to {manifest_path}",
+        }
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Saved manifest to {manifest_path}[/{SUCCESS_STYLE}]"
+    )
+
+    # Step 5: Upload manifest.
+    # storage_provider is determined by the DATA provider in provider_factory.py:
+    #   data_provider="databricks" → DatabricksVolumeStorage
+    #   data_provider="redshift"   → S3Storage
+    #   data_provider="snowflake"  → DatabricksVolumeStorage (Databricks compute)
+    #                                or S3Storage (EMR compute)
+    # We simply delegate to the storage_provider — no compute-provider logic here.
+    console.print("\nStep 5: Uploading manifest...")
+
+    if storage_provider is None:
+        return {
+            "success": False,
+            "error": "No storage provider configured. Please re-run /setup.",
+        }
+
+    from chuck_data.storage_providers.databricks import DatabricksVolumeStorage
+
+    if isinstance(storage_provider, DatabricksVolumeStorage):
+        # Use the volume location configured during wizard setup.
+        # For Snowflake + Databricks, this is set by
+        # DatabricksVolumeCatalogInputStep / DatabricksVolumeSchemaInputStep.
+        d_catalog = get_volume_catalog()
+        d_vol_schema = get_volume_schema()
+        if not d_catalog or not d_vol_schema:
+            return {
+                "success": False,
+                "error": (
+                    "No Databricks volume location configured. "
+                    "Re-run /setup to set the catalog and schema where the "
+                    "'chuck' volume will store Stitch manifests and init scripts."
+                ),
+            }
+        upload_path = f"/Volumes/{d_catalog}/{d_vol_schema}/chuck/{manifest_filename}"
+        try:
+            storage_provider.upload_file(
+                json.dumps(manifest, indent=2), upload_path, overwrite=True
+            )
+        except Exception as e:
+            return {
+                "success": False,
+                "error": (
+                    f"Failed to upload manifest to {upload_path}: {e}\n"
+                    f"Make sure the 'chuck' volume exists in {d_catalog}.{d_vol_schema}."
+                ),
+            }
+    else:
+        # S3Storage
+        s3_bucket = get_s3_bucket()
+        if not s3_bucket:
+            return {
+                "success": False,
+                "error": "No S3 bucket configured. Please run /setup.",
+            }
+        upload_path = f"s3://{s3_bucket}/chuck/manifests/{manifest_filename}"
+        aws_profile = kwargs.get("aws_profile") or get_aws_profile()
+        if not upload_manifest_to_s3(manifest, upload_path, aws_profile):
+            return {
+                "success": False,
+                "error": f"Failed to upload manifest to {upload_path}",
+            }
+
+    console.print(
+        f"[{SUCCESS_STYLE}]✓ Uploaded manifest to {upload_path}[/{SUCCESS_STYLE}]"
+    )
+
+    return {
+        "success": True,
+        "manifest": manifest,
+        "manifest_path": manifest_path,
+        "manifest_filename": manifest_filename,
+        "upload_path": upload_path,
+        "timestamp": timestamp,
+    }
+
+
+def _snowflake_execute_job_launch(
+    console,
+    client: SnowflakeAPIClient,
+    database: str,
+    schema: str,
+    manifest: Dict[str, Any],
+    manifest_path: str,
+    upload_path: str,
+    timestamp: str,
+    compute_provider,
+    compute_provider_name: str,
+    **kwargs,
+) -> CommandResult:
+    """Fetch init script, upload it, and submit the Stitch job."""
+    try:
+        # Fetch init script from Amperity
+        console.print("\nStep 6: Fetching init script from Amperity...")
+        amperity_token = get_amperity_token()
+        if not amperity_token:
+            return CommandResult(
+                False, message="Amperity token not found. Please run /amp_login first."
+            )
+
+        from chuck_data.clients.amperity import AmperityAPIClient
+
+        amperity_client = AmperityAPIClient()
+        init_script_data = amperity_client.fetch_amperity_job_init(amperity_token)
+        init_script_content = init_script_data.get("cluster-init")
+        job_id = init_script_data.get("job-id")
+
+        if not init_script_content:
+            return CommandResult(
+                False, message="Failed to get cluster init script from Amperity API."
+            )
+        if not job_id:
+            return CommandResult(
+                False, message="Failed to get job-id from Amperity API."
+            )
+
+        stitch_job_name = f"stitch-snowflake-{database}-{schema}"
+
+        from chuck_data.compute_providers.emr import (
+            EMRComputeProvider,
+            modify_init_script_for_emr,
+        )
+        from chuck_data.storage_providers.databricks import DatabricksVolumeStorage
+
+        # Use the storage_provider that is already attached to the compute_provider.
+        # It was configured in provider_factory.py based on the DATA provider type:
+        #   data_provider="snowflake" + Databricks compute → DatabricksVolumeStorage
+        #   data_provider="snowflake" + EMR compute        → S3Storage
+        sp = getattr(compute_provider, "storage_provider", None)
+        if sp is None:
+            return CommandResult(
+                False, message="Compute provider has no storage_provider configured."
+            )
+
+        # Step 7: Upload init script via the same storage provider as the manifest
+        console.print("\nStep 7: Uploading init script and submitting Stitch job...")
+
+        s3_jar_path = None
+        if isinstance(compute_provider, EMRComputeProvider):
+            # EMR requires the init script to be modified to upload the JAR to S3
+            s3_bucket = get_s3_bucket()
+            if not s3_bucket:
+                return CommandResult(
+                    False, message="No S3 bucket configured for EMR JAR storage."
+                )
+            s3_jar_path = f"s3://{s3_bucket}/chuck/jars/job-{timestamp}.jar"
+            init_script_content = modify_init_script_for_emr(
+                init_script_content, s3_jar_path
+            )
+
+        # Upload init script using the storage_provider (data-provider-determined)
+        init_script_filename = f"chuck-init-{timestamp}.sh"
+        if isinstance(sp, DatabricksVolumeStorage):
+            d_catalog = get_volume_catalog()
+            d_vol_schema = get_volume_schema()
+            if not d_catalog or not d_vol_schema:
+                return CommandResult(
+                    False,
+                    message=(
+                        "No Databricks volume location configured. "
+                        "Re-run /setup to set the catalog and schema for the "
+                        "'chuck' volume."
+                    ),
+                )
+            init_script_path = (
+                f"/Volumes/{d_catalog}/{d_vol_schema}/chuck/{init_script_filename}"
+            )
+            # target_catalog/schema for DatabricksComputeProvider display messages
+            target_catalog_for_meta = d_catalog
+            target_schema_for_meta = d_vol_schema
+        else:
+            s3_bucket = get_s3_bucket()
+            init_script_path = (
+                f"s3://{s3_bucket}/chuck/init-scripts/{init_script_filename}"
+            )
+            # EMRComputeProvider doesn't use target_catalog/schema; use the
+            # Snowflake database/schema as a human-readable fallback
+            target_catalog_for_meta = database
+            target_schema_for_meta = schema
+
+        try:
+            sp.upload_file(init_script_content, init_script_path, overwrite=True)
+        except Exception as e:
+            return CommandResult(
+                False,
+                message=f"Failed to upload init script to {init_script_path}: {e}",
+            )
+
+        console.print(
+            f"[{SUCCESS_STYLE}]✓ Uploaded init script to {init_script_path}[/{SUCCESS_STYLE}]"
+        )
+
+        # Build Snowflake JDBC URL for metadata
+        account = getattr(client, "account", "")
+        snowflake_jdbc_url = f"jdbc:snowflake://{account}.snowflakecomputing.com/"
+
+        metadata = {
+            "stitch_job_name": stitch_job_name,
+            # DatabricksComputeProvider.launch_stitch_job() requires "config_file_path"
+            "config_file_path": upload_path,
+            # EMRComputeProvider.launch_stitch_job() requires "s3_config_path"
+            "s3_config_path": upload_path,
+            # Required by DatabricksComputeProvider for display messages
+            "target_catalog": target_catalog_for_meta,
+            "target_schema": target_schema_for_meta,
+            # Required by DatabricksComputeProvider to upload the init script
+            "init_script_content": init_script_content,
+            # Required by DatabricksComputeProvider for the launch summary message
+            "pii_scan_output": {
+                "message": "Snowflake native semantic tag scan completed."
+            },
+            # Passed to submit_job_run so the Snowflake connector is added to
+            # the cluster libraries automatically
+            "data_provider": "snowflake",
+            "init_script_path": init_script_path,
+            "s3_jar_path": s3_jar_path,
+            "main_class": "amperity.stitch_standalone.generic_main",
+            "job_id": job_id,
+            "amperity_token": amperity_token,
+            "snowflake_jdbc_url": snowflake_jdbc_url,
+            "unsupported_columns": [],
+        }
+        preparation = {"success": True, "stitch_config": manifest, "metadata": metadata}
+        launch_result = compute_provider.launch_stitch_job(preparation)
+
+        if not launch_result.get("success"):
+            return CommandResult(
+                False, message=launch_result.get("error", "Failed to launch job")
+            )
+
+        run_id = launch_result.get("run_id") or launch_result.get("step_id")
+
+        if isinstance(compute_provider, EMRComputeProvider):
+            console.print(
+                f"[{SUCCESS_STYLE}]✓ EMR step submitted: {run_id}[/{SUCCESS_STYLE}]"
+            )
+            return CommandResult(
+                True,
+                message=f"Stitch job for {database}.{schema} submitted to EMR (step: {run_id}).",
+                data={
+                    "run_id": run_id,
+                    "job_id": job_id,
+                    "config_path": upload_path,
+                    "monitoring_url": launch_result.get("monitoring_url"),
+                },
+            )
+
+        # Databricks compute — use the full summary from launch_stitch_job
+        return CommandResult(
+            True,
+            message=launch_result.get(
+                "message",
+                f"Stitch job for {database}.{schema} submitted (run_id: {run_id}).",
+            ),
+            data={
+                "run_id": run_id,
+                "job_id": job_id,
+                "config_path": upload_path,
+            },
+        )
+
+    except Exception as e:
+        logging.error(f"Error launching Snowflake Stitch job: {e}", exc_info=True)
+        return CommandResult(False, message=f"Failed to launch Stitch job: {str(e)}")
+
+
+def _handle_snowflake_stitch_setup(
+    client: SnowflakeAPIClient,
+    compute_provider,
+    compute_provider_name: str,
+    interactive_input: Optional[str],
+    auto_confirm: bool,
+    **kwargs,
+) -> CommandResult:
+    """Handle Stitch setup for Snowflake data source.
+
+    Reads native Snowflake column tags (semantic_type), generates a
+    stitch-standalone manifest, uploads it to Databricks Volumes or S3,
+    and launches the Stitch job.
+
+    Flow:
+      Phase 1 (first call): prepare manifest → show preview → wait for confirm
+      Phase 2 (interactive_input = "confirm"): launch job
+      auto_confirm: run phases 1 + 2 in one shot
+    """
+    console = get_console()
+    context = InteractiveContext()
+
+    # Parse targets — mirrors the Databricks multi-catalog/schema pattern.
+    # Accepts:
+    #   --targets "DB.SCHEMA,DB2.OTHER_SCHEMA"  (comma-separated "database.schema" strings)
+    #   --database DB --schema_name SCHEMA       (single location, backward-compatible)
+    locations: List[tuple] = []
+    raw_targets = kwargs.get("targets")
+    if raw_targets:
+        for t in raw_targets.split(","):
+            t = t.strip()
+            if "." in t:
+                parts = t.split(".", 1)
+                locations.append((parts[0].strip(), parts[1].strip()))
+    if not locations:
+        db = kwargs.get("database") or get_active_database()
+        sch = kwargs.get("schema_name") or get_active_schema()
+        if not db or not sch:
+            return CommandResult(
+                False,
+                message=(
+                    "Database and schema must be set. Use /select-database and /select-schema, "
+                    "or pass --targets 'DB.SCHEMA[,DB.SCHEMA2,...]'."
+                ),
+            )
+        # Guard against the active_schema being set to the Databricks volume
+        # schema instead of the Snowflake data schema. This happens when the user
+        # selects a Databricks schema for browsing while also having a Snowflake
+        # data setup, because both share the same active_schema config field.
+        if sch == get_volume_schema():
+            return CommandResult(
+                False,
+                message=(
+                    f"The active schema '{sch}' matches your Databricks volume schema "
+                    f"and is not a valid Snowflake data location. "
+                    f"Use /select-schema to set your Snowflake data schema, "
+                    f"or pass --targets 'DATABASE.SCHEMA' explicitly."
+                ),
+            )
+        locations = [(db, sch)]
+
+    # Primary location used for job name / output
+    primary_db, primary_schema = locations[0]
+    location_label = ", ".join(f"{db}.{sch}" for db, sch in locations)
+
+    # Use the storage_provider already attached to the compute_provider.
+    # It was configured in provider_factory.py based on the data provider type
+    # (SnowflakeStorageProvider for Snowflake data, S3Storage for EMR, etc.).
+    # If the SnowflakeStorageProvider was built without a database/schema (missing
+    # config), rebuild it using the first target's database/schema.
+    from chuck_data.storage_providers.snowflake import SnowflakeStorageProvider
+    from chuck_data.provider_factory import ProviderFactory
+
+    storage_provider = getattr(compute_provider, "storage_provider", None)
+
+    if isinstance(storage_provider, SnowflakeStorageProvider):
+        if not storage_provider.database or not storage_provider.schema:
+            # Config didn't have snowflake_database/schema — fall back to first target
+            console.print(
+                f"[{INFO_STYLE}]No Snowflake database/schema in config; "
+                f"using first target '{primary_db}.{primary_schema}' for the stage.[/{INFO_STYLE}]"
+            )
+            try:
+                storage_provider = ProviderFactory.create_storage_provider(
+                    "snowflake",
+                    {
+                        "account": getattr(client, "account", ""),
+                        "user": getattr(client, "user", ""),
+                        "warehouse": getattr(client, "warehouse", ""),
+                        "database": primary_db,
+                        "schema": primary_schema,
+                        "role": getattr(client, "role", None),
+                        "password": getattr(client, "_password", None),
+                        "private_key_path": getattr(client, "_private_key_path", None),
+                    },
+                )
+            except Exception as e:
+                return CommandResult(False, message=f"Failed to configure storage: {e}")
+
+    def _phase1():
+        console.print(
+            f"\n[{INFO_STYLE}]Preparing Stitch configuration for Snowflake: "
+            f"{location_label}...[/{INFO_STYLE}]"
+        )
+        prep = _snowflake_prepare_manifest(
+            client,
+            console,
+            locations,
+            compute_provider_name,
+            storage_provider,
+            **kwargs,
+        )
+        if not prep["success"]:
+            return CommandResult(False, message=prep["error"])
+
+        context.store_context_data("setup_stitch", "phase", "ready_to_launch")
+        context.store_context_data("setup_stitch", "primary_db", primary_db)
+        context.store_context_data("setup_stitch", "primary_schema", primary_schema)
+        context.store_context_data("setup_stitch", "manifest", prep["manifest"])
+        context.store_context_data(
+            "setup_stitch", "manifest_path", prep["manifest_path"]
+        )
+        context.store_context_data("setup_stitch", "upload_path", prep["upload_path"])
+        context.store_context_data("setup_stitch", "timestamp", prep["timestamp"])
+
+        _display_snowflake_stitch_preview(
+            console, prep["manifest"], primary_db, primary_schema
+        )
+
+        console.print(
+            f"\n[{WARNING}]Ready to launch Stitch job. "
+            f"Type 'confirm' to proceed or 'cancel' to abort.[/{WARNING}]"
+        )
+        context.set_active_context("setup_stitch")
+        return CommandResult(
+            True, message="Ready to launch. Type 'confirm' to proceed."
+        )
+
+    def _phase2():
+        if interactive_input.strip().lower() not in (
+            "confirm",
+            "yes",
+            "proceed",
+            "go",
+            "y",
+        ):
+            context.clear_active_context("setup_stitch")
+            return CommandResult(True, message="Stitch setup cancelled.")
+
+        ctx_data = context.get_context_data("setup_stitch")
+        manifest = ctx_data.get("manifest")
+        manifest_path = ctx_data.get("manifest_path")
+        upload_path = ctx_data.get("upload_path")
+        timestamp = ctx_data.get("timestamp")
+        pdb = ctx_data.get("primary_db", primary_db)
+        psch = ctx_data.get("primary_schema", primary_schema)
+        context.clear_active_context("setup_stitch")
+
+        return _snowflake_execute_job_launch(
+            console,
+            client,
+            pdb,
+            psch,
+            manifest,
+            manifest_path,
+            upload_path,
+            timestamp,
+            compute_provider,
+            compute_provider_name,
+            **kwargs,
+        )
+
+    if not interactive_input and not auto_confirm:
+        return _phase1()
+    elif interactive_input and not auto_confirm:
+        return _phase2()
+    else:
+        # auto_confirm — run both phases in one shot
+        console.print(
+            f"\n[{INFO_STYLE}]Setting up Stitch for Snowflake: {location_label}[/{INFO_STYLE}]"
+        )
+        prep = _snowflake_prepare_manifest(
+            client,
+            console,
+            locations,
+            compute_provider_name,
+            storage_provider,
+            **kwargs,
+        )
+        if not prep["success"]:
+            return CommandResult(False, message=prep["error"])
+
+        return _snowflake_execute_job_launch(
+            console,
+            client,
+            primary_db,
+            primary_schema,
+            prep["manifest"],
+            prep["manifest_path"],
+            prep["upload_path"],
+            prep["timestamp"],
+            compute_provider,
+            compute_provider_name,
+            **kwargs,
+        )
+
+
+def _display_snowflake_stitch_preview(
+    console, manifest: Dict[str, Any], database: str, schema: str
+):
+    """Display a summary of what will be stitched."""
+    tables = manifest.get("tables", [])
+    total_pii = sum(
+        len([f for f in t.get("fields", []) if f.get("semantics")]) for t in tables
+    )
+    console.print(f"\n[{INFO_STYLE}]Stitch Preview:[/{INFO_STYLE}]")
+    console.print(f"  Source:  {database}.{schema}")
+    console.print(f"  Tables:  {len(tables)}")
+    console.print(f"  PII fields: {total_pii}")
+    for t in tables:
+        tagged = [f["field-name"] for f in t.get("fields", []) if f.get("semantics")]
+        console.print(
+            f"  - {t['path']}: {', '.join(tagged[:5])}"
+            + (" ..." if len(tagged) > 5 else "")
+        )
 
 
 DEFINITION = CommandDefinition(

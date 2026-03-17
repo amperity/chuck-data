@@ -576,6 +576,32 @@ class DatabricksAPIClient:
     # Jobs methods
     #
 
+    def _build_libraries(self, data_provider=None):
+        """Return the Maven/JAR library list for a Stitch job run.
+
+        The main JAR is always included. The connector Maven dependency is chosen
+        based on the data provider:
+          - "snowflake" → Snowflake Spark connector
+          - "aws_redshift" → Redshift community connector + Avro support
+        """
+        libraries: list = [{"jar": "file:///opt/amperity/job.jar"}]
+        if data_provider == "snowflake":
+            libraries.append(
+                {"maven": {"coordinates": "net.snowflake:spark-snowflake_2.12:3.1.3"}}
+            )
+        elif data_provider == "aws_redshift":
+            libraries.append(
+                {
+                    "maven": {
+                        "coordinates": "io.github.spark-redshift-community:spark-redshift_2.12:6.5.1-spark_3.5"
+                    }
+                }
+            )
+            libraries.append(
+                {"maven": {"coordinates": "org.apache.spark:spark-avro_2.12:3.5.0"}}
+            )
+        return libraries
+
     def submit_job_run(
         self,
         config_path,
@@ -583,6 +609,7 @@ class DatabricksAPIClient:
         run_name=None,
         policy_id=None,
         instance_profile_arn=None,
+        data_provider=None,
     ):
         """
         Submit a one-time Databricks job run using the /runs/submit endpoint.
@@ -593,6 +620,8 @@ class DatabricksAPIClient:
             run_name: Optional name for the run. If None, a default name will be generated.
             policy_id: Optional cluster policy ID to use for the job run.
             instance_profile_arn: Optional AWS instance profile ARN for cluster access to AWS services.
+            data_provider: Optional data provider type ("snowflake", "aws_redshift", etc.).
+                Used to add the correct connector Maven library to the cluster.
 
         Returns:
             Dict containing the job run information (including run_id)
@@ -675,19 +704,7 @@ class DatabricksAPIClient:
                         ],
                         "run_as_repl": True,
                     },
-                    "libraries": [
-                        {"jar": "file:///opt/amperity/job.jar"},
-                        {
-                            "maven": {
-                                "coordinates": "io.github.spark-redshift-community:spark-redshift_2.12:6.5.1-spark_3.5"
-                            }
-                        },
-                        {
-                            "maven": {
-                                "coordinates": "org.apache.spark:spark-avro_2.12:3.5.0"
-                            }
-                        },
-                    ],
+                    "libraries": self._build_libraries(data_provider),
                     "timeout_seconds": 0,
                     "email_notifications": {},
                     "webhook_notifications": {},

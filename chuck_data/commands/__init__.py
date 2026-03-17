@@ -67,6 +67,19 @@ from .discord import DEFINITION as discord_definition
 # Import support command
 from .support import DEFINITION as support_definition
 
+# Import Snowflake commands
+from .snowflake_status import DEFINITION as snowflake_status_definition
+from .snowflake_list_databases import DEFINITION as snowflake_list_databases_definition
+from .snowflake_database_selection import (
+    DEFINITION as snowflake_database_selection_definition,
+)
+from .snowflake_list_schemas import DEFINITION as snowflake_list_schemas_definition
+from .snowflake_schema_selection import (
+    DEFINITION as snowflake_schema_selection_definition,
+)
+from .snowflake_run_sql import DEFINITION as snowflake_run_sql_definition
+from .snowflake_tag_pii import DEFINITION as snowflake_tag_pii_definition
+
 # List of all command definitions to register
 ALL_COMMAND_DEFINITIONS = [
     # Authentication & Workspace commands
@@ -110,6 +123,14 @@ ALL_COMMAND_DEFINITIONS = [
     list_volumes_definition,
     create_volume_definition,
     upload_file_definition,
+    # Snowflake commands
+    snowflake_status_definition,
+    snowflake_list_databases_definition,
+    snowflake_database_selection_definition,
+    snowflake_list_schemas_definition,
+    snowflake_schema_selection_definition,
+    snowflake_run_sql_definition,
+    snowflake_tag_pii_definition,
     # Utility commands
     help_definition,
     status_definition,

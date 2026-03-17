@@ -109,6 +109,58 @@ class TestProviderFactoryComputeProviders:
         assert "workspace_url" in str(exc_info.value)
         assert "token" in str(exc_info.value)
 
+    def test_databricks_compute_with_snowflake_data_uses_volume_storage(self):
+        """Databricks compute + Snowflake data must use DatabricksVolumeStorage.
+
+        Databricks cluster init scripts can only be loaded from Volumes/S3/DBFS —
+        not from Snowflake internal stages. The storage provider must therefore be
+        DatabricksVolumeStorage, not SnowflakeStorageProvider.
+        """
+        provider = ProviderFactory.create_compute_provider(
+            "databricks",
+            {
+                "workspace_url": "https://test.databricks.com",
+                "token": "test-token",
+                "data_provider_type": "snowflake",
+            },
+        )
+        assert isinstance(provider, DatabricksComputeProvider)
+        assert isinstance(provider.storage_provider, DatabricksVolumeStorage)
+
+    def test_databricks_compute_with_redshift_data_uses_s3_storage(self, monkeypatch):
+        """Databricks compute + Redshift data uses S3Storage."""
+        from unittest.mock import Mock
+        import chuck_data.storage_providers.s3 as s3_module
+
+        mock_boto3 = Mock()
+        mock_boto3.Session.return_value = Mock()
+        monkeypatch.setattr(s3_module, "boto3", mock_boto3)
+
+        provider = ProviderFactory.create_compute_provider(
+            "databricks",
+            {
+                "workspace_url": "https://test.databricks.com",
+                "token": "test-token",
+                "data_provider_type": "redshift",
+                "aws_region": "us-west-2",
+            },
+        )
+        assert isinstance(provider, DatabricksComputeProvider)
+        assert isinstance(provider.storage_provider, S3Storage)
+
+    def test_databricks_compute_with_databricks_data_uses_volume_storage(self):
+        """Databricks compute + Databricks data uses DatabricksVolumeStorage."""
+        provider = ProviderFactory.create_compute_provider(
+            "databricks",
+            {
+                "workspace_url": "https://test.databricks.com",
+                "token": "test-token",
+                "data_provider_type": "databricks",
+            },
+        )
+        assert isinstance(provider, DatabricksComputeProvider)
+        assert isinstance(provider.storage_provider, DatabricksVolumeStorage)
+
     def test_create_compute_provider_with_env_vars(self, monkeypatch):
         """Test that provider can be created from environment variables."""
         monkeypatch.setenv("DATABRICKS_WORKSPACE_URL", "https://env.databricks.com")

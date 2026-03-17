@@ -760,6 +760,12 @@ class TestSecurityFixes:
                 "Token step without URL should not hide input",
             ),
             (
+                "snowflake_auth_input",
+                None,
+                True,
+                "Snowflake auth step should hide input",
+            ),
+            (
                 "workspace_url",
                 "https://test.com",
                 False,
@@ -780,9 +786,11 @@ class TestSecurityFixes:
         ]
 
         for step, workspace_url, expected_hide, description in test_cases:
-            # Replicate the exact TUI logic from lines 247-248
+            # Replicate the exact TUI logic
             ctx = {"current_step": step, "workspace_url": workspace_url}
-            hide_input = step == "token_input" and bool(ctx.get("workspace_url"))
+            hide_input = (
+                step == "token_input" and bool(ctx.get("workspace_url"))
+            ) or step == "snowflake_auth_input"
 
             assert (
                 hide_input == expected_hide
@@ -861,7 +869,9 @@ class TestSecurityFixes:
             "workspace_url": "https://test.com",
         }
         step = token_step_ctx.get("current_step")
-        hide_input = step == "token_input" and bool(token_step_ctx.get("workspace_url"))
+        hide_input = (
+            step == "token_input" and bool(token_step_ctx.get("workspace_url"))
+        ) or step == "snowflake_auth_input"
         assert hide_input is True, "Should hide input on token step"
 
         # Scenario 2: After error, back to workspace_url step - should NOT hide input
@@ -870,9 +880,9 @@ class TestSecurityFixes:
             "workspace_url": "https://test.com",
         }
         step = workspace_step_ctx.get("current_step")
-        hide_input = step == "token_input" and bool(
-            workspace_step_ctx.get("workspace_url")
-        )
+        hide_input = (
+            step == "token_input" and bool(workspace_step_ctx.get("workspace_url"))
+        ) or step == "snowflake_auth_input"
         assert (
             hide_input is False
         ), "Should NOT hide input on workspace step (even with workspace_url present)"
@@ -1136,6 +1146,11 @@ class TestTokenSecurityAndInputMode:
                 "Should hide input for token_input step with workspace_url",
             ),
             (
+                {"current_step": "snowflake_auth_input"},
+                True,
+                "Should hide input for snowflake_auth_input step",
+            ),
+            (
                 {"current_step": "workspace_url", "workspace_url": None},
                 False,
                 "Should NOT hide input for workspace_url step",
@@ -1158,7 +1173,9 @@ class TestTokenSecurityAndInputMode:
         for ctx, expected_hide, description in test_cases:
             # Replicate the exact TUI logic
             step = ctx.get("current_step")
-            hide_input = step == "token_input" and bool(ctx.get("workspace_url"))
+            hide_input = (
+                step == "token_input" and bool(ctx.get("workspace_url"))
+            ) or step == "snowflake_auth_input"
 
             assert (
                 hide_input == expected_hide
@@ -1334,6 +1351,12 @@ class TestTUISecurityIntegration:
                 "Token input should hide input and disable history",
             ),
             (
+                {"current_step": "snowflake_auth_input"},
+                True,
+                False,
+                "Snowflake auth input should hide input and disable history",
+            ),
+            (
                 {"current_step": "workspace_url", "workspace_url": None},
                 False,
                 True,
@@ -1350,7 +1373,9 @@ class TestTUISecurityIntegration:
         for ctx, expected_hide, expected_history, description in test_cases:
             # Replicate the exact TUI logic
             step = ctx.get("current_step")
-            hide_input = step == "token_input" and bool(ctx.get("workspace_url"))
+            hide_input = (
+                step == "token_input" and bool(ctx.get("workspace_url"))
+            ) or step == "snowflake_auth_input"
             enable_history = not hide_input
 
             assert (

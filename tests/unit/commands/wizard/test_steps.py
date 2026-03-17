@@ -556,7 +556,7 @@ class TestDataProviderSelectionStep:
 
         assert result.success is False
         assert result.action == WizardAction.RETRY
-        assert "enter 1 (Databricks) or 2 (AWS Redshift)" in result.message
+        assert "enter 1 (Databricks)" in result.message
 
 
 class TestStepFactory:

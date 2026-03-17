@@ -141,4 +141,5 @@ class TestDataProviderFactory:
         providers = DataProviderFactory.get_available_providers()
         assert "databricks" in providers
         assert "aws_redshift" in providers
-        assert len(providers) == 2
+        assert "snowflake" in providers
+        assert len(providers) == 3

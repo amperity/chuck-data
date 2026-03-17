@@ -118,7 +118,14 @@ def handle_command(client: Optional[RedshiftAPIClient], **kwargs) -> CommandResu
 
         # Set the active database in config
         config_manager = get_config_manager()
-        success = config_manager.update(redshift_database=target_database)
+        # Write to active_database (provider-agnostic) so get_active_database()
+        # works consistently across Redshift and Snowflake. Also write to
+        # redshift_database to keep backward compat with existing code that
+        # reads it directly (e.g. Redshift connection setup).
+        success = config_manager.update(
+            active_database=target_database,
+            redshift_database=target_database,
+        )
 
         if not success:
             return CommandResult(

@@ -3,9 +3,11 @@
 from typing import Union, Optional
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.clients.snowflake import SnowflakeAPIClient
 from chuck_data.data_providers.adapters import (
     DatabricksProviderAdapter,
     RedshiftProviderAdapter,
+    SnowflakeProviderAdapter,
 )
 
 
@@ -13,8 +15,10 @@ def get_provider_name_from_client(
     client: Union[
         DatabricksAPIClient,
         RedshiftAPIClient,
+        SnowflakeAPIClient,
         DatabricksProviderAdapter,
         RedshiftProviderAdapter,
+        SnowflakeProviderAdapter,
         None,
     ],
 ) -> Optional[str]:
@@ -22,19 +26,11 @@ def get_provider_name_from_client(
     Get the provider name string from a client instance.
 
     Args:
-        client: Either DatabricksAPIClient, RedshiftAPIClient, or their adapters/stubs/mocks
+        client: A client or adapter instance, or None
 
     Returns:
-        Provider name string ("databricks" or "aws_redshift"), or None if client is None
-
-    Examples:
-        >>> client = DatabricksAPIClient(...)
-        >>> get_provider_name_from_client(client)
-        'databricks'
-
-        >>> client = RedshiftAPIClient(...)
-        >>> get_provider_name_from_client(client)
-        'aws_redshift'
+        Provider name string ("databricks", "aws_redshift", or "snowflake"),
+        or None if client is None
     """
     if client is None:
         return None
@@ -44,12 +40,16 @@ def get_provider_name_from_client(
         return "databricks"
     elif isinstance(client, RedshiftProviderAdapter):
         return "aws_redshift"
+    elif isinstance(client, SnowflakeProviderAdapter):
+        return "snowflake"
 
     # Check by isinstance for real clients
     if isinstance(client, DatabricksAPIClient):
         return "databricks"
     elif isinstance(client, RedshiftAPIClient):
         return "aws_redshift"
+    elif isinstance(client, SnowflakeAPIClient):
+        return "snowflake"
 
     # Check by class name (for stubs/mocks in tests)
     client_class_name = client.__class__.__name__
@@ -57,6 +57,8 @@ def get_provider_name_from_client(
         return "databricks"
     elif "Redshift" in client_class_name or "redshift" in client_class_name.lower():
         return "aws_redshift"
+    elif "Snowflake" in client_class_name or "snowflake" in client_class_name.lower():
+        return "snowflake"
 
     return None
 
@@ -121,29 +123,37 @@ def is_databricks_client(
     return get_provider_name_from_client(client) == "databricks"
 
 
+def is_snowflake_client(
+    client: Union[
+        DatabricksAPIClient,
+        RedshiftAPIClient,
+        SnowflakeAPIClient,
+        DatabricksProviderAdapter,
+        RedshiftProviderAdapter,
+        SnowflakeProviderAdapter,
+        None,
+    ],
+) -> bool:
+    """Check if the client is a Snowflake client."""
+    return get_provider_name_from_client(client) == "snowflake"
+
+
 def get_provider_adapter(
-    client: Union[DatabricksAPIClient, RedshiftAPIClient, None],
-) -> Union[DatabricksProviderAdapter, RedshiftProviderAdapter, None]:
+    client: Union[DatabricksAPIClient, RedshiftAPIClient, SnowflakeAPIClient, None],
+) -> Union[
+    DatabricksProviderAdapter, RedshiftProviderAdapter, SnowflakeProviderAdapter, None
+]:
     """
     Create a data provider adapter from a client instance.
 
-    This is useful for commands that need to use the provider abstraction layer
-    for operations that differ between providers.
-
     Args:
-        client: Either DatabricksAPIClient, RedshiftAPIClient, or their stubs/mocks
+        client: A DatabricksAPIClient, RedshiftAPIClient, SnowflakeAPIClient, or stub/mock
 
     Returns:
-        DataProvider adapter (DatabricksProviderAdapter or RedshiftProviderAdapter), or None if client is None
+        Matching DataProvider adapter, or None if client is None
 
     Raises:
         ValueError: If client type is not supported
-
-    Examples:
-        >>> client = DatabricksAPIClient(...)
-        >>> adapter = get_provider_adapter(client)
-        >>> isinstance(adapter, DatabricksProviderAdapter)
-        True
     """
     if client is None:
         return None
@@ -157,6 +167,10 @@ def get_provider_adapter(
         adapter = RedshiftProviderAdapter.__new__(RedshiftProviderAdapter)
         adapter.client = client
         return adapter
+    elif isinstance(client, SnowflakeAPIClient):
+        adapter = SnowflakeProviderAdapter.__new__(SnowflakeProviderAdapter)
+        adapter.client = client
+        return adapter
 
     # Check by class name (for stubs/mocks in tests)
     client_class_name = client.__class__.__name__
@@ -166,6 +180,10 @@ def get_provider_adapter(
         return adapter
     elif "Redshift" in client_class_name or "redshift" in client_class_name.lower():
         adapter = RedshiftProviderAdapter.__new__(RedshiftProviderAdapter)
+        adapter.client = client
+        return adapter
+    elif "Snowflake" in client_class_name or "snowflake" in client_class_name.lower():
+        adapter = SnowflakeProviderAdapter.__new__(SnowflakeProviderAdapter)
         adapter.client = client
         return adapter
 

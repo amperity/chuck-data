@@ -14,7 +14,7 @@ from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
 from chuck_data.llm.provider import LLMProvider
 from chuck_data.ui.tui import get_console
-from chuck_data.data_providers import is_redshift_client
+from chuck_data.data_providers import is_redshift_client, is_snowflake_client
 
 
 def _helper_tag_pii_columns_logic(
@@ -27,6 +27,7 @@ def _helper_tag_pii_columns_logic(
     """Internal logic for PII tagging of a single table (provider-aware)."""
     response_content_for_error = ""
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
 
     try:
         # Resolve full table name using APIs directly instead of handler
@@ -36,9 +37,10 @@ def _helper_tag_pii_columns_logic(
             and schema_name_context
             and "." not in table_name_param
         ):
-            # Only a table name was provided, construct full name
-            # For Redshift: schema.table (2 parts)
-            # For Databricks: catalog.schema.table (3 parts)
+            # Only a table name was provided, construct full name.
+            # Redshift: schema.table (2 parts — database lives in separate config)
+            # Snowflake + Databricks: database.schema.table (3 parts) so that
+            # _execute_bulk_tagging can correctly parse catalog and schema.
             if is_redshift:
                 resolved_table_name = f"{schema_name_context}.{table_name_param}"
             else:
@@ -46,7 +48,35 @@ def _helper_tag_pii_columns_logic(
 
         try:
             # Use direct API call - different for each provider
-            if is_redshift:
+            if is_snowflake:
+                # Snowflake: use describe_table (same hierarchy as Redshift)
+                table_info = client.describe_table(
+                    database=catalog_or_database_context,
+                    schema=schema_name_context,
+                    table=table_name_param,
+                )
+                if not table_info:
+                    error_msg = f"Failed to retrieve table details for PII tagging: {table_name_param}"
+                    return {
+                        "error": error_msg,
+                        "table_name_param": table_name_param,
+                        "skipped": True,
+                    }
+
+                resolved_full_name = resolved_table_name
+                # DESCRIBE TABLE via Snowflake DictCursor returns dicts with
+                # "name" and "type" keys (lowercase from the connector).
+                columns_raw = table_info.get("columns", [])
+                columns = [
+                    {
+                        "name": col.get("name") or col.get("NAME", ""),
+                        "type": col.get("type") or col.get("TYPE", ""),
+                        "nullable": True,
+                    }
+                    for col in columns_raw
+                    if col.get("name") or col.get("NAME")
+                ]
+            elif is_redshift:
                 # Redshift: use describe_table
                 table_info = client.describe_table(
                     database=catalog_or_database_context,
@@ -231,10 +261,12 @@ def _helper_scan_schema_for_pii_logic(
 
     # Determine provider
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
 
     # Use direct API call instead of handle_tables
     try:
-        if is_redshift:
+        if is_redshift or is_snowflake:
+            # Both Redshift and Snowflake use database + schema_pattern
             tables_response = client.list_tables(
                 database=catalog_or_database_name,
                 schema_pattern=schema_name,

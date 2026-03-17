@@ -10,10 +10,11 @@ from typing import Optional, Union
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.clients.snowflake import SnowflakeAPIClient
 from chuck_data.llm.factory import LLMProviderFactory
 from chuck_data.command_registry import CommandDefinition
 from chuck_data.config import get_active_catalog, get_active_schema, get_active_database
-from chuck_data.data_providers import is_redshift_client
+from chuck_data.data_providers import is_redshift_client, is_snowflake_client
 from .base import CommandResult
 from .pii_tools import _helper_scan_schema_for_pii_logic
 
@@ -38,6 +39,7 @@ def handle_command(
     """
     # Determine provider
     is_redshift = is_redshift_client(client)
+    is_snowflake = is_snowflake_client(client)
 
     catalog_name_arg: Optional[str] = kwargs.get("catalog_name")
     database_arg: Optional[str] = kwargs.get("database")
@@ -48,8 +50,8 @@ def handle_command(
         return CommandResult(False, message="Client is required for bulk PII scan.")
 
     try:
-        if is_redshift:
-            # Redshift path: use database and schema
+        if is_redshift or is_snowflake:
+            # Redshift/Snowflake path: use database and schema
             effective_catalog = database_arg or get_active_database()
             effective_schema = schema_name_arg or get_active_schema()
 
