@@ -363,11 +363,13 @@ class DatabricksComputeProvider(ComputeProvider):
                 # Extract policy_id if present
                 policy_id = metadata.get("policy_id")
 
+                data_provider = metadata.get("data_provider")
                 job_run_data = self.client.submit_job_run(
                     config_path=config_file_path,
                     init_script_path=init_script_path,
                     run_name=f"Stitch Setup: {stitch_job_name}",
                     policy_id=policy_id,
+                    data_provider=data_provider,
                 )
                 run_id = job_run_data.get("run_id")
                 if not run_id:

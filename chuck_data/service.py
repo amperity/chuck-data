@@ -12,6 +12,7 @@ from typing import Dict, Optional, Any, Tuple, Callable
 
 from chuck_data.clients.databricks import DatabricksAPIClient
 from chuck_data.clients.redshift import RedshiftAPIClient
+from chuck_data.clients.snowflake import SnowflakeAPIClient
 from chuck_data.commands.base import CommandResult
 from chuck_data.command_registry import get_command, CommandDefinition
 from chuck_data.config import (
@@ -40,6 +41,9 @@ class ChuckService:
                 if data_provider == "aws_redshift":
                     # Initialize Redshift client
                     self.client, self.init_error = self._create_redshift_client()
+                elif data_provider == "snowflake":
+                    # Initialize Snowflake client
+                    self.client, self.init_error = self._create_snowflake_client()
                 else:
                     # Default to Databricks client
                     token = get_databricks_token()
@@ -96,6 +100,48 @@ class ChuckService:
             return client, None
         except Exception as e:
             return None, f"Failed to create Redshift client: {str(e)}"
+
+    def _create_snowflake_client(
+        self,
+    ) -> tuple[Optional[SnowflakeAPIClient], Optional[str]]:
+        """
+        Create a SnowflakeAPIClient from configuration.
+
+        Returns:
+            Tuple of (client, error_message).
+        """
+        config_manager = get_config_manager()
+        config = config_manager.get_config()
+
+        account = getattr(config, "snowflake_account", None)
+        user = getattr(config, "snowflake_user", None)
+        warehouse = getattr(config, "snowflake_warehouse", None)
+        role = getattr(config, "snowflake_role", None)
+        password = getattr(config, "snowflake_password", None)
+        private_key_path = getattr(config, "snowflake_private_key_path", None)
+
+        if not account:
+            return None, "Snowflake account not configured."
+        if not user:
+            return None, "Snowflake user not configured."
+        if not password and not private_key_path:
+            return (
+                None,
+                "Snowflake authentication (password or private key) not configured.",
+            )
+
+        try:
+            client = SnowflakeAPIClient(
+                account=account,
+                user=user,
+                warehouse=warehouse,
+                role=role,
+                password=password,
+                private_key_path=private_key_path,
+            )
+            return client, None
+        except Exception as e:
+            return None, f"Failed to create Snowflake client: {str(e)}"
 
     def _parse_and_validate_tui_args(
         self,
@@ -435,6 +481,20 @@ class ChuckService:
         )  # Handles TUI aliases via registry
 
         if not command_def:
+            # Give a more helpful message if the command exists for a different provider
+            from chuck_data.command_registry import get_command as _get_any
+
+            any_match = _get_any(command_name_from_ui, provider=None)
+            if any_match and any_match.provider and any_match.provider != provider:
+                return CommandResult(
+                    False,
+                    message=(
+                        f"Command '{command_name_from_ui}' is only available for "
+                        f"the '{any_match.provider}' data provider, but the current "
+                        f"provider is '{provider or 'not set'}'. "
+                        f"Check your config with /snowflake-status or re-run /setup."
+                    ),
+                )
             return CommandResult(
                 False,
                 message=f"Unknown command: '{command_name_from_ui}'. Type /help for list.",
@@ -582,6 +642,22 @@ class ChuckService:
                     self.init_error = (
                         error
                         or "Cannot reinitialize Redshift client: Missing configuration."
+                    )
+                    logging.warning(f"{self.init_error}")
+                    return False
+            elif data_provider == "snowflake":
+                # Close existing Snowflake connection before reinitializing
+                if isinstance(self.client, SnowflakeAPIClient):
+                    self.client.close()
+                self.client, error = self._create_snowflake_client()
+                if self.client:
+                    self.init_error = None
+                    logging.info("SnowflakeAPIClient reinitialized successfully.")
+                    return True
+                else:
+                    self.init_error = (
+                        error
+                        or "Cannot reinitialize Snowflake client: Missing configuration."
                     )
                     logging.warning(f"{self.init_error}")
                     return False
