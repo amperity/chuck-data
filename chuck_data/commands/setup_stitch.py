@@ -2311,13 +2311,55 @@ def _snowflake_prepare_manifest(
 
     # Step 3: Generate manifest
     console.print("\nStep 3: Generating manifest...")
+
+    # Encrypt credentials via chuck-api before embedding in manifest
+    from chuck_data.clients.amperity import AmperityAPIClient
+
+    raw_password = getattr(client, "_password", None)
+    raw_private_key = getattr(client, "_pem_private_key", None)
+    encrypted_password = None
+    encrypted_private_key = None
+
+    amperity_token = get_amperity_token()
+    if amperity_token and (raw_password or raw_private_key):
+        amp_client = AmperityAPIClient()
+        try:
+            if raw_password:
+                encrypted_password = amp_client.encrypt_credential(
+                    raw_password, amperity_token
+                )
+                console.print(
+                    f"[{SUCCESS_STYLE}]Encrypted password for manifest"
+                    f" storage[/{SUCCESS_STYLE}]"
+                )
+            if raw_private_key:
+                encrypted_private_key = amp_client.encrypt_credential(
+                    raw_private_key, amperity_token
+                )
+                console.print(
+                    f"[{SUCCESS_STYLE}]Encrypted private key for manifest"
+                    f" storage[/{SUCCESS_STYLE}]"
+                )
+        except Exception as e:
+            logging.warning("Could not encrypt credentials: %s", e)
+            console.print(
+                f"[{WARNING}]Could not encrypt credentials via API, "
+                f"storing in plaintext: {e}[/{WARNING}]"
+            )
+            encrypted_password = raw_password
+            encrypted_private_key = raw_private_key
+    else:
+        # No amperity token — fall back to plaintext
+        encrypted_password = raw_password
+        encrypted_private_key = raw_private_key
+
     snowflake_conn = {
         "account": getattr(client, "account", get_snowflake_account() or ""),
         "user": getattr(client, "user", get_snowflake_user() or ""),
         "warehouse": getattr(client, "warehouse", get_snowflake_warehouse() or ""),
         "role": getattr(client, "role", get_snowflake_role() or ""),
-        "password": getattr(client, "_password", None),
-        "private_key": getattr(client, "_pem_private_key", None),
+        "password": encrypted_password,
+        "private_key": encrypted_private_key,
     }
 
     manifest = generate_snowflake_manifest(

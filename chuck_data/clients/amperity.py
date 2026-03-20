@@ -319,6 +319,59 @@ class AmperityAPIClient:
             logging.debug(f"Connection error: {e}")
             raise ConnectionError(f"Connection error occurred: {e}")
 
+    def encrypt_credential(self, plaintext: str, token: str) -> str:
+        """Encrypt a credential for safe storage in a manifest.
+
+        Calls the chuck-api /api/encrypt endpoint which uses a derived
+        AES-256 key to encrypt the plaintext.
+
+        Args:
+            plaintext: The credential value to encrypt (e.g. password, PAT).
+            token: Amperity CLI authentication token.
+
+        Returns:
+            The encrypted credential string with ENC: prefix
+            (e.g. "ENC:base64ciphertext...").
+
+        Raises:
+            ValueError: If the API returns an error.
+            ConnectionError: If connection to Amperity API fails.
+        """
+        try:
+            url = f"https://{self.base_url}/api/encrypt"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            payload = {"text": plaintext}
+
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+            encrypted = data.get("encrypted")
+            if not encrypted:
+                raise ValueError("API returned empty encrypted value")
+            return f"ENC:{encrypted}"
+
+        except requests.exceptions.HTTPError as e:
+            resp = e.response
+            resp_text = resp.text if resp else ""
+            logging.error(
+                "Encrypt credential HTTP error: %s, Response: %s",
+                e,
+                resp_text,
+            )
+            raise ValueError(f"Failed to encrypt credential: {resp_text}")
+
+        except requests.RequestException as e:
+            logging.error("Encrypt credential connection error: %s", e)
+            raise ConnectionError(f"Connection error during encryption: {e}")
+
     def record_job_submission(
         self, databricks_run_id: str, token: str, job_id: str
     ) -> bool:
