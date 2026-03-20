@@ -220,3 +220,74 @@ def test_record_job_submission_payload_format(mock_post):
     payload = json.loads(call_args[1]["data"])
     assert "databricks-run-id" in payload  # kebab-case, not snake_case
     assert "job-id" in payload  # kebab-case, not snake_case
+
+
+# --- encrypt_credential tests ---
+
+
+@patch("chuck_data.clients.amperity.requests.post")
+def test_encrypt_credential_success(mock_post):
+    """Test successful credential encryption."""
+    client = AmperityAPIClient()
+
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"encrypted": "abc123encrypted=="}
+    mock_response.raise_for_status = Mock()
+    mock_post.return_value = mock_response
+
+    result = client.encrypt_credential("my-secret-password", "test-token")
+
+    assert result == "ENC:abc123encrypted=="
+
+    # Verify the request was made correctly
+    mock_post.assert_called_once()
+    call_args = mock_post.call_args
+    assert "api/encrypt" in call_args[0][0]
+    assert call_args[1]["headers"]["Authorization"] == "Bearer test-token"
+
+    payload = json.loads(call_args[1]["data"])
+    assert payload["text"] == "my-secret-password"
+
+
+@patch("chuck_data.clients.amperity.requests.post")
+def test_encrypt_credential_http_error(mock_post):
+    """Test encrypt_credential with HTTP error."""
+    client = AmperityAPIClient()
+
+    mock_response = Mock()
+    mock_response.status_code = 500
+    mock_response.text = "Internal Server Error"
+    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        response=mock_response
+    )
+    mock_post.return_value = mock_response
+
+    with pytest.raises(ValueError, match="Failed to encrypt"):
+        client.encrypt_credential("secret", "test-token")
+
+
+@patch("chuck_data.clients.amperity.requests.post")
+def test_encrypt_credential_connection_error(mock_post):
+    """Test encrypt_credential with network error."""
+    client = AmperityAPIClient()
+
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network error")
+
+    with pytest.raises(ConnectionError, match="Connection error"):
+        client.encrypt_credential("secret", "test-token")
+
+
+@patch("chuck_data.clients.amperity.requests.post")
+def test_encrypt_credential_empty_response(mock_post):
+    """Test encrypt_credential when API returns empty encrypted value."""
+    client = AmperityAPIClient()
+
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"encrypted": ""}
+    mock_response.raise_for_status = Mock()
+    mock_post.return_value = mock_response
+
+    with pytest.raises(ValueError, match="empty encrypted value"):
+        client.encrypt_credential("secret", "test-token")
