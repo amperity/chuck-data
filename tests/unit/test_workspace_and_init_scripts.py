@@ -112,6 +112,59 @@ class TestSubmitJobRunInitScripts:
 
             assert result == {"run_id": 123}
 
+    def test_submit_job_run_volumes_stages_jar_into_volume(self, client):
+        """Volumes init script gets a timestamped JOB_JAR_VOL_PATH env var
+        and the Run_Stitch library jar matches that path so Databricks
+        blocks the task until the init script stages the JAR there."""
+        import re
+
+        with patch.object(client, "post") as mock_post:
+            mock_post.return_value = {"run_id": 321}
+
+            client.submit_job_run(
+                config_path="/Volumes/cat/schema/vol/config.json",
+                init_script_path="/Volumes/cat/schema/vol/init.sh",
+            )
+
+            payload = mock_post.call_args[0][1]
+            task = payload["tasks"][0]
+            spark_env_vars = task["new_cluster"]["spark_env_vars"]
+
+            # JOB_JAR_VOL_PATH is a timestamped job-*.jar co-located with
+            # the init script.
+            jar_vol_path = spark_env_vars["JOB_JAR_VOL_PATH"]
+            assert re.fullmatch(
+                r"/Volumes/cat/schema/vol/job-\d{8}-\d{6}\.jar", jar_vol_path
+            )
+
+            # Library jar entry matches JOB_JAR_VOL_PATH exactly so the
+            # cluster's library load waits for the init script to stage
+            # the JAR.
+            jar_entries = [lib["jar"] for lib in task["libraries"] if "jar" in lib]
+            assert jar_entries == [jar_vol_path]
+
+    def test_submit_job_run_s3_does_not_stage_jar_into_volume(self, client):
+        """S3 init scripts (Redshift) keep the local file:// jar -- there
+        is no Unity Catalog volume to stage to and JOB_JAR_VOL_PATH must
+        not be set."""
+        with patch("chuck_data.config.get_aws_region", return_value="us-east-1"):
+            with patch.object(client, "post") as mock_post:
+                mock_post.return_value = {"run_id": 654}
+
+                client.submit_job_run(
+                    config_path="s3://bucket/config.json",
+                    init_script_path="s3://bucket/init.sh",
+                )
+
+                payload = mock_post.call_args[0][1]
+                task = payload["tasks"][0]
+                spark_env_vars = task["new_cluster"]["spark_env_vars"]
+
+                assert "JOB_JAR_VOL_PATH" not in spark_env_vars
+
+                jar_entries = [lib["jar"] for lib in task["libraries"] if "jar" in lib]
+                assert jar_entries == ["file:///opt/amperity/job.jar"]
+
     @patch("chuck_data.config.get_aws_region")
     def test_submit_job_run_with_s3_init_script(self, mock_get_region, client):
         """Test submit_job_run uses s3 format for S3 paths."""

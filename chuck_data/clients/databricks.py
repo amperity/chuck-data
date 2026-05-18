@@ -9,7 +9,7 @@ import os
 import requests
 import time
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from chuck_data.config import get_warehouse_id
 from chuck_data.clients.amperity import get_amperity_url
 from chuck_data.databricks.url_utils import (
@@ -576,15 +576,38 @@ class DatabricksAPIClient:
     # Jobs methods
     #
 
-    def _build_libraries(self, data_provider=None):
+    @staticmethod
+    def _generate_jar_volume_path(init_script_path):
+        """Return a timestamped JAR volume path co-located with the init script.
+
+        Mirrors the chuck-api side (CATALYST-253): the cluster init script
+        copies /opt/amperity/job.jar to JOB_JAR_VOL_PATH during cluster
+        startup, and the Run_Stitch task's library entry points at this
+        same path so Databricks blocks task start until the JAR is staged.
+        The filename is timestamped so concurrent runs do not clobber each
+        other's JARs.
+        """
+        parent_dir = init_script_path.rsplit("/", 1)[0]
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        return f"{parent_dir}/job-{timestamp}.jar"
+
+    def _build_libraries(self, data_provider=None, main_jar_path=None):
         """Return the Maven/JAR library list for a Stitch job run.
 
         The main JAR is always included. The connector Maven dependency is chosen
         based on the data provider:
           - "snowflake" → Snowflake Spark connector
           - "aws_redshift" → Redshift community connector + Avro support
+
+        Args:
+            data_provider: Optional connector selector (see above).
+            main_jar_path: Optional override for the main JAR path. Defaults to
+                the local `file:///opt/amperity/job.jar` path. Callers that
+                stage the JAR into a Unity Catalog volume should pass that
+                volume path so Databricks blocks the task until the init
+                script has copied the JAR into the volume.
         """
-        libraries: list = [{"jar": "file:///opt/amperity/job.jar"}]
+        libraries: list = [{"jar": main_jar_path or "file:///opt/amperity/job.jar"}]
         if data_provider == "snowflake":
             libraries.append(
                 {"maven": {"coordinates": "net.snowflake:spark-snowflake_2.12:3.1.3"}}
@@ -634,9 +657,11 @@ class DatabricksAPIClient:
         # Define the task and cluster for the one-time run
         # Create base cluster configuration
         # Detect init script location (S3 vs Volumes) and configure accordingly
+        jar_vol_path = None
         if init_script_path.startswith("s3://"):
-            # S3 init script (for Redshift data source)
-            # Get region from config
+            # S3 init script (for Redshift data source). Volumes are a
+            # Unity Catalog concept and don't apply here, so we leave the
+            # library jar pointing at the local /opt/amperity/job.jar.
             from chuck_data.config import get_aws_region
 
             region = get_aws_region() or "us-west-2"
@@ -650,7 +675,10 @@ class DatabricksAPIClient:
                 }
             ]
         else:
-            # Volumes init script (for Unity Catalog data source)
+            # Volumes init script (Unity Catalog). Stage the JAR into the
+            # same volume so the Run_Stitch task's library entry resolves
+            # against the volume path -- the chuck-api init script reads
+            # JOB_JAR_VOL_PATH from spark_env_vars and copies the JAR there.
             init_scripts_config = [
                 {
                     "volumes": {
@@ -658,6 +686,16 @@ class DatabricksAPIClient:
                     }
                 }
             ]
+            jar_vol_path = self._generate_jar_volume_path(init_script_path)
+
+        spark_env_vars = {
+            "JNAME": "zulu17-ca-amd64",
+            "CHUCK_API_URL": f"https://{get_amperity_url()}",
+            "DEBUG_INIT_SRIPT_URL": init_script_path,
+            "DEBUG_CONFIG_PATH": config_path,
+        }
+        if jar_vol_path:
+            spark_env_vars["JOB_JAR_VOL_PATH"] = jar_vol_path
 
         cluster_config = {
             "cluster_name": "",
@@ -669,12 +707,7 @@ class DatabricksAPIClient:
                 "sys": "chuck",
                 "tenant": "amperity",
             },
-            "spark_env_vars": {
-                "JNAME": "zulu17-ca-amd64",
-                "CHUCK_API_URL": f"https://{get_amperity_url()}",
-                "DEBUG_INIT_SRIPT_URL": init_script_path,
-                "DEBUG_CONFIG_PATH": config_path,
-            },
+            "spark_env_vars": spark_env_vars,
             "enable_elastic_disk": False,
             "data_security_mode": "SINGLE_USER",
             "runtime_engine": "STANDARD",
@@ -704,7 +737,10 @@ class DatabricksAPIClient:
                         ],
                         "run_as_repl": True,
                     },
-                    "libraries": self._build_libraries(data_provider),
+                    "libraries": self._build_libraries(
+                        data_provider=data_provider,
+                        main_jar_path=jar_vol_path,
+                    ),
                     "timeout_seconds": 0,
                     "email_notifications": {},
                     "webhook_notifications": {},
