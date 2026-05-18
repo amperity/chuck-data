@@ -607,9 +607,7 @@ class DatabricksAPIClient:
                 volume path so Databricks blocks the task until the init
                 script has copied the JAR into the volume.
         """
-        libraries: list = [
-            {"jar": main_jar_path or "file:///opt/amperity/job.jar"}
-        ]
+        libraries: list = [{"jar": main_jar_path or "file:///opt/amperity/job.jar"}]
         if data_provider == "snowflake":
             libraries.append(
                 {"maven": {"coordinates": "net.snowflake:spark-snowflake_2.12:3.1.3"}}

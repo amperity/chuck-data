@@ -143,9 +143,7 @@ class TestSubmitJobRunInitScripts:
             jar_entries = [lib["jar"] for lib in task["libraries"] if "jar" in lib]
             assert jar_entries == [jar_vol_path]
 
-    def test_submit_job_run_s3_does_not_stage_jar_into_volume(
-        self, client
-    ):
+    def test_submit_job_run_s3_does_not_stage_jar_into_volume(self, client):
         """S3 init scripts (Redshift) keep the local file:// jar -- there
         is no Unity Catalog volume to stage to and JOB_JAR_VOL_PATH must
         not be set."""
@@ -164,9 +162,7 @@ class TestSubmitJobRunInitScripts:
 
                 assert "JOB_JAR_VOL_PATH" not in spark_env_vars
 
-                jar_entries = [
-                    lib["jar"] for lib in task["libraries"] if "jar" in lib
-                ]
+                jar_entries = [lib["jar"] for lib in task["libraries"] if "jar" in lib]
                 assert jar_entries == ["file:///opt/amperity/job.jar"]
 
     @patch("chuck_data.config.get_aws_region")
